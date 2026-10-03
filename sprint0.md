@@ -124,4 +124,4 @@ Component details, communication boundaries, and an example request flow: [Archi
 - [x] Feature, story, and task issues linked as sub-issues
 - [x] Project board with Board, Plan, and Tasks views
 - [x] Issue templates and pull request template
-- [x] Branch protection on `main` and `develop` (pull request with 1 approval required)
+- [x] Branch protection on `main` and `develop` (pull request with 2 approvals required)
