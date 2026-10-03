@@ -1,43 +1,64 @@
-# Vision Statement
+# Sprint 0: Planning and Setup
 
-GetDrove gives UofM students a seat that's actually theirs.
+> Back to [README](README.md)
 
-Getting to Fort Garry without a car means two buses and a transfer with no margin. If the first bus runs five minutes late the connection is gone and the next one is twenty minutes out. Worse, buses fill up before they reach the outer stops, so a student can be on time at the right stop and still watch a full bus drive past. Sometimes the next one is full too. There's no way to plan around it, because the schedule says a bus is coming and it's technically correct. The result is students building a forty-minute buffer into every morning, or showing up late anyway.
+## Overview
 
-The alternative is driving, but a parking pass costs hundreds of dollars and the lots have a waitlist. So students without cars stay stuck with transit, while hundreds of students drive the same routes every morning alone, with three empty seats, paying for fuel and parking by themselves.
+In Sprint 0 we defined the product and who it's for, wrote our core features, user stories with acceptance criteria, and development tasks, set initial non-functional expectations, chose our starting technology stack, sketched a preliminary architecture, set up the repository and project board, and agreed on how we'll work as a team.
 
-The seats exist. The coordination doesn't.
+**Team:** Code Bros (6 members)
 
-GetDrove closes that gap. Drivers post their commute the night before. The system works out their real driving route, shows the trip to students along it, and tells the driver how many extra minutes each rider would add. Riders get a confirmed seat, a pickup point, a live ETA, and a fair share of the cost based on how far they rode. Both sides are verified and rated, and nobody has to argue about gas money over text.
+## Product vision
 
-The goal is simple: a student should be able to take the 8:30 class knowing they'll get there.
+**GetDrove gives UofM students a seat that's actually theirs.** Getting to Fort Garry by transit means tight transfers and full buses that drive past, while hundreds of students drive the same routes alone with empty seats. The seats exist; the coordination doesn't. GetDrove matches riders with drivers whose real driving route passes near them, shows drivers the detour each rider adds, and splits the cost fairly by distance, so a student can take the 8:30 class knowing they'll get there.
 
-# Technology Choices
+Full vision: [Product vision](docs/product/vision.md#vision-statement)
 
-These are our starting choices for Sprint 0. We expect some to change as the project develops.
+## Customer context
 
-## Team-wide choices
+Our customer is **UofM students who commute to the Fort Garry campus**, on both sides of the gap: **riders** without a car or parking pass who lose hours to transit and need a seat they can plan a class schedule around, and **drivers** who already make the commute and would take riders if it didn't cost them a long detour or a no-show. Secondary stakeholders are UofM Parking Services and the people waiting on a student to get home. Faculty, staff, and non-UofM riders are out of scope.
 
-- **Architecture:** microservices. Each service is owned end to end, services can be built in parallel, and a failure in one doesn't take down the others. See the architecture section for how they connect.
-- **Source control and CI/CD:** GitHub and GitHub Actions. Tests run on every pull request, and the main branch deploys automatically. Security and dependency scanning added for the final iteration.
-- **Backend:** Spring Boot or FastAPI. Spring Boot is the stronger option on team familiarity since most of us know Java from coursework, and it's opinionated about structure, which helps when several people are writing services that should look alike. FastAPI is lighter, faster to write, and generates OpenAPI docs with no extra setup. We'll decide in Sprint 1.
-- **Frontend:** React with TypeScript. Familiar to the team, and TypeScript catches mismatches with the service APIs early.
-- **Database:** PostgreSQL, one schema per service. Reliable and widely used. Separate schemas keep each service's data private, with PostGIS for services that need location queries.
-- **Message broker:** Redis Streams (tentative). Lets services react to events without calling each other directly, and is simpler to run than the alternatives.
-- **API gateway:** Traefik (tentative). A single entry point for the frontend that forwards each request to the right service and can check login tokens in one place.
-- **Local environment:** Docker Compose. The whole system, including the routing engine, runs with one command so everyone is on the same setup and nobody loses time to environment problems. Images published to DockerHub for the final release.
+Full context, users, and stakeholders: [Customer context](docs/product/vision.md#customer)
 
-## Owner choices
+## Core features and user stories
 
-Each service's owner chooses the tools used inside their service, such as the routing engine, map library, file storage, or email provider, and documents the choice and reasoning in that service's README. PostgreSQL is the default database for all services; an owner can choose a different one if their service has a clear need. Any choice that affects other services, such as a new API or event format, is discussed with the team first.
+We have **7 core features** (one per team member, plus one), **22 user stories** with acceptance criteria, **52 development tasks** for stories that need a technical breakdown, and **5 stretch goals** kept separate from the core scope. In GitHub, features are parent issues, stories are their sub-issues, and tasks are sub-issues of their story.
 
-## Still to decide as a team
+1. Accounts and verification
+2. Trip posting
+3. Route matching
+4. Requests and acceptance
+5. Trip execution
+6. Cost splitting and payment
+7. Ratings and safety
 
-The backend framework, the message broker (Redis Streams or RabbitMQ), the API gateway, and where we deploy for the Sprint 1 demo.
+- Feature descriptions and stretch goals: [Core features](docs/product/core-features.md)
+- [Project board](https://github.com/users/Andrew-Ih/projects/3): **Board** view for progress, **Plan** view for features and stories, **Tasks** view for development tasks
+- Issue lists: [Features](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Afeature) · [User stories](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Auser-story) · [Development tasks](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Atask) · [Stretch goals](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Astretch)
 
-# Architecture
+## Non-functional expectations
 
-## Main diagram
+The key targets: detour quotes in under 1 second, route computation within 3 seconds, 50 concurrent users sustained for 5 minutes, trips that keep running if Notifications or Routing is down, home addresses never shown to other users, around 70% test coverage on core logic, and a mobile-first interface usable outdoors in winter.
+
+Full list: [Non-functional expectations](docs/product/non-functional.md)
+
+## Technology decisions
+
+| Area | Choice | Status |
+|---|---|---|
+| Architecture | Microservices | Decided |
+| Frontend | React + TypeScript | Decided |
+| Backend | Spring Boot or FastAPI | Decide in Sprint 1 |
+| Database | PostgreSQL (one schema per service), PostGIS | Decided |
+| Message broker | Redis Streams | Tentative |
+| API gateway | Traefik | Tentative |
+| CI/CD | GitHub Actions | Decided |
+| Local environment | Docker Compose | Decided |
+| Payments | Stripe (test mode) | Decided |
+
+Reasons, owner choices, and open decisions: [Technology stack](docs/architecture/tech-stack.md)
+
+## Preliminary architecture
 
 ```mermaid
 flowchart TB
@@ -61,6 +82,11 @@ flowchart TB
         notifyDb[("notify")]
     end
 
+    subgraph external["External services"]
+        stripe["Stripe<br/>(test mode)"]
+        email["Email provider"]
+    end
+
     web --> accounts
     web --> trips
     web --> routing
@@ -72,29 +98,30 @@ flowchart TB
     routing --> routingDb
     payments --> payDb
     notify --> notifyDb
+
+    payments -.-> stripe
+    accounts -.-> email
+    notify -.-> email
 ```
 
-## Example request flow: a rider requests a seat and the driver accepts
+The React web app talks to five backend services through an API gateway. Each service owns its own PostgreSQL schema and never reads another service's data; services communicate through documented APIs and events on a message broker. Routing, the most expensive service, is isolated so it can be load-tested and scaled on its own, and Payments uses Stripe in test mode.
 
-```mermaid
-%%{init: {'sequence': {'mirrorActors': false}}}%%
-sequenceDiagram
-    autonumber
-    actor Rider
-    participant Trips
-    participant Routing
-    participant Payments
-    participant Notify as Notifications
-    actor Driver
+Component details, communication boundaries, and an example request flow: [Architecture](docs/architecture/architecture.md)
 
-    Rider->>Trips: Request a seat on this trip
-    Trips->>Routing: How much detour does this pickup add?
-    Routing-->>Trips: 5 minutes, pickup 2nd in order
-    Trips->>Notify: New request, adds 5 min
-    Notify->>Driver: You have a request
+## Team process
 
-    Driver->>Trips: Accept
-    Trips->>Payments: Hold the rider's share
-    Trips->>Notify: Request accepted
-    Notify->>Rider: Confirmed, pickup at 7:48
-```
+- [Working agreement](docs/process/working-agreement.md): goals, roles, meetings, conflict resolution, responsible GenAI use, accountability
+- [Communication protocol](docs/process/communication.md): Discord, response times, escalation, meetings
+- [Planning practices](docs/process/planning.md): iterations, distributing work, coordinating dependencies, integrating contributions, adapting assignments, Definition of Done
+- [Git workflow](docs/process/git-workflow.md): Git Flow with feature, release, and hotfix branches
+- [Coding standards](docs/process/coding-standards.md): formatting, naming, code quality, service rules, testing
+- [Code review practices](docs/process/code-review.md): pull requests, approvals, review checklist
+
+## Repository setup
+
+- [x] Repository with `main` and `develop` branches
+- [x] Labels for issue type, system area, and frontend/backend
+- [x] Feature, story, and task issues linked as sub-issues
+- [x] Project board with Board, Plan, and Tasks views
+- [x] Issue templates and pull request template
+- [x] Branch protection on `main` and `develop` (pull request with 1 approval required)
