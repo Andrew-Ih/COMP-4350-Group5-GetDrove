@@ -8,8 +8,8 @@ We use **Git Flow**. Nobody pushes directly to `main` or `develop`; every change
 
 | Branch | Created from | Merged into | Purpose |
 |---|---|---|---|
-| `main` | — | — | Released, stable code only. Every commit on `main` is a tagged release. |
-| `develop` | `main` (once) | — | Integration branch. Finished work comes together here. |
+| `main` | — | — | Released, stable code only. Every commit on `main` is a tagged release that publishes versioned Docker images to DockerHub. |
+| `develop` | `main` (once) | — | Integration branch. Finished work comes together here. **Every merge deploys the live site automatically.** |
 | `feature/*`, `fix/*`, etc. | `develop` | `develop` | One branch per issue or task. |
 | `release/*` | `develop` | `main` **and** `develop` | Preparing a release: final bug fixes, version number, release notes. |
 | `hotfix/*` | `main` | `main` **and** `develop` | Urgent fixes to released code that can't wait for the next release. |
@@ -69,7 +69,7 @@ git merge develop
 
 ## Making a release (end of each iteration)
 
-Releases are prepared and merged by the **GitHub Manager (Andrew)**, as set out in the [working agreement](working-agreement.md). Merging into `main` triggers the automatic deployment in GitHub Actions, so `main` only ever receives tested release or hotfix branches.
+Releases are prepared and merged by the **GitHub Manager (Andrew)**, as set out in the [working agreement](working-agreement.md). `main` only ever receives tested release or hotfix branches. Tagging a release on `main` triggers GitHub Actions to publish versioned images to DockerHub. The live site itself deploys from `develop` (see [Deployment](#deployment-and-branches)).
 
 1. Create the release branch from `develop`:
    ```bash
@@ -104,6 +104,22 @@ Used only for serious problems in released code (for example, something broken i
 5. Delete the hotfix branch.
 
 If a release branch is open at the time, merge the hotfix into the release branch instead of `develop`; it reaches `develop` when the release is merged back.
+
+## Deployment and branches
+
+We run **one live environment**, and it tracks `develop` ([ADR 0007](../architecture/adr/0007-hosting-and-environments.md)):
+
+```
+feature branches → develop → live site (deploys on every merge)
+                      ↓
+              release branch (end of sprint)
+                      ↓
+                    main → tag vX.Y.Z → versioned images on DockerHub
+```
+
+- **`develop` is the repository's default branch**, so the code visitors see matches the live site.
+- **Rolling back:** if a merge to `develop` breaks the live site, redeploy the images from the last release tag, then fix forward on `develop`.
+- **Hotfixes** merged into `main` are also merged into `develop`, which deploys them to the live site.
 
 ## Commit messages
 

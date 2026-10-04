@@ -4,21 +4,21 @@
 
 ## Tech stack
 
-See the [technology stack](../architecture/tech-stack.md). The backend framework (Spring Boot or FastAPI) is decided in Sprint 1; the backend formatting and linting tools below are confirmed at the same time.
+See the [technology stack](../architecture/tech-stack.md): Java 21 + Spring Boot 3 with Gradle for the backend, Next.js + TypeScript for the frontend.
 
 ## Formatting and linting
 
 | Area | Formatter | Linter |
 |---|---|---|
-| Frontend (React + TypeScript) | Prettier | ESLint |
-| Backend | TODO (decided with the framework in Sprint 1) | TODO |
+| Frontend (Next.js + TypeScript) | Prettier | ESLint |
+| Backend (Java 21 + Spring Boot 3) | Spotless with google-java-format | Checkstyle |
 
-- Run the formatter before every commit. Pull requests with lint errors are not merged; CI runs the linters on every pull request.
+- Run the formatter before every commit (`./gradlew spotlessApply` for Java, `npm run format` for the frontend). Pull requests with lint errors are not merged; CI runs the linters on every pull request.
 
 ## Naming
 
 - TypeScript: `camelCase` for variables and functions, `PascalCase` for components, types, and classes, `UPPER_SNAKE_CASE` for constants.
-- Backend: follow the standard convention of the chosen language (Java or Python).
+- Java: `camelCase` for variables and methods, `PascalCase` for classes and records, `UPPER_SNAKE_CASE` for constants, lowercase package names (`ca.getdrove.trips.domain`).
 - REST endpoints use plural nouns and kebab-case, e.g. `/trips/{id}/seat-requests`.
 
 ## Code quality

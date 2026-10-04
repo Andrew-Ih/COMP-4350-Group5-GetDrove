@@ -47,6 +47,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 
 - [Technology stack](docs/architecture/tech-stack.md)
 - [Architecture](docs/architecture/architecture.md)
+- [Architecture Decision Records](docs/architecture/adr/README.md)
 
 **Team process**
 

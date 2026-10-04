@@ -1,40 +1,62 @@
 # Technology Stack
 
-> Back to [README](../../README.md) · [Sprint 0](../../sprint0.md)
+> Back to [README](../../README.md) · [Sprint 0](../../sprint0.md) · [Decision records](adr/README.md)
 
-These are our starting choices for Sprint 0. We expect some to change as the project develops; changes are recorded here.
+These are the technology decisions the team made at the end of Sprint 0. Each one is explained in an [Architecture Decision Record (ADR)](adr/README.md). If a decision changes, we update this page and add a new ADR rather than editing the old one.
 
-## Team-wide choices
+## Architecture
 
-| Area | Choice | Status | Why |
+| Area | Choice | ADR |
+|---|---|---|
+| Architecture style | Microservices (five services), Clean Architecture inside each service | [0003](adr/0003-backend-framework.md) |
+| Repository | Monorepo: all services, frontend, contracts, infrastructure, and docs in one repo | [0001](adr/0001-monorepo.md) |
+
+## Application
+
+| Area | Choice | Notes | ADR |
 |---|---|---|---|
-| Architecture | Microservices | Decided | Each service is owned end to end, services can be built in parallel, and a failure in one doesn't take down the others. See [architecture](architecture.md). |
-| Source control and CI/CD | GitHub and GitHub Actions | Decided | Tests run on every pull request, and `main` deploys automatically. Security and dependency scanning added for the final iteration. |
-| Backend | Spring Boot **or** FastAPI | Decide in Sprint 1 | See below. |
-| Frontend | React with TypeScript | Decided | Familiar to the team, and TypeScript catches mismatches with the service APIs early. |
-| Database | PostgreSQL, one schema per service, with PostGIS where needed | Decided | Reliable and widely used. Separate schemas keep each service's data private, and PostGIS supports the location queries needed for route matching. |
-| Message broker | Redis Streams | Tentative | Lets services react to events without calling each other directly, and is simpler to run than the alternatives. RabbitMQ is the alternative. |
-| API gateway | Traefik | Tentative | A single entry point for the frontend that forwards each request to the right service and can check login tokens in one place. |
-| Local environment | Docker Compose | Decided | The whole system, including the routing engine, runs with one command, so everyone is on the same setup and nobody loses time to environment problems. Images published to DockerHub for the final release. |
-| Payments | Stripe (test mode) | Decided | Supports holding funds on acceptance and capturing them after the trip. No real card data touches our systems. |
+| Frontend | **Next.js + TypeScript** (App Router) | MapLibre map, TanStack Query, Stripe Elements | [0002](adr/0002-frontend-framework.md) |
+| Backend | **Java 21 + Spring Boot 3** for all five services | Spring Data JPA, Spring Security (OAuth2 resource server), springdoc OpenAPI, STOMP over WebSocket | [0003](adr/0003-backend-framework.md) |
+| Build tool | **Gradle** (Kotlin DSL) with a shared version catalog | | [0004](adr/0004-build-tool.md) |
+| Database | **PostgreSQL** with **PostGIS**, one schema and one database user per service | Flyway migrations | [0003](adr/0003-backend-framework.md) |
+| Message broker | **Redis Streams** with the transactional outbox pattern | Redis also caches routing data and stores live driver locations | [0005](adr/0005-message-broker.md) |
+| API gateway | **Traefik**: routing and HTTPS only | | [0006](adr/0006-gateway-and-authentication.md) |
+| Authentication | JWTs issued by Accounts (RS256), **validated in each service** using Accounts' JWKS | | [0006](adr/0006-gateway-and-authentication.md) |
+| Routing engine | **OSRM**, self-hosted, car and foot profiles, Winnipeg map extract | GraphHopper is the backup if OSRM proves unsuitable | [0008](adr/0008-routing-engine.md) |
+| Maps | **MapLibre GL JS** with **OpenFreeMap** vector tiles | MapTiler is the backup | [0009](adr/0009-maps.md) |
+| Payments | **Stripe** (test mode only) | Manual-capture PaymentIntents for holds; payouts are simulated | — |
+| Email | **Mailpit** locally, **Brevo** in production | | [0010](adr/0010-email.md) |
+| Document storage | **Docker volume**, served only through Accounts with permission checks | Behind a storage port, so it can move to S3-compatible storage later | [0011](adr/0011-document-storage.md) |
 
-### Backend: Spring Boot or FastAPI
+## Hosting and delivery
 
-- **Spring Boot** is stronger on team familiarity, since most of us know Java from coursework. It's opinionated about structure, which helps when several people are writing services that should look alike.
-- **FastAPI** is lighter, faster to write, and generates OpenAPI docs with no extra setup.
+| Area | Choice | ADR |
+|---|---|---|
+| Hosting | **Oracle Cloud Always Free** VM: VM.Standard.A1.Flex, 2 OCPU / 12 GB RAM, Ubuntu 24.04 LTS (ARM64), Canadian home region, running Docker Compose. Backup: **AWS Free plan** (t4g.large) | [0007](adr/0007-hosting-and-environments.md) |
+| Environments | **One live environment**, deployed automatically from `develop`. Tagged releases on `main` publish versioned images to DockerHub | [0007](adr/0007-hosting-and-environments.md) |
+| CI/CD | **GitHub Actions**; images built for `linux/arm64` and stored in GitHub Container Registry | [0007](adr/0007-hosting-and-environments.md) |
+| Local environment | **Docker Compose**: the whole system, including OSRM, runs with one command | [0007](adr/0007-hosting-and-environments.md) |
+| HTTPS | Let's Encrypt certificates, managed by Traefik | [0006](adr/0006-gateway-and-authentication.md) |
 
-We'll decide in Sprint 1.
+## Quality
 
-## Owner choices
+| Area | Choice | ADR |
+|---|---|---|
+| Backend testing | JUnit 5, Mockito, AssertJ, Testcontainers, WireMock, stripe-mock, ArchUnit, JaCoCo | [0013](adr/0013-testing.md) |
+| Frontend testing | Vitest, React Testing Library, MSW; Playwright for end-to-end tests | [0013](adr/0013-testing.md) |
+| Contract testing | OpenAPI specs (generated by springdoc) and JSON Schemas for events, validated in tests | [0013](adr/0013-testing.md) |
+| Formatting and linting | Backend: Spotless (google-java-format) + Checkstyle. Frontend: Prettier + ESLint | [0013](adr/0013-testing.md) |
+| Security analysis | CodeQL (code), Trivy (images and dependencies), Dependabot (dependency updates) | [0014](adr/0014-security-and-load-testing.md) |
+| Load testing | JMeter | [0014](adr/0014-security-and-load-testing.md) |
 
-Each service's owner chooses the tools used inside their service, such as the routing engine, map library, file storage, or email provider, and documents the choice and reasoning in that service's README.
+## Product rules that affect the code
 
-- PostgreSQL is the default database for all services. An owner can choose a different one if their service has a clear need.
-- Any choice that affects other services, such as a new API or event format, is discussed with the team first.
+| Rule | Decision | ADR |
+|---|---|---|
+| Pricing | Rider's share = rider distance × **$0.45/km**, rounded to 5¢, **$2.00 minimum** (both configurable) | [0012](adr/0012-pricing-and-no-shows.md) |
+| No-show charge | **100%** of the quoted share (configurable) | [0012](adr/0012-pricing-and-no-shows.md) |
+| Driver approval | Minimal admin page; one seeded admin account | [0015](adr/0015-driver-approval.md) |
 
-## Still to decide as a team
+## Tools inside a service
 
-- Backend framework (Spring Boot or FastAPI)
-- Message broker (Redis Streams or RabbitMQ)
-- API gateway
-- Where we deploy for the Sprint 1 demo
+Each service's owner documents the libraries used inside their service in that service's README. Any choice that affects other services, such as a new API, event, or shared library, is discussed with the team first and recorded as an ADR if it's significant.

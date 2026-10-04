@@ -25,3 +25,9 @@ replay_pid*
 
 # Github management
 create_issues.sh
+
+# Architecture diagram 
+# getdrove-architecture.drawio
+
+# Planning documents
+implementation-plan.md

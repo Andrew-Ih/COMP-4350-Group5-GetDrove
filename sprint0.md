@@ -44,54 +44,79 @@ Full list: [Non-functional expectations](docs/product/non-functional.md)
 
 ## Technology decisions
 
-| Area | Choice | Status |
-|---|---|---|
-| Architecture | Microservices | Decided |
-| Frontend | React + TypeScript | Decided |
-| Backend | Spring Boot or FastAPI | Decide in Sprint 1 |
-| Database | PostgreSQL (one schema per service), PostGIS | Decided |
-| Message broker | Redis Streams | Tentative |
-| API gateway | Traefik | Tentative |
-| CI/CD | GitHub Actions | Decided |
-| Local environment | Docker Compose | Decided |
-| Payments | Stripe (test mode) | Decided |
+All major technology decisions were made at the end of Sprint 0 and are recorded as [Architecture Decision Records](docs/architecture/adr/README.md).
 
-Reasons, owner choices, and open decisions: [Technology stack](docs/architecture/tech-stack.md)
+| Area | Choice |
+|---|---|
+| Architecture | Microservices (five services) with Clean Architecture inside each; monorepo |
+| Frontend | Next.js + TypeScript, MapLibre GL JS with OpenFreeMap tiles |
+| Backend | Java 21 + Spring Boot 3, built with Gradle |
+| Database | PostgreSQL + PostGIS, one schema per service |
+| Messaging | Redis Streams with the transactional outbox pattern |
+| Gateway and auth | Traefik (routing + HTTPS); JWTs validated in each service |
+| Routing engine | OSRM (self-hosted, car + foot profiles) |
+| Payments and email | Stripe (test mode); Brevo (Mailpit locally) |
+| Hosting | Oracle Cloud Always Free VM with Docker Compose (AWS Free plan as backup); live site deploys from `develop` |
+| CI/CD and quality | GitHub Actions; CodeQL, Trivy, Dependabot; JMeter for load testing |
 
-## Preliminary architecture
+Reasons, alternatives, and the full list: [Technology stack](docs/architecture/tech-stack.md)
+
+## Architecture
 
 ```mermaid
 flowchart TB
-    subgraph client["Client"]
-        web["Web app<br/>React + TypeScript"]
+    users(["Riders & drivers"]) --> web
+
+    subgraph client["Browser"]
+        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · STOMP client · Stripe Elements"]
     end
 
-    subgraph backend["Backend services"]
-        accounts["Accounts<br/>signup, verification, ratings"]
-        trips["Trips<br/>posting, requests, acceptance"]
-        routing["Routing<br/>routes and detour costs"]
-        payments["Payments<br/>cost splitting"]
-        notify["Notifications<br/>messages and chat"]
-    end
+    subgraph vm["Oracle Cloud VM · Docker Compose"]
+        traefik["Traefik<br/>HTTPS · routing"]
+        next["Next.js server"]
 
-    subgraph data["Data (PostgreSQL, one schema per service)"]
-        accountsDb[("accounts")]
-        tripsDb[("trips")]
-        routingDb[("routing")]
-        payDb[("payments")]
-        notifyDb[("notify")]
+        subgraph services["Backend services · Java 21 + Spring Boot 3"]
+            accounts["Accounts<br/>signup · login · JWT · approval · ratings"]
+            trips["Trips<br/>trips · requests · seats · execution"]
+            routing["Routing<br/>routes · matching · pickups · detours"]
+            payments["Payments<br/>quotes · holds · capture · earnings"]
+            notify["Notifications<br/>email · reminders · WebSockets"]
+        end
+
+        subgraph data["PostgreSQL + PostGIS · one schema per service"]
+            accountsDb[("accounts")]
+            tripsDb[("trips")]
+            routingDb[("routing")]
+            payDb[("payments")]
+            notifyDb[("notify")]
+        end
+
+        redis[["Redis<br/>event streams · cache · live locations"]]
+        osrm["OSRM<br/>car + foot"]
     end
 
     subgraph external["External services"]
-        stripe["Stripe<br/>(test mode)"]
-        email["Email provider"]
+        stripe["Stripe (test mode)"]
+        brevo["Brevo (email)"]
+        tiles["OpenFreeMap (map tiles)"]
     end
 
-    web --> accounts
-    web --> trips
-    web --> routing
-    web --> payments
-    web --> notify
+    web -->|"HTTPS /api/* · WSS /ws"| traefik
+    web -.->|map tiles| tiles
+    web -.->|card entry| stripe
+    traefik --> next
+    traefik --> accounts & trips & routing & payments & notify
+
+    trips -->|reputation · blocks| accounts
+    trips -->|routes · matches · pickups · detours| routing
+    trips -->|quotes| payments
+    routing --> osrm
+
+    accounts <-->|events| redis
+    trips <-->|events| redis
+    payments <-->|events| redis
+    routing <-->|events · cache| redis
+    notify <-->|events · locations| redis
 
     accounts --> accountsDb
     trips --> tripsDb
@@ -99,14 +124,13 @@ flowchart TB
     payments --> payDb
     notify --> notifyDb
 
-    payments -.-> stripe
-    accounts -.-> email
-    notify -.-> email
+    payments --> stripe
+    notify --> brevo
 ```
 
-The React web app talks to five backend services through an API gateway. Each service owns its own PostgreSQL schema and never reads another service's data; services communicate through documented APIs and events on a message broker. Routing, the most expensive service, is isolated so it can be load-tested and scaled on its own, and Payments uses Stripe in test mode.
+The Next.js web app reaches the five Spring Boot services through Traefik, the only public entry point. Each service owns its own PostgreSQL schema and never reads another service's data. Services call each other over internal REST endpoints when they need an immediate answer, and otherwise communicate through events on Redis Streams, published via a transactional outbox so no event is lost. Routing uses a self-hosted OSRM engine and is isolated because it's the most expensive service. Everything runs with Docker Compose, locally and on an Oracle Cloud VM.
 
-Component details, communication boundaries, and an example request flow: [Architecture](docs/architecture/architecture.md)
+A detailed, colour-coded version of this diagram and the request-seat sequence diagram are in [`getdrove-architecture.drawio`](docs/architecture/getdrove-architecture.drawio). Component details, communication boundaries, and an example request flow: [Architecture](docs/architecture/architecture.md)
 
 ## Team process
 
@@ -124,4 +148,4 @@ Component details, communication boundaries, and an example request flow: [Archi
 - [x] Feature, story, and task issues linked as sub-issues
 - [x] Project board with Board, Plan, and Tasks views
 - [x] Issue templates and pull request template
-- [x] Branch protection on `main` and `develop` (pull request with 2 approvals required)
+- [x] Branch protection on `main` and `develop` (pull request with 1 approval required)
