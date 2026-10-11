@@ -1,5 +1,7 @@
 # GetDrove
 
+[![CI](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml)
+
 **GetDrove gives UofM students a seat that's actually theirs.**
 
 GetDrove is a carpooling platform for University of Manitoba students commuting to the Fort Garry campus. Drivers post their commute, the system works out their real driving route and shows the trip to students along it, and drivers see how many extra minutes each rider would add before accepting. Riders get a confirmed seat, a private pickup point, a pickup time and ETA, and a fair share of the cost based on how far they rode. Every user is a verified UofM student.
