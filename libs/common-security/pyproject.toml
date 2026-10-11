@@ -1,0 +1,13 @@
+[project]
+name = "common-security"
+version = "0.1.0"
+description = "JWT validation against the Accounts JWKS endpoint, current-user dependency, role checks (issue #91)."
+requires-python = ">=3.13"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-name = "common_security"

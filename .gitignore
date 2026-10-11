@@ -33,3 +33,32 @@ create_sprint1.sh
 
 # Planning documents
 # implementation-plan.md
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/
