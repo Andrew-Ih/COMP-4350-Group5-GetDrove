@@ -1,7 +1,9 @@
 # ADR 0004: Gradle as the build tool
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0017](0017-python-fastapi-backend.md)
 - **Date:** 2026-10-04
+
+> **Superseded.** With the move to Python, the monorepo is managed by a **uv workspace** (one `uv.lock`, packages built with `uv_build`), not Gradle. See [ADR 0017](0017-python-fastapi-backend.md) and [Monorepo structure](../monorepo.md). This record is kept for history.
 
 ## Context
 

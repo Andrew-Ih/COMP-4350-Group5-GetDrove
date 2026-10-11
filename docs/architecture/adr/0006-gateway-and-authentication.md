@@ -1,6 +1,6 @@
 # ADR 0006: Traefik as the gateway; JWTs validated in each service
 
-- **Status:** Accepted
+- **Status:** Accepted; Python implementation described in [ADR 0017](0017-python-fastapi-backend.md)
 - **Date:** 2026-10-04
 
 ## Context

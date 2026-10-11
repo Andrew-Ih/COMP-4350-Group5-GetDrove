@@ -1,6 +1,6 @@
 # ADR 0017: Python 3.13 + FastAPI for all backend services
 
-- **Status:** Accepted
+- **Status:** Accepted; realtime approach amended by [ADR 0018](0018-live-tracking-as-stretch-goal.md)
 - **Date:** 2026-10-10
 - **Supersedes:** [ADR 0003](0003-backend-framework.md) (backend framework), [ADR 0004](0004-build-tool.md) (build tool), and the backend tools in [ADR 0013](0013-testing.md)
 
