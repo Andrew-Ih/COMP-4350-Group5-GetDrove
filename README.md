@@ -2,7 +2,7 @@
 
 **GetDrove gives UofM students a seat that's actually theirs.**
 
-GetDrove is a carpooling platform for University of Manitoba students commuting to the Fort Garry campus. Drivers post their commute, the system works out their real driving route and shows the trip to students along it, and drivers see how many extra minutes each rider would add before accepting. Riders get a confirmed seat, a private pickup point, a live ETA, and a fair share of the cost based on how far they rode. Every user is a verified UofM student.
+GetDrove is a carpooling platform for University of Manitoba students commuting to the Fort Garry campus. Drivers post their commute, the system works out their real driving route and shows the trip to students along it, and drivers see how many extra minutes each rider would add before accepting. Riders get a confirmed seat, a private pickup point, a pickup time and ETA, and a fair share of the cost based on how far they rode. Every user is a verified UofM student.
 
 > **Sprint 0:** see [sprint0.md](sprint0.md) for this milestone's planning and setup work.
 
@@ -16,7 +16,7 @@ Each feature links to its GitHub issue, which contains its user stories and acce
 | [Trip posting](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/13) | One-off or recurring weekday trips with departure time, route, and seats |
 | [Route matching](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/21) | Riders only see trips whose real driving route passes near them; private pickup points |
 | [Requests and acceptance](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/33) | Seat requests with the detour cost shown to the driver, auto-accept rules, no overselling |
-| [Trip execution](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/51) | Reminders, live driver location, pickup and no-show tracking, trip group chat |
+| [Trip execution](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/51) | Reminders, trip status updates, pickup and no-show tracking, trip group chat |
 | [Cost splitting and payment](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/65) | Distance-based cost shares, payment held on acceptance and charged after the trip |
 | [Ratings and safety](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/74) | Mutual ratings, no-show tracking, report and block, trip sharing links |
 

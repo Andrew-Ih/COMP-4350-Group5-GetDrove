@@ -35,7 +35,7 @@ The Sprint 1 instructions say it directly: a smaller amount of coherent, working
 1. **Walking skeleton (Sprint 1, weeks 1–2).** Every moving part exists and is connected end to end, even if each does very little: browser → Traefik → services → PostgreSQL / Redis / routing engine, built by CI, deployed to a live URL.
 2. **First vertical slice (Sprint 1, weeks 2–3).** One real user journey works on the live site: *sign up with UofM email → verify → driver posts a trip (real route computed) → rider searches from their area and sees only trips that pass near them, with a cost estimate.*
 3. **The core loop (Sprint 2).** Requests, detour cost, acceptance, no overselling, pickup points, payment holds, notifications. After Sprint 2 the product does what the vision promises up to the moment of the ride.
-4. **The ride itself and trust (Sprint 3, first half).** Live trip, chat, pickup/no-show, completion and capture, ratings, safety, earnings.
+4. **The ride itself and trust (Sprint 3, first half).** Trip-day status, chat, pickup/no-show, completion and capture, ratings, safety, earnings.
 5. **Hardening (Sprint 3, second half).** Feature freeze, load testing, profiling, security scanning, DockerHub, documentation, demo rehearsal.
 
 ### 1.2 Critical path
@@ -69,7 +69,6 @@ The chain **skeleton → routing engine → post trip → search → request/det
 | Seat overselling under concurrency | Correctness bug that only appears under load | **Sprint 2, week 1** (Andrew) | Atomic conditional update + concurrency integration test written *first*. |
 | Event-driven messaging | Lost or duplicated messages, ordering | **Sprint 1** (one event: `UserRegistered`) → Sprint 2 (many) | Transactional outbox + idempotent consumers from the first event. |
 | Stripe hold/capture | Hold expiry, async failures, idempotency | **Sprint 2, week 1** (Chimdi) | Spike with test cards early; manual-capture PaymentIntents. |
-| WebSockets (live location, chat) | Auth on connect, proxies, reconnects | **Spike in Sprint 2 week 3**, build in Sprint 3 week 1 (Daniel, with Andrew for the Traefik/server side) | Prove an authenticated WebSocket through Traefik on the live server before Sprint 3. |
 
 ### 1.4 Is the scope realistic? An honest answer
 
@@ -78,7 +77,7 @@ The chain **skeleton → routing engine → post trip → search → request/det
 What makes it feasible:
 
 1. **One framework, one build tool, shared libraries** for auth, errors, and events. No per-service reinvention.
-2. **Notifications also owns realtime** (WebSockets for location and chat). No sixth service.
+2. **No real-time machinery in the core.** Live driver tracking is a stretch goal after instructor feedback, and chat and notifications are polled through normal REST endpoints ([ADR 0018](docs/architecture/adr/0018-live-tracking-as-stretch-goal.md)). No WebSockets and no sixth service.
 3. **Payouts are simulated.** Real bank payouts need Stripe Connect (onboarding, KYC). Holds, captures, and refunds are real (test mode); the "settled to your bank" status comes from a weekly scheduled job in our ledger. Document it as a known limitation.
 4. **Minimal admin.** Driver approval is a tiny admin page plus a seeded admin account, not an admin product.
 5. **A clear cut list** (section 9.2), agreed now so nobody argues about it in week 8.
@@ -92,7 +91,7 @@ The mockups imply work no story covers yet. Add these as issues during Sprint 1 
 | Gap | Seen in mockup | Suggested handling |
 |---|---|---|
 | Login, logout, token refresh | "Log in" link on sign-up | New story under Accounts (Sprint 1) |
-| Vehicle details (make, colour, plate) | Live trip, trip detail, rating | Add to the driver-approval story (Sprint 2) |
+| Vehicle details (make, colour, plate) | Trip day, trip detail, rating | Add to the driver-approval story (Sprint 2) |
 | Admin approval of drivers | Implied by "pending/approved/rejected" | New task: admin endpoint + minimal page (Sprint 2) |
 | Rider payment method (test card) | Implied by holds | New story under Payments (Sprint 2) |
 | Driver's start hidden from riders | "Driver's start hidden" | Acceptance criterion on route display; Routing returns route trimmed from first pickup |
@@ -168,7 +167,7 @@ COMP-4350-Group5-GetDrove/
 │   ├── trips/                     # Andrew  (full layout shown in 2.3)
 │   ├── routing/                   # Rayan
 │   ├── payments/                  # Chimdi
-│   └── notifications/             # Daniel  (includes WebSocket realtime)
+│   └── notifications/             # Daniel  (includes trip chat)
 │       ├── pyproject.toml
 │       ├── Dockerfile
 │       ├── README.md              # What it does, API, events, how to run/test, owner's tool choices
@@ -332,7 +331,7 @@ mypy --strict checks that adapters really satisfy the port Protocols, which give
 | **Routing** | Full in the core: matching, pickup selection, and detour/insertion algorithms are pure domain code; OSRM and PostGIS are adapters | The algorithms are the hardest code in the project and must be unit-testable without OSRM. |
 | **Payments** | Full | Money rules (pricing, no-show policy, hold expiry) need to be precise and tested; Stripe sits behind a port so tests never hit Stripe. |
 | **Accounts** | Light: same folders, but simple data (users, documents) can use one model mapped directly with SQLAlchemy; keep real rules (email domain, token expiry, rating visibility) in domain classes | Mostly CRUD plus a few rules. |
-| **Notifications** | Light: use cases + ports for email/WebSocket senders and the scheduler; minimal domain model | Mostly plumbing: consume events, store, deliver. |
+| **Notifications** | Light: use cases + ports for the email sender and the scheduler; minimal domain model | Mostly plumbing: consume events, store, deliver. |
 
 **Starting lean in Sprint 1 without a rewrite later:** create all four package folders in every service on day one, write use cases as plain classes, and put every external call (DB, OSRM, Stripe, broker, email) behind a Protocol in `application/ports.py` from the first commit. Skip separate mapper functions and command classes where a simple dataclass suffices. Because the boundaries exist from day one, adding detail later is additive, not a rewrite.
 
@@ -351,7 +350,7 @@ web/
 └── src/
     ├── app/                        # Routing only: pages and layouts stay thin
     │   ├── layout.tsx              # Root layout: providers, top nav, fonts
-    │   ├── providers.tsx           # "use client": QueryClient, session, realtime connection
+    │   ├── providers.tsx           # "use client": QueryClient, session
     │   ├── (auth)/
     │   │   ├── signup/page.tsx
     │   │   ├── login/page.tsx
@@ -360,8 +359,8 @@ web/
     │   │   ├── page.tsx            # Rider home ("Where are you heading?")
     │   │   ├── results/page.tsx
     │   │   ├── trip/[id]/page.tsx  # Trip detail with pickup point and cost
-    │   │   ├── live/page.tsx       # Live trip
-    │   │   ├── live/chat/page.tsx
+    │   │   ├── today/page.tsx      # Trip day: pickup, ETA, status, chat and share buttons
+    │   │   ├── today/chat/page.tsx
     │   │   └── rate/page.tsx
     │   ├── drive/
     │   │   ├── new/page.tsx        # Post a trip
@@ -380,7 +379,7 @@ web/
     │   │   └── model/              # Pure types and rules: isUofMEmail(), passwordRules
     │   ├── ride/                   # Rider home, results, trip detail, request flow
     │   ├── drive/                  # Post trip, pending requests, auto-accept, in-trip screen
-    │   ├── trip-live/              # Live map, ETA, stale-data indicator
+    │   ├── trip-day/               # Planned route, pickup, ETA, trip status (polled)
     │   ├── chat/
     │   ├── payments/               # Card setup (Stripe Elements), cost display
     │   ├── earnings/
@@ -391,16 +390,15 @@ web/
         ├── map/                    # MapView (client-only, loaded with next/dynamic, ssr: false)
         ├── api/
         │   ├── generated/          # Types generated from contracts/openapi (openapi-typescript)
-        │   ├── http.ts             # fetch wrapper: base URL, token, refresh, ProblemDetail parsing
-        │   └── realtime.ts         # WebSocket client (JSON messages) with reconnect
+        │   └── http.ts             # fetch wrapper: base URL, token, refresh, ProblemDetail parsing
         ├── lib/                    # Formatting (money, times), geo helpers
         └── config/
 ```
 
 **How Next.js fits this architecture:**
 
-- **Next.js is the frontend only.** The FastAPI services stay the backend; we don't put business logic in Next.js route handlers or server actions. Traefik routes `/api/*` and `/ws` to the services and everything else to the Next.js server, so the browser talks to one origin.
-- **Mostly client components.** Pages with maps, live location, chat, and forms are interactive, so they use `"use client"` and TanStack Query. MapLibre touches the browser's `window`, so the map component is loaded with `next/dynamic` and `ssr: false`. Server rendering is useful mainly for the sign-up page and the public share page (fast first load).
+- **Next.js is the frontend only.** The FastAPI services stay the backend; we don't put business logic in Next.js route handlers or server actions. Traefik routes `/api/*` to the services and everything else to the Next.js server, so the browser talks to one origin.
+- **Mostly client components.** Pages with maps, trip status, chat, and forms are interactive, so they use `"use client"` and TanStack Query. MapLibre touches the browser's `window`, so the map component is loaded with `next/dynamic` and `ssr: false`. Server rendering is useful mainly for the sign-up page and the public share page (fast first load).
 - **Route protection:** `middleware.ts` checks for the refresh-token cookie (set by Accounts on the same origin) and redirects to `/login` if it's missing. Real authorization is still enforced by each backend service.
 - **Page files stay thin:** a `page.tsx` composes components from `features/`; it doesn't call APIs directly.
 
@@ -415,18 +413,19 @@ Rules enforced by `eslint-plugin-boundaries`: `app/` pages may import only from 
 
 | | Sprint 1 (≈ weeks 1–3) | Sprint 2 (≈ weeks 4–6) | Sprint 3 (≈ weeks 7–9) |
 |---|---|---|---|
-| **Product goal** | Walking skeleton + first vertical slice: sign up, post a trip, find trips that pass near you | The core loop: request, detour, accept, pickup points, payment holds, notifications | The ride and trust: live trip, chat, completion, capture, ratings, safety, earnings |
+| **Product goal** | Walking skeleton + first vertical slice: sign up, post a trip, find trips that pass near you | The core loop: request, detour, accept, pickup points, payment holds, notifications | The ride and trust: trip-day status, chat, completion, capture, ratings, safety, earnings |
 | **Engineering goal** | CI, tests with coverage, API docs, live deployment | Regression suite, CD (`develop` → images, `main` → live site), cross-team testing | Load test, profiling, security scanning, DockerHub, final docs |
 | **Release closing the sprint** | `v0.1.0` | `v0.2.0` | `v1.0.0` |
 
 The live site deploys from `main`, so it only changes when we release. Besides the release that closes each sprint, make interim releases whenever a useful set of stories is done on `develop`, and always before a demo meeting.
-| **Stories** | 3 + new login story | 11 | 10 |
+| **Stories** | 3 + new login story | 11 | 9 |
 
 Stories per sprint (by issue title):
 
 - **Sprint 1:** Sign up with UofM email · Login (new) · Post a trip · Show only trips that pass near the rider · See my cost before requesting (estimate only)
 - **Sprint 2:** Upload licence and insurance for driver approval (+ vehicle, admin approval) · Post a recurring weekday trip · Cancel a posted trip · Suggested pickup point on the route · Request a seat on a trip · Detour cost per request · Auto-accept rules · Seats cannot be oversold · Charge only after the trip happens (hold + release part) · Trip reminder before departure · Payment method setup (new)
-- **Sprint 3:** Live driver location · Mark riders as picked up or no-show · Trip group chat · Charge only after the trip happens (capture part) · View driver earnings · Rate the other party after a trip · Exclude repeat no-shows from auto-accept · Report or block a user · Share trip with someone outside the app · Pickup ordering and ETAs (part of trip execution)
+- **Sprint 3:** Mark riders as picked up or no-show · Trip group chat · Charge only after the trip happens (capture part) · View driver earnings · Rate the other party after a trip · Exclude repeat no-shows from auto-accept · Report or block a user · Share trip with someone outside the app · Pickup ordering and ETAs (part of trip execution)
+- **Stretch (only after core work):** Live driver tracking (its story and 5 tasks sit under the stretch goal issue) and the other stretch goals
 
 **Speaking rotation for demo meetings** (the rubric asks that roles rotate): Sprint 1: Andrew, Rayan, Kelvin. Sprint 2: Fola, Chimdi, Daniel. Final demo: everyone has a section. Everyone attends every meeting and should be able to answer questions about any service, so do a 15-minute "teach-back" at each retro where each owner explains their service to the others.
 
@@ -530,7 +529,7 @@ Following the Sprint 1 instructions: **Sprint summary** (value added, link to th
 | **Fola** | Driver documents upload + storage, vehicle details, approval status, admin approve/reject (endpoint + minimal page with Kelvin), `DriverApproved` event, reputation endpoint (rating, no-shows, blocks) for Trips, **recurring trips and cancel trip in Trips** (with Andrew reviewing) |
 | **Rayan** | Pickup point selection (snap to drivable road, walking distance via OSRM foot profile, "choose a different point"), **detour quote with pickup-order insertion**, route caching, trimmed route for riders (start hidden), Routing error handling when OSRM is down |
 | **Chimdi** | Stripe test mode: rider card setup (SetupIntent + Elements with Kelvin), hold on `RequestAccepted` (manual-capture PaymentIntent), release on decline/cancel/trip cancel, payment failure flow, hold-expiry scheduling, capture use case ready (wired in Sprint 3) |
-| **Daniel** | Notifications: in-app notifications + bell API, emails for request/accept/decline/cancel, **scheduled reminders that survive downtime**, **auto-accept evaluation in Trips** (with Andrew reviewing), regression documentation, WebSocket spike through Traefik (end of sprint, with Andrew) |
+| **Daniel** | Notifications: in-app notifications + bell API, emails for request/accept/decline/cancel, **scheduled reminders that survive downtime**, **auto-accept evaluation in Trips** (with Andrew reviewing), regression documentation |
 | **Kelvin** | Trip detail with pickup point + cost, request flow and pending state, driver pending-requests screen with detour/rating/no-shows and "Calculating…" state, auto-accept settings, recurrence picker, document upload + status, My trips, notification bell; **leads cross-team testing** (Quality Checker) |
 
 #### Dependencies and order
@@ -547,7 +546,7 @@ Following the Sprint 1 instructions: **Sprint summary** (value added, link to th
 |---|---|---|
 | **4** | Contracts for requests, detours, pickup points, events; Stripe spike; seat atomicity + concurrency test; documents upload; CD pipelines (`develop` → images, `main` → deploy); frontend trip detail + request flow against mocks | Concurrency test passes in CI; a merge to `develop` publishes images and a release to `main` deploys automatically |
 | **5** | Detour + insertion, pickup points, accept/decline, auto-accept, holds and releases, notifications and reminders, recurring trips, cancel trip, admin approval; frontend pending requests + settings | Full journey on the live site: request → driver sees +N min → accept → hold appears in Stripe dashboard → rider notified |
-| **6** | **Cross-team testing** (review assigned team, triage feedback we receive), regression doc, coverage + gaps, docs and diagram update, sprint2.md, retro, release `v0.2.0`, WebSocket spike, demo rehearsal | All checklist items ticked; feedback classified |
+| **6** | **Cross-team testing** (review assigned team, triage feedback we receive), regression doc, coverage + gaps, docs and diagram update, sprint2.md, retro, release `v0.2.0`, demo rehearsal | All checklist items ticked; feedback classified |
 
 Cross-team testing timing is set by the course; whenever it lands, keep half a day free to triage feedback into issues labelled `feedback` with Accepted / Deferred / Rejected.
 
@@ -589,7 +588,7 @@ Sprint summary · Regression testing · Testing status & gaps · CI/CD status ·
 
 ### 3.3 Sprint 3: the ride, trust, and hardening
 
-**Sprint goal:** The full trip happens on the platform: live location, chat, pickups and no-shows, completion, payment capture, ratings, safety features, and earnings. Then the system is load-tested, profiled, scanned, containerized to DockerHub, and documented as a finished product.
+**Sprint goal:** The full trip happens on the platform: trip status, chat, pickups and no-shows, completion, payment capture, ratings, safety features, and earnings. Then the system is load-tested, profiled, scanned, containerized to DockerHub, and documented as a finished product.
 
 **Feature freeze at the end of week 8.** After that, only bug fixes, edge-case handling, performance work, and documentation.
 
@@ -599,16 +598,16 @@ Sprint summary · Regression testing · Testing status & gaps · CI/CD status ·
 |---|---|---|
 | **Andrew** | Trip state machine: start, picked up / no-show, complete; events | Edge/error-case sweep of the API (invalid input, wrong state, auth), CI/CD and live server upkeep, release `v1.0.0` |
 | **Fola** | Double-blind ratings, rating averages and trip counts, no-show counts + auto-accept exclusion, report and block (incl. search filtering) | **DockerHub publishing** (`release.yml`), runtime configuration docs |
-| **Rayan** | Pickup ordering + ETAs for accepted riders, ETA updates from live position | **Load testing lead** (JMeter scenario, seed data, report) and the **profiling investigation** |
+| **Rayan** | Pickup ordering + planned ETAs for accepted riders | **Load testing lead** (JMeter scenario, seed data, report) and the **profiling investigation** |
 | **Chimdi** | Capture on completion, no-show charge policy, earnings (per trip, term, pending/settled), simulated weekly settlement, statement (if time) | **Security/static analysis lead** (CodeQL + Trivy, triage, fixes, write-up) |
-| **Daniel** | WebSocket realtime: authenticated connections, live location fan-out, stale-data detection, chat (membership, read-only after completion), share-link tokens and public share view | Final docs pass (README, architecture, API, setup, deployment, testing), sprint3.md |
-| **Kelvin** | Live trip map + stale indicator, chat UI, driver in-trip screen, rating modal, earnings page, public share page | UI polish, empty/error/loading states, mobile layouts, accessibility checks; final demo slides with Daniel |
+| **Daniel** | Trip chat (polled endpoints, membership checks, read-only after completion), trip-status notifications, share-link tokens and public share view (details + status); then helps Andrew with the edge-case sweep | Final docs pass (README, architecture, API, setup, deployment, testing), sprint3.md |
+| **Kelvin** | Trip-day screen (pickup, ETA, status), chat UI, driver in-trip screen, rating modal, earnings page, public share page | UI polish, empty/error/loading states, mobile layouts, accessibility checks; final demo slides with Daniel |
 
 #### Week by week
 
 | Week | Focus |
 |---|---|
-| **7** | Realtime + trip state machine + capture + ratings in parallel; frontend live trip and chat; load-test scenario drafted and seed data script written |
+| **7** | Trip state machine + chat + capture + ratings in parallel; frontend trip-day screen and chat; load-test scenario drafted and seed data script written |
 | **8** | Remaining features (earnings, report/block, share link, no-show exclusion); **feature freeze Friday**; security tooling in CI; first load-test run on the live server; DockerHub workflow |
 | **9** | Fix findings (security, load, bugs from the instructor-style edge-case sweep), profiling investigation, final docs, sprint3.md, known limitations, `v1.0.0`, demo rehearsals ×2 |
 
@@ -654,7 +653,7 @@ Final project summary · Testing status · Load testing · Performance investiga
 | Product recap | 2 min | The bus that drives past full at -35; "a seat that's actually yours" | Chimdi |
 | Demo workflow 1 | 3 min | Driver posts a recurring commute: route computed, start hidden, 22 min estimate | Fola |
 | Demo workflow 2 | 4 min | Rider finds trips that genuinely pass nearby, gets a pickup point and cost; driver sees +3 min and accepts; hold placed | Kelvin |
-| Demo workflow 3 | 3 min | Morning of: live location, chat, pickup, completion, capture, rating | Daniel |
+| Demo workflow 3 | 3 min | Morning of: reminder, trip-day status, chat, pickup, completion, capture, rating | Daniel |
 | Engineering topic 1 | 3 min | Route matching and detour insertion: why road-network distance, how insertion works, OSRM | Rayan |
 | Engineering topic 2 | 2.5 min | Never overselling a seat: the race, the atomic update, the concurrency test | Andrew |
 | Engineering topic 3 | 2.5 min | Load test result and the bottleneck we found (and fixed) | Rayan or Chimdi |
@@ -707,7 +706,7 @@ All 10 mocked screens are built, plus about 12 screens the stories need but the 
 
 | Screen | Mockup |
 |---|---|
-| Rider live trip | 07 |
+| Rider trip day: planned route, pickup point, ETA, trip status, chat and share buttons | 07 (reframed: no moving car; live tracking is a stretch goal) |
 | Trip group chat | 08 |
 | Driver in-trip screen (pickup order, picked up, no-show, complete) | Not mocked |
 | Rate your trip | 09 |
@@ -729,12 +728,12 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 
 | Area | Sprint 1 | Sprint 2 | Sprint 3 |
 |---|---|---|---|
-| Platform | Monorepo, shared libs, Compose, CI, first deployment | CD (`develop` → images, `main` → deploy), contracts in CI, WebSocket spike | Security scanning, DockerHub, load testing, hardening |
+| Platform | Monorepo, shared libs, Compose, CI, first deployment | CD (`develop` → images, `main` → deploy), contracts in CI | Security scanning, DockerHub, load testing, hardening |
 | Accounts | Signup, verification, login, tokens | Driver documents, vehicle, approval, profiles, reputation | Ratings, blocks, reports |
 | Trips | Post one-off trip, my trips, search | Recurring trips, cancel, requests, accept/decline, seats, auto-accept | Trip execution, no-show rules, block filtering, share links |
 | Routing | OSRM, route on post, corridor matching | Pickup points, detours, rider-safe geometry | Pickup ordering, ETAs, performance work |
 | Payments | Pricing quotes | Card setup, holds, releases | Capture, earnings, settlement |
-| Notifications | Verification email | In-app notifications, emails, reminders | Realtime: live location, chat, push |
+| Notifications | Verification email | In-app notifications, emails, reminders | Trip chat, trip-status notifications |
 
 ---
 
@@ -822,7 +821,6 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Lib | Event JSON Schemas in `contracts/events/`, validated in tests | |
 | Infra | Playwright smoke test after each deploy | Login and search on the live URL |
 | Infra | Dependabot; CodeQL started (not yet required) | |
-| Infra | WebSocket spike through Traefik on the live server (with Daniel) | Proves Sprint 3 realtime will work |
 | Infra | Seed data extended: approved and pending drivers, admin account, recurring trips, pending requests | Demo and cross-team testing accounts |
 
 **Accounts (Fola)**
@@ -886,7 +884,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Kind | Item | Notes |
 |---|---|---|
 | Table | `notifications`, `scheduled_notifications`, `trip_members` | `trip_members` also prepares Sprint 3 authorization |
-| Endpoint | `GET /api/notifications` · `POST /api/notifications/{id}/read` | The frontend polls until realtime push arrives in Sprint 3 |
+| Endpoint | `GET /api/notifications` · `POST /api/notifications/{id}/read` | The frontend polls every 3–5 s while the notification panel is open (ADR 0018) |
 | Event | Consume `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `TripUpdated`, `DriverApproved`, `PaymentFailed` | In-app notification + email for each |
 | Job | Reminder scheduler (every 30 s, `SKIP LOCKED`) | Sends overdue reminders after an outage if the trip hasn't departed; cancelled trips get none |
 | Test | Reminder delivered after Notifications restarts; no reminder for a cancelled trip | |
@@ -925,7 +923,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 |---|---|---|
 | Table | `trip_passengers`, `share_links` | |
 | Endpoint | `POST /api/trips/{id}/start` · `POST /api/trips/{id}/passengers/{requestId}/picked-up` · `/no-show` · `POST /api/trips/{id}/complete` | State machine: can't complete before starting |
-| Endpoint | `POST /api/trips/{id}/share` · `GET /api/public/share/{token}` | Driver name, vehicle, route, and live location only; expires when the trip completes |
+| Endpoint | `POST /api/trips/{id}/share` · `GET /api/public/share/{token}` | Driver name, vehicle, pickup point, planned ETA, and trip status only; expires when the trip completes |
 | Rule | Auto-accept excludes riders over the no-show threshold | Manual requests still allowed, with the count shown to the driver |
 | Rule | Blocked users filtered from search and blocked from requesting | |
 | Event | Publish `TripStarted`, `RiderPickedUp`, `RiderNoShow`, `TripCompleted` | |
@@ -939,7 +937,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Other | Final pickup order and ETAs for all accepted riders | Re-run insertion or permutations (6! is still trivial) |
 | Event | Consume `TripStarted` | Freeze the stop sequence for the trip |
 | Other | Performance work from load testing | Likely indexes, batched OSRM calls, caching |
-| Other | Live ETA updates from the driver's position | On the cut list (item 7) |
+| Other | Live ETA updates from the driver's position | Stretch goal (live driver tracking) |
 
 **Payments (Chimdi)**
 
@@ -957,15 +955,10 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 
 | Kind | Item | Notes |
 |---|---|---|
-| Table | `chat_messages`, `trip_chat_state` | Latest locations in Redis, not Postgres |
-| Endpoint | WebSocket `/ws` (FastAPI, JSON messages) | JWT checked on connect |
-| Endpoint | `location` messages on channel `trip:{id}` | Only the driver sends, only while in progress; subscription limited to active trip members |
-| Endpoint | `chat` messages on channel `trip:{id}` · `GET /api/notifications/trips/{id}/messages` | Read-only after completion; removed riders lose access |
-| Endpoint | `notification` messages on the user's own channel | Realtime push replaces polling |
-| Endpoint | `location` messages on channel `share:{token}` | Public share viewers, validated by signed share token |
-| Other | Heartbeats and server timestamps for the stale-data indicator | |
-| Event | Consume `TripStarted`, `RiderPickedUp`, `TripCompleted` | Start and stop location sharing; "rate your trip" prompt |
-| Test | Unauthorized subscriptions rejected; location stops after completion; chat read-only after completion | |
+| Table | `chat_messages`, `trip_chat_state` | |
+| Endpoint | `GET /api/notifications/trips/{id}/messages?after={messageId}` · `POST /api/notifications/trips/{id}/messages` | Polled every 3–5 s while the chat is open; only active trip members; read-only after completion; removed riders lose access |
+| Event | Consume `TripStarted`, `RiderPickedUp`, `TripCompleted` | In-app notifications ("Andrew has started the trip"), "rate your trip" prompt, chat set to read-only |
+| Test | Non-members get 403; removed riders lose access; posting after completion is rejected; `after` returns only newer messages | |
 
 ---
 
@@ -1180,7 +1173,7 @@ Cache the current stop sequence and its matrix per trip (Redis, or an in-process
 
 ### 4.5 Notifications (Daniel)
 
-**Responsibilities:** email and in-app notifications, scheduled reminders, realtime over WebSockets (live location, chat, notification push), trip membership for authorization.
+**Responsibilities:** email and in-app notifications, scheduled reminders, trip group chat, trip membership for authorization. Everything is plain REST; the frontend polls for new chat messages and notifications ([ADR 0018](docs/architecture/adr/0018-live-tracking-as-stretch-goal.md)).
 
 **Data model (schema `notify`)**
 
@@ -1193,9 +1186,7 @@ Cache the current stop sequence and its matrix per trip (Redis, or an in-process
 | `trip_chat_state` | trip_id (pk), read_only_since |
 | `processed_events` | event_id (pk) |
 
-Latest driver positions live in **Redis** (`trip:{id}:location`, with a timestamp and a short TTL), not in Postgres.
-
-**Endpoints:** `GET /api/notifications` · `POST /api/notifications/{id}/read` · `GET /api/notifications/trips/{id}/messages` · WebSocket endpoint `/ws` (FastAPI) using small JSON messages: the client sends `{"type": "subscribe", "channel": "trip:{id}"}`, the driver sends `{"type": "location", …}`, and anyone on the trip sends `{"type": "chat", …}`; the server pushes `location`, `chat`, and `notification` messages. Public share viewers subscribe to `share:{token}`. Messages are fanned out through Redis pub/sub, so it keeps working if Notifications ever runs more than one instance.
+**Endpoints:** `GET /api/notifications?after={id}` · `POST /api/notifications/{id}/read` · `GET /api/notifications/trips/{id}/messages?after={messageId}` · `POST /api/notifications/trips/{id}/messages`. The `after` parameter means each poll only returns what's new, so polling every few seconds stays cheap.
 
 **Events consumed:** `UserRegistered` (verification email), `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `TripUpdated`, `TripStarted`, `RiderPickedUp`, `TripCompleted`, `PaymentFailed`, `DriverApproved`.
 
@@ -1207,14 +1198,14 @@ Latest driver positions live in **Redis** (`trip:{id}:location`, with a timestam
 4. `TripCancelled` / `RequestCancelled` cancel pending reminders, so cancelled trips never get reminders.
 5. Consumers are idempotent (`processed_events`), because at-least-once delivery means duplicates happen.
 
-**Challenge: authorized WebSocket subscriptions.**
+**Challenge: chat that is private, cheap to poll, and closes after the trip.**
 
-1. The client connects with the access token (as a query parameter or the first `auth` message, since browsers can't set headers on WebSockets); the handler validates the JWT with `common-security` and closes the socket with code 4401 if it's invalid.
-2. Each `subscribe` message is checked against `trip_members`: only the driver and **active accepted riders** may join `trip:{id}`. Removed riders are set inactive on `RequestCancelled`, and their sockets are removed from the channel.
-3. Only the trip's driver may send `location` messages, and only while the trip is `IN_PROGRESS`; on `TripCompleted`/`TripCancelled` the server stops accepting and broadcasting positions.
-4. **Stale data:** every position carries a server timestamp; the client shows "Last updated 40 s ago" instead of "Live" if nothing arrives for 30 s, and the server sends a heartbeat so the client can detect a dropped connection.
-5. Share links are signed tokens (JWT with trip id and expiry = trip completion), so Notifications can validate share viewers without calling Trips.
-6. Traefik supports WebSocket upgrade natively; confirm this in the Sprint 2 spike on the live server.
+1. Every chat request carries the user's JWT; `common-security` validates it like any other endpoint.
+2. The use case checks `trip_members`: only the driver and **active accepted riders** may read or post. Riders removed on `RequestCancelled` are set inactive and get `403` from then on.
+3. Polling returns only messages with an id greater than `after`, using an index on `(trip_id, id)`, so each poll is a tiny query.
+4. On `TripCompleted` the chat becomes read-only; posts return `409` with a clear message, and the frontend stops polling.
+5. Share links are signed tokens (JWT with trip id and expiry = trip completion), validated without calling Trips. The public share page polls the trip's status (scheduled → started → completed).
+6. **If live tracking is built later** (stretch goal), these endpoints can switch to server-sent events or WebSockets without changing how chat looks to users.
 
 ### 4.6 One flow through the layers: a rider requests a seat
 
@@ -1316,7 +1307,7 @@ Rules: payloads carry IDs and the minimum data consumers need (never home addres
 ### 5.7 How the frontend talks to the backend
 
 - **REST** through one origin (`https://<host>/api/...`) via Traefik, so no CORS issues in production. TanStack Query handles caching, retries, and loading/error states (needed for the "Calculating…" and error states in the stories).
-- **WebSockets** (the browser's native WebSocket with a small reconnecting wrapper, JSON messages) to `wss://<host>/ws` for live location, chat, and notification push, with automatic reconnect and the stale-data indicator.
+- **Polling** for trip chat and notifications: TanStack Query's `refetchInterval` (3–5 s) while the chat or notification panel is open, paused when the tab is hidden or the trip completes. The trip-day screen refreshes trip status every 15 s. No WebSockets ([ADR 0018](docs/architecture/adr/0018-live-tracking-as-stretch-goal.md)).
 - **Stripe Elements** for card entry, so card data goes straight to Stripe and never touches our servers.
 - **Maps:** MapLibre GL JS with a free OSM-based tile service (see decisions). Route geometry comes from Routing as an encoded polyline.
 
@@ -1330,9 +1321,9 @@ Rules: payloads carry IDs and the minimum data consumers need (never home addres
 
 | Container | Purpose |
 |---|---|
-| `traefik` | Gateway on `localhost:80`: `/api/accounts` → accounts, …, `/ws` → notifications, `/` → web |
+| `traefik` | Gateway on `localhost:80`: `/api/accounts` → accounts, …, `/` → web |
 | `postgres` (PostGIS image) | One instance, init script creates schemas + users per service |
-| `redis` | Streams (AOF on), caching, latest locations |
+| `redis` | Streams (AOF on), caching |
 | `osrm-car`, `osrm-foot` | Routing engine with Winnipeg data, two profiles |
 | `mailpit` | Catches emails locally, web UI to click verification links |
 | `stripe-mock` (optional) | Offline Stripe for tests |
@@ -1365,7 +1356,7 @@ Use a path-filter step (e.g. `dorny/paths-filter`) so a frontend-only PR doesn't
 
 ### 6.3 Hosting: Google Cloud VM ✅ Decided
 
-Decided in [ADR 0016](docs/architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md), which supersedes ADR 0007. The goals were **free** and **low maintenance**. Serverless free tiers were ruled out because the system has always-running processes (outbox relays, stream consumers, schedulers, WebSockets, OSRM) that would need a redesign to fit scale-to-zero platforms. Oracle Cloud's Always Free ARM VM was the first choice, but it returned "Out of capacity" in the Canadian region, and the AWS Free plan wasn't available for our account, so we use Google Cloud's free-trial credit.
+Decided in [ADR 0016](docs/architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md), which supersedes ADR 0007. The goals were **free** and **low maintenance**. Serverless free tiers were ruled out because the system has always-running processes (outbox relays, stream consumers, schedulers, OSRM) that would need a redesign to fit scale-to-zero platforms. Oracle Cloud's Always Free ARM VM was the first choice, but it returned "Out of capacity" in the Canadian region, and the AWS Free plan wasn't available for our account, so we use Google Cloud's free-trial credit.
 
 The server is already set up; see [`docs/deployment/server-setup.md`](docs/deployment/server-setup.md).
 
@@ -1449,7 +1440,7 @@ Sprint 3 says not to add orchestration unless the architecture genuinely benefit
 |---|---|
 | 1 | Domain + use case unit tests for the slice; testcontainers set up for every service; one E2E happy path; coverage tooling; testing-strategy.md |
 | 2 | **Seat concurrency test**; payment adapter tests with stripe-mock; event contract validation; regression suite defined; Playwright smoke after deploy |
-| 3 | Edge/error-case tests from the instructor-style sweep; WebSocket authorization tests; load testing; profiling; final coverage and gap analysis |
+| 3 | Edge/error-case tests from the instructor-style sweep; chat permission tests; load testing; profiling; final coverage and gap analysis |
 
 ### 7.3 The seat concurrency test (required by the story)
 
@@ -1510,7 +1501,7 @@ All decisions were made at the end of Sprint 0. Each has an Architecture Decisio
 |---|---|---|---|
 | 1 | Repository | Monorepo | 0001 |
 | 2 | Frontend | Next.js + TypeScript (App Router) | 0002 |
-| 3 | Backend | Python 3.13 + FastAPI for all services (Pydantic v2, SQLAlchemy 2 async + GeoAlchemy2, Alembic, PyJWT, built-in WebSockets); PostgreSQL + PostGIS, one schema per service (replaces Java/Spring in 0003) | 0017 |
+| 3 | Backend | Python 3.13 + FastAPI for all services (Pydantic v2, SQLAlchemy 2 async + GeoAlchemy2, Alembic, PyJWT); PostgreSQL + PostGIS, one schema per service (replaces Java/Spring in 0003) | 0017 |
 | 4 | Dependencies and monorepo | uv workspace with one lockfile (replaces Gradle in 0004) | 0017 |
 | 5 | Message broker | Redis Streams with the transactional outbox and idempotent consumers | 0005 |
 | 6 | Gateway | Traefik (routing + HTTPS only) | 0006 |
@@ -1547,7 +1538,6 @@ All decisions were made at the end of Sprint 0. Each has an Architecture Decisio
 | Live deployment fails or the VM runs out of memory | Medium | High | Deploy skeleton early; container memory limits; health checks; rollback to previous image tag; monitor disk | Andrew |
 | Event bugs: lost, duplicated, or out-of-order messages | Medium | Medium | Outbox; consumer groups; idempotent consumers; Redis AOF; event contract tests | Andrew, Daniel |
 | Stripe complexity (expiry, failures, idempotency) | Medium | Medium | Manual-capture PaymentIntents; idempotency keys; scheduled holds; fake gateway for most tests | Chimdi |
-| WebSockets misbehave behind the proxy | Medium | Medium | Spike on the live server in Sprint 2; polling fallback for location (every 5 s) if needed | Daniel, Andrew |
 | Clean Architecture boilerplate slows delivery | Medium | Medium | Light version in Accounts/Notifications; no mappers where a simple dataclass suffices; review in Sprint 1 retro | Rayan |
 | Uneven workload or knowledge silos | Medium | Medium | Balance check at each planning; pair on hard parts; teach-backs before demos | Fola, Chimdi |
 | Exam weeks and reduced availability | High | Medium | Plan lighter weeks; finish sprint work 2–3 days early (team goal); feature freeze in Sprint 3 | Fola |
@@ -1563,12 +1553,11 @@ All decisions were made at the end of Sprint 0. Each has an Architecture Decisio
 4. **Report review workflow:** reports are stored and visible to admins in the DB, but no review UI.
 5. **Editing a recurring series** as a whole: support cancelling one occurrence or the whole series only.
 6. **Trip editing beyond time and seats**, and only before any rider is accepted.
-7. **Live ETA recalculation** from the driver's position: show the planned ETA and live position instead.
-8. **Return-trip linking** (mentioned in the core feature description): post the return trip separately.
+7. **Return-trip linking** (mentioned in the core feature description): post the return trip separately.
 
-**Not cuttable** (they are the product): verified signup, route-based matching, pickup points, detour cost, no overselling, hold and capture, live location, completion, ratings, no-shows.
+**Not cuttable** (they are the product): verified signup, route-based matching, pickup points, detour cost, no overselling, hold and capture, trip status and chat, completion, ratings, no-shows.
 
-**Already simplified by design:** simulated payouts, minimal admin, Notifications includes realtime, single live environment.
+**Already simplified by design:** simulated payouts, minimal admin, live tracking moved to stretch with polling instead of WebSockets (instructor feedback), single live environment.
 
 ---
 

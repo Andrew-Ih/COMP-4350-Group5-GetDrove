@@ -12,7 +12,7 @@ The alternative is driving, but a parking pass costs hundreds of dollars and the
 
 The seats exist. The coordination doesn't.
 
-GetDrove closes that gap. Drivers post their commute the night before. The system works out their real driving route, shows the trip to students along it, and tells the driver how many extra minutes each rider would add. Riders get a confirmed seat, a pickup point, a live ETA, and a fair share of the cost based on how far they rode. Both sides are verified and rated, and nobody has to argue about gas money over text.
+GetDrove closes that gap. Drivers post their commute the night before. The system works out their real driving route, shows the trip to students along it, and tells the driver how many extra minutes each rider would add. Riders get a confirmed seat, a pickup point, a pickup time and ETA, and a fair share of the cost based on how far they rode. Both sides are verified and rated, and nobody has to argue about gas money over text.
 
 The goal is simple: a student should be able to take the 8:30 class knowing they'll get there.
 
@@ -56,7 +56,7 @@ Faculty and staff (non-students) and non-UofM riders are not users. GetDrove is 
 | Students re-planning every night | [Trip posting](core-features.md#trip-posting) with recurring weekday trips |
 | No way to know a pickup is on the driver's route | [Route matching](core-features.md#route-matching) by real road distance |
 | Drivers won't accept long detours | [Requests and acceptance](core-features.md#requests-and-acceptance) with the detour cost shown |
-| Uncertainty on the day | [Trip execution](core-features.md#trip-execution): pickup point, live ETA, reminders |
+| Uncertainty on the day | [Trip execution](core-features.md#trip-execution): pickup point, pickup time and ETA, trip status, reminders |
 | Arguing about gas money over text | [Cost splitting and payment](core-features.md#cost-splitting-and-payment) by distance |
 | No accountability when someone doesn't show | [Ratings and safety](core-features.md#ratings-and-safety) with no-show tracking |
 

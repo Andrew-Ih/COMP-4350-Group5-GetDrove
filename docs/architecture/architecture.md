@@ -11,7 +11,7 @@ flowchart TB
     users(["Riders & drivers"]) --> web
 
     subgraph client["Browser"]
-        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · WebSocket client · Stripe Elements"]
+        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · TanStack Query · Stripe Elements"]
     end
 
     subgraph vm["Google Cloud VM · Docker Compose"]
@@ -23,7 +23,7 @@ flowchart TB
             trips["Trips<br/>trips · requests · seats · execution"]
             routing["Routing<br/>routes · matching · pickups · detours"]
             payments["Payments<br/>quotes · holds · capture · earnings"]
-            notify["Notifications<br/>email · reminders · WebSockets"]
+            notify["Notifications<br/>email · reminders · in-app · chat"]
         end
 
         subgraph data["PostgreSQL + PostGIS · one schema per service"]
@@ -34,7 +34,7 @@ flowchart TB
             notifyDb[("notify")]
         end
 
-        redis[["Redis<br/>event streams · cache · live locations"]]
+        redis[["Redis<br/>event streams · cache"]]
         osrm["OSRM<br/>car + foot"]
     end
 
@@ -44,7 +44,7 @@ flowchart TB
         tiles["OpenFreeMap (map tiles)"]
     end
 
-    web -->|"HTTPS /api/* · WSS /ws"| traefik
+    web -->|"HTTPS /api/*"| traefik
     web -.->|map tiles| tiles
     web -.->|card entry| stripe
     traefik --> next
@@ -59,7 +59,7 @@ flowchart TB
     trips <-->|events| redis
     payments <-->|events| redis
     routing <-->|events · cache| redis
-    notify <-->|events · locations| redis
+    notify <-->|events| redis
 
     accounts --> accountsDb
     trips --> tripsDb
@@ -74,19 +74,19 @@ flowchart TB
 | Component | Responsibility |
 |---|---|
 | **Web app** | Next.js + TypeScript client for riders and drivers. Mobile-first, responsive. Pages stay thin; logic lives in feature modules. |
-| **Traefik** | The only public entry point. HTTPS via Let's Encrypt; routes `/api/<service>/*` to services, `/ws` to Notifications, and everything else to the Next.js server. No business or auth logic. |
+| **Traefik** | The only public entry point. HTTPS via Let's Encrypt; routes `/api/<service>/*` to services and everything else to the Next.js server. No business or auth logic. |
 | **Accounts** | Signup restricted to `@myumanitoba.ca`, email verification, login, JWT issuing (RS256) and the JWKS endpoint, driver documents and vehicle, admin approval, ratings, reputation, blocks, reports. |
 | **Trips** | One-off and recurring trips, seat requests, eligibility rules, manual and automatic acceptance, atomic seat counting, trip execution (start, pickup, no-show, complete), share links. |
 | **Routing** | Computes and stores driving routes (PostGIS), finds trips that pass near a rider by road-network distance, suggests pickup points, calculates detours with pickup ordering, and returns rider-safe route geometry (driver's start hidden). Uses OSRM. |
 | **Payments** | Distance-based price quotes, rider card setup, holds on acceptance, capture after completion, release on cancellation, earnings ledger with simulated weekly settlement. Uses Stripe in test mode. |
-| **Notifications** | In-app and email notifications, scheduled reminders, and realtime over WebSockets (live driver location, trip chat, notification push). Uses Brevo for email. |
+| **Notifications** | In-app and email notifications, scheduled reminders, and trip group chat. The browser polls for new messages and notifications every few seconds. Uses Brevo for email. |
 | **PostgreSQL + PostGIS** | One instance; each service has its own schema and database user, so services can't read each other's data. |
-| **Redis** | Event streams between services, a cache for routing data, and the latest driver locations. Runs with AOF persistence. |
+| **Redis** | Event streams between services and a cache for routing data. Runs with AOF persistence. |
 | **OSRM** | Self-hosted routing engine with car and foot profiles, built from a Winnipeg map extract. |
 
 ## Communication boundaries
 
-- **Browser to backend:** REST over HTTPS and WebSockets (JSON messages) over WSS, always through Traefik. One origin, so no CORS in production.
+- **Browser to backend:** REST over HTTPS, always through Traefik. One origin, so no CORS in production. Trip chat and notifications are polled every 3–5 seconds while they're open; there are no WebSockets in the core design. Live driver tracking is a stretch goal ([ADR 0018](adr/0018-live-tracking-as-stretch-goal.md)).
 - **Authentication:** Accounts issues short-lived JWTs. **Each service validates tokens itself** using Accounts' public key (JWKS). Traefik does no auth.
 - **Synchronous calls between services:** REST over the private Docker network to `/internal/…` endpoints, which Traefik never exposes. Used when the caller needs an answer immediately (e.g. Trips asking Routing for a detour quote).
 - **Asynchronous events:** published to **Redis Streams** through a **transactional outbox** (the event is saved in the same database transaction as the change, then relayed). Each consuming service reads with its own consumer group and processes events idempotently, so events survive restarts and duplicates are harmless.

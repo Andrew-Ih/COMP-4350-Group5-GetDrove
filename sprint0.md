@@ -22,7 +22,7 @@ Full context, users, and stakeholders: [Customer context](docs/product/vision.md
 
 ## Core features and user stories
 
-We have **7 core features** (one per team member, plus one), **22 user stories** with acceptance criteria, **52 development tasks** for stories that need a technical breakdown, and **5 stretch goals** kept separate from the core scope. In GitHub, features are parent issues, stories are their sub-issues, and tasks are sub-issues of their story.
+We have **7 core features** (one per team member, plus one), **21 core user stories** with acceptance criteria, **47 development tasks** for stories that need a technical breakdown, and **6 stretch goals** kept separate from the core scope. Live driver tracking was moved from core scope to the stretch goals after instructor feedback on our proposal ([ADR 0018](docs/architecture/adr/0018-live-tracking-as-stretch-goal.md)). In GitHub, features are parent issues, stories are their sub-issues, and tasks are sub-issues of their story.
 
 1. Accounts and verification
 2. Trip posting
@@ -68,7 +68,7 @@ flowchart TB
     users(["Riders & drivers"]) --> web
 
     subgraph client["Browser"]
-        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · WebSocket client · Stripe Elements"]
+        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · TanStack Query · Stripe Elements"]
     end
 
     subgraph vm["Google Cloud VM · Docker Compose"]
@@ -80,7 +80,7 @@ flowchart TB
             trips["Trips<br/>trips · requests · seats · execution"]
             routing["Routing<br/>routes · matching · pickups · detours"]
             payments["Payments<br/>quotes · holds · capture · earnings"]
-            notify["Notifications<br/>email · reminders · WebSockets"]
+            notify["Notifications<br/>email · reminders · in-app · chat"]
         end
 
         subgraph data["PostgreSQL + PostGIS · one schema per service"]
@@ -91,7 +91,7 @@ flowchart TB
             notifyDb[("notify")]
         end
 
-        redis[["Redis<br/>event streams · cache · live locations"]]
+        redis[["Redis<br/>event streams · cache"]]
         osrm["OSRM<br/>car + foot"]
     end
 
@@ -101,7 +101,7 @@ flowchart TB
         tiles["OpenFreeMap (map tiles)"]
     end
 
-    web -->|"HTTPS /api/* · WSS /ws"| traefik
+    web -->|"HTTPS /api/*"| traefik
     web -.->|map tiles| tiles
     web -.->|card entry| stripe
     traefik --> next
@@ -116,7 +116,7 @@ flowchart TB
     trips <-->|events| redis
     payments <-->|events| redis
     routing <-->|events · cache| redis
-    notify <-->|events · locations| redis
+    notify <-->|events| redis
 
     accounts --> accountsDb
     trips --> tripsDb
