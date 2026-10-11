@@ -24,7 +24,9 @@ hs_err_pid*
 replay_pid*
 
 # Github management
+github_scripts
 create_issues.sh
+create_sprint1.sh
 
 # Architecture diagram 
 # getdrove-architecture.drawio
