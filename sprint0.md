@@ -50,13 +50,13 @@ All major technology decisions were made at the end of Sprint 0 and are recorded
 |---|---|
 | Architecture | Microservices (five services) with Clean Architecture inside each; monorepo |
 | Frontend | Next.js + TypeScript, MapLibre GL JS with OpenFreeMap tiles |
-| Backend | Java 21 + Spring Boot 3, built with Gradle |
+| Backend | Python 3.13 + FastAPI, managed with uv; SQLAlchemy 2 + Alembic |
 | Database | PostgreSQL + PostGIS, one schema per service |
 | Messaging | Redis Streams with the transactional outbox pattern |
 | Gateway and auth | Traefik (routing + HTTPS); JWTs validated in each service |
 | Routing engine | OSRM (self-hosted, car + foot profiles) |
 | Payments and email | Stripe (test mode); Brevo (Mailpit locally) |
-| Hosting | Oracle Cloud Always Free VM with Docker Compose (AWS Free plan as backup); live site deploys from `develop` |
+| Hosting | Google Cloud VM (free-trial credit) with Docker Compose; live site deploys from `main`, merges to `develop` build deployable images |
 | CI/CD and quality | GitHub Actions; CodeQL, Trivy, Dependabot; JMeter for load testing |
 
 Reasons, alternatives, and the full list: [Technology stack](docs/architecture/tech-stack.md)
@@ -68,14 +68,14 @@ flowchart TB
     users(["Riders & drivers"]) --> web
 
     subgraph client["Browser"]
-        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · STOMP client · Stripe Elements"]
+        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · WebSocket client · Stripe Elements"]
     end
 
-    subgraph vm["Oracle Cloud VM · Docker Compose"]
+    subgraph vm["Google Cloud VM · Docker Compose"]
         traefik["Traefik<br/>HTTPS · routing"]
         next["Next.js server"]
 
-        subgraph services["Backend services · Java 21 + Spring Boot 3"]
+        subgraph services["Backend services · Python 3.13 + FastAPI"]
             accounts["Accounts<br/>signup · login · JWT · approval · ratings"]
             trips["Trips<br/>trips · requests · seats · execution"]
             routing["Routing<br/>routes · matching · pickups · detours"]
@@ -128,7 +128,7 @@ flowchart TB
     notify --> brevo
 ```
 
-The Next.js web app reaches the five Spring Boot services through Traefik, the only public entry point. Each service owns its own PostgreSQL schema and never reads another service's data. Services call each other over internal REST endpoints when they need an immediate answer, and otherwise communicate through events on Redis Streams, published via a transactional outbox so no event is lost. Routing uses a self-hosted OSRM engine and is isolated because it's the most expensive service. Everything runs with Docker Compose, locally and on an Oracle Cloud VM.
+The Next.js web app reaches the five FastAPI services through Traefik, the only public entry point. Each service owns its own PostgreSQL schema and never reads another service's data. Services call each other over internal REST endpoints when they need an immediate answer, and otherwise communicate through events on Redis Streams, published via a transactional outbox so no event is lost. Routing uses a self-hosted OSRM engine and is isolated because it's the most expensive service. Everything runs with Docker Compose, locally and on a Google Cloud VM.
 
 A detailed, colour-coded version of this diagram and the request-seat sequence diagram are in [`getdrove-architecture.drawio`](docs/architecture/getdrove-architecture.drawio). Component details, communication boundaries, and an example request flow: [Architecture](docs/architecture/architecture.md)
 
@@ -149,3 +149,4 @@ A detailed, colour-coded version of this diagram and the request-seat sequence d
 - [x] Project board with Board, Plan, and Tasks views
 - [x] Issue templates and pull request template
 - [x] Branch protection on `main` and `develop` (pull request with 1 approval required)
+- [x] Production server on Google Cloud (Ubuntu 24.04, Docker, static IP, deploy key for GitHub Actions). See [server setup](docs/deployment/server-setup.md)

@@ -9,7 +9,7 @@
 - Three sprints of about 3 weeks each (≈ 9 weeks). Sprint 3 overlaps the final demo window in the last two weeks of class.
 - Everyone can give roughly 8–10 hours per week; exam weeks are lighter.
 - The repo is public (so GitHub Actions minutes, CodeQL, and GHCR are free).
-- All five services use **Java 21 + Spring Boot 3**, built with Gradle ([ADR 0003](docs/architecture/adr/0003-backend-framework.md)). The frontend uses **Next.js + TypeScript**.
+- All five services use **Python 3.13 + FastAPI**, managed with uv, with SQLAlchemy 2 + Alembic ([ADR 0017](docs/architecture/adr/0017-python-fastapi-backend.md)). The frontend uses **Next.js + TypeScript**.
 
 ## Contents
 
@@ -42,7 +42,7 @@ The Sprint 1 instructions say it directly: a smaller amount of coherent, working
 
 ```mermaid
 flowchart LR
-    A[Repo + Gradle + Compose skeleton] --> B[JWT auth shared lib]
+    A[Repo + uv workspace + Compose skeleton] --> B[JWT auth shared lib]
     A --> C[OSRM running with Winnipeg data]
     B --> D[Post trip + compute route]
     C --> D
@@ -54,7 +54,7 @@ flowchart LR
     G --> J[Trip execution: start, pickup, complete]
     J --> K[Capture + earnings]
     J --> L[Ratings + no-shows]
-    A --> M[CI] --> N[Deploy pipeline] --> O[CD from develop]
+    A --> M[CI] --> N[Deploy pipeline] --> O[CD: develop builds images, main deploys]
 ```
 
 The chain **skeleton → routing engine → post trip → search → request/detour → accept** is the spine of the product. Anything on it gets the most experienced pair of hands and is never left blocked.
@@ -113,7 +113,7 @@ The mockups imply work no story covers yet. Add these as issues during Sprint 1 
 |---|---|---|
 | Fits what we already have | ✅ Issues, board, labels, docs, Git Flow, and branch protection are all in one repo | ❌ Would need to split the board, docs, and protection rules across 6+ repos |
 | Cross-service changes (e.g. a new event) | One PR changes producer, consumer, and contract together | Coordinated PRs across repos, easy to get out of sync |
-| Shared code (auth, events, errors) | Plain Gradle subprojects | Must publish versioned packages |
+| Shared code (auth, events, errors) | uv workspace members, imported directly | Must publish versioned packages |
 | CI | One workflow with path filters, so only changed services build | One pipeline per repo, duplicated config |
 | Independence | Less: one repo's history, one set of protections | More: each team owns its repo fully |
 | Grading | One place for the instructor to look | Evaluator has to visit many repos |
@@ -127,16 +127,17 @@ COMP-4350-Group5-GetDrove/
 ├── README.md                      # Project entry point (permanent)
 ├── sprint0.md … sprint3.md        # Milestone landing pages
 ├── CONTRIBUTING.md                # Links to docs/process/
-├── settings.gradle.kts            # Includes libs/* and services/*
-├── build.gradle.kts               # Shared Gradle config (Java 21, Spotless, JaCoCo)
-├── gradle/libs.versions.toml      # One version catalog for every service
+├── pyproject.toml                 # uv workspace root: members libs/*, services/*; shared Ruff, mypy, pytest config
+├── uv.lock                        # One lockfile for every Python package
+├── .python-version                # 3.13
 ├── .editorconfig
 ├── .env.example                   # Every variable, no real values
 │
 ├── .github/
 │   ├── workflows/
 │   │   ├── ci.yml                 # PRs + pushes: lint, test, coverage, build (path-filtered)
-│   │   ├── cd.yml                 # Push to develop: build images, deploy, smoke test
+│   │   ├── delivery.yml           # Push to develop: build images tagged by SHA, push to GHCR
+│   │   ├── deploy.yml             # Push to main: deploy to the live VM, smoke test
 │   │   ├── release.yml            # Tag v*.*.* on main: publish versioned images to DockerHub
 │   │   ├── codeql.yml             # Static analysis (Sprint 3 requirement, start in Sprint 2)
 │   │   └── security.yml           # Trivy image scan + dependency checks
@@ -157,10 +158,10 @@ COMP-4350-Group5-GetDrove/
 │       ├── request-accepted.v1.json
 │       └── …
 │
-├── libs/                          # Shared Java code. Kept small and boring on purpose.
-│   ├── common-web/                # ProblemDetail error handler, correlation-ID filter, pagination
-│   ├── common-security/           # JWT validation config, current-user resolver, role checks
-│   └── events/                    # Event envelope, event records, outbox + Redis Streams publisher/consumer helpers
+├── libs/                          # Shared Python packages. Kept small and boring on purpose.
+│   ├── common-web/                # ProblemDetail exception handlers, correlation-ID middleware, pagination
+│   ├── common-security/           # JWKS-based JWT validation, current_user dependency, role checks
+│   └── events/                    # Event envelope models, outbox table + relay, Redis Streams publisher/consumer helpers
 │
 ├── services/
 │   ├── accounts/                  # Fola
@@ -168,10 +169,11 @@ COMP-4350-Group5-GetDrove/
 │   ├── routing/                   # Rayan
 │   ├── payments/                  # Chimdi
 │   └── notifications/             # Daniel  (includes WebSocket realtime)
-│       ├── build.gradle.kts
+│       ├── pyproject.toml
 │       ├── Dockerfile
 │       ├── README.md              # What it does, API, events, how to run/test, owner's tool choices
-│       └── src/…
+│       ├── src/notifications/…
+│       └── tests/
 │
 ├── web/                           # Kelvin — Next.js + TypeScript (layout in 2.5)
 │
@@ -205,7 +207,8 @@ COMP-4350-Group5-GetDrove/
     │   └── regression.md          # Sprint 2 regression process
     ├── deployment/
     │   ├── local-setup.md         # Required software, env vars, run, test, common issues
-    │   └── deployment.md          # Hosting, CD flow, secrets, how to tell if a deploy failed
+    │   ├── server-setup.md        # How the Google Cloud VM was set up (exists)
+    │   └── deployment.md          # CD flow, secrets, how to tell if a deploy failed
     ├── performance/               # Sprint 3 load-test report and profiling investigation
     ├── security/                  # Sprint 3 static-analysis findings and responses
     ├── retros/                    # sprint1.md, sprint2.md … short retros
@@ -218,142 +221,120 @@ Architecture Decision Records (`docs/architecture/adr/`) are worth it: each deci
 
 ```text
 services/trips/
-├── build.gradle.kts
+├── pyproject.toml                          # uv workspace member; depends on libs/common-*, libs/events
 ├── Dockerfile
 ├── README.md
-└── src/
-    ├── main/
-    │   ├── java/ca/getdrove/trips/
-    │   │   ├── domain/                         # Pure Java. No Spring, no JPA, no HTTP.
-    │   │   │   ├── model/
-    │   │   │   │   ├── Trip.java               # Aggregate: seats, status, departure, invariants
-    │   │   │   │   ├── SeatRequest.java
-    │   │   │   │   ├── TripSeries.java         # Recurring pattern
-    │   │   │   │   ├── RecurrencePattern.java  # Value object: weekdays + end date
-    │   │   │   │   ├── AutoAcceptRule.java
-    │   │   │   │   ├── GeoPoint.java           # Value object
-    │   │   │   │   ├── TripStatus.java
-    │   │   │   │   └── RequestStatus.java
-    │   │   │   ├── policy/
-    │   │   │   │   ├── AutoAcceptPolicy.java   # detour ≤ max, rating ≥ min, no-shows ≤ threshold, seat free
-    │   │   │   │   ├── RequestEligibility.java # not own trip, no overlap, not blocked, not already on it
-    │   │   │   │   └── RecurrenceExpander.java # pattern → list of occurrence dates
-    │   │   │   ├── event/                      # Domain events raised by aggregates
-    │   │   │   │   ├── SeatRequested.java
-    │   │   │   │   ├── RequestAccepted.java
-    │   │   │   │   └── TripCancelled.java …
-    │   │   │   └── exception/
-    │   │   │       ├── NoSeatsLeftException.java
-    │   │   │       ├── DepartureInPastException.java
-    │   │   │       └── OverlappingRequestException.java …
-    │   │   │
-    │   │   ├── application/                    # Use cases. Depends only on domain + ports.
-    │   │   │   ├── port/
-    │   │   │   │   ├── in/                     # One interface per use case
-    │   │   │   │   │   ├── PostTripUseCase.java
-    │   │   │   │   │   ├── SearchTripsUseCase.java
-    │   │   │   │   │   ├── RequestSeatUseCase.java
-    │   │   │   │   │   ├── AcceptRequestUseCase.java
-    │   │   │   │   │   └── CancelTripUseCase.java …
-    │   │   │   │   └── out/                    # What the use cases need from the outside world
-    │   │   │   │       ├── TripRepository.java
-    │   │   │   │       ├── SeatRequestRepository.java
-    │   │   │   │       ├── RoutingPort.java    # computeRoute, matchCandidates, quoteDetour, pickupPoint
-    │   │   │   │       ├── ReputationPort.java # rating, no-show count, block check (Accounts)
-    │   │   │   │       ├── PricingPort.java    # cost quote (Payments)
-    │   │   │   │       └── EventPublisher.java
-    │   │   │   ├── service/                    # Use case implementations (plain classes)
-    │   │   │   │   ├── PostTripService.java
-    │   │   │   │   ├── RequestSeatService.java
-    │   │   │   │   └── AcceptRequestService.java …
-    │   │   │   └── command/                    # Input/output records for use cases
-    │   │   │
-    │   │   ├── adapters/                       # Interface adapters: translate between outside and inside
-    │   │   │   ├── in/
-    │   │   │   │   ├── web/                    # REST controllers, request/response DTOs, mappers
-    │   │   │   │   │   ├── TripController.java
-    │   │   │   │   │   ├── SeatRequestController.java
-    │   │   │   │   │   └── dto/ …
-    │   │   │   │   └── messaging/              # Event listeners (DriverApproved, PaymentFailed, …)
-    │   │   │   └── out/
-    │   │   │       ├── persistence/            # JPA entities, Spring Data repos, adapters, mappers
-    │   │   │       │   ├── TripJpaEntity.java
-    │   │   │       │   ├── TripJpaRepository.java
-    │   │   │       │   └── TripRepositoryAdapter.java   # implements TripRepository
-    │   │   │       ├── routing/RoutingHttpAdapter.java  # implements RoutingPort via RestClient
-    │   │   │       ├── accounts/ReputationHttpAdapter.java
-    │   │   │       ├── payments/PricingHttpAdapter.java
-    │   │   │       └── messaging/
-    │   │   │           ├── OutboxEventPublisher.java    # implements EventPublisher (writes outbox row)
-    │   │   │           └── OutboxRelay.java             # scheduled: outbox → Redis Streams
-    │   │   │
-    │   │   └── infrastructure/                 # Framework wiring and bootstrapping only
-    │   │       ├── TripsApplication.java
-    │   │       └── config/
-    │   │           ├── UseCaseConfig.java      # @Bean wiring of services to ports
-    │   │           ├── SecurityConfig.java     # uses libs/common-security
-    │   │           ├── RedisConfig.java
-    │   │           └── OpenApiConfig.java
-    │   └── resources/
-    │       ├── application.yml
-    │       └── db/migration/V1__init.sql       # Flyway migrations
-    └── test/java/ca/getdrove/trips/
-        ├── domain/                             # Fast unit tests, no mocks needed
-        ├── application/                        # Use case tests with in-memory fakes of ports
-        ├── adapters/                           # Integration: Testcontainers (Postgres/PostGIS, Redis), WireMock
-        ├── architecture/ArchitectureTest.java  # ArchUnit dependency rules
-        └── concurrency/SeatOversellIT.java     # The concurrency test from the user story
+├── alembic.ini
+├── migrations/                             # Alembic migrations (versions/0001_init.py, …)
+├── src/trips/
+│   ├── domain/                             # Pure Python. No FastAPI, no SQLAlchemy, no HTTP.
+│   │   ├── models.py                       # Trip (aggregate: seats, status, departure, invariants),
+│   │   │                                   #   SeatRequest, TripSeries, AutoAcceptRule
+│   │   ├── values.py                       # GeoPoint, RecurrencePattern, TripStatus, RequestStatus (frozen dataclasses / enums)
+│   │   ├── policies.py                     # auto_accept(): detour ≤ max, rating ≥ min, no-shows ≤ threshold, seat free
+│   │   │                                   # check_eligibility(): not own trip, no overlap, not blocked, not already on it
+│   │   │                                   # expand_recurrence(): pattern → occurrence dates
+│   │   ├── events.py                       # SeatRequested, RequestAccepted, TripCancelled … (dataclasses)
+│   │   └── errors.py                       # NoSeatsLeft, DepartureInPast, OverlappingRequest …
+│   │
+│   ├── application/                        # Use cases. Depends only on domain + ports.
+│   │   ├── ports.py                        # Protocols the use cases need:
+│   │   │                                   #   TripRepository, SeatRequestRepository, RoutingPort,
+│   │   │                                   #   ReputationPort, PricingPort, EventPublisher, UnitOfWork, Clock
+│   │   ├── commands.py                     # Input/output dataclasses (PostTrip, RequestSeat, RequestSeatResult …)
+│   │   ├── post_trip.py                    # class PostTrip: async def __call__(cmd) -> PostTripResult
+│   │   ├── request_seat.py
+│   │   ├── accept_request.py
+│   │   └── cancel_trip.py …
+│   │
+│   ├── adapters/                           # Translate between the outside world and the use cases
+│   │   ├── api/                            # FastAPI routers + Pydantic request/response schemas
+│   │   │   ├── trips_router.py
+│   │   │   ├── requests_router.py
+│   │   │   ├── schemas.py
+│   │   │   └── errors.py                   # domain errors → ProblemDetail responses
+│   │   ├── messaging/                      # Event consumers (DriverApproved, PaymentFailed, …)
+│   │   ├── persistence/                    # SQLAlchemy tables/ORM models + repository implementations
+│   │   │   ├── tables.py
+│   │   │   ├── trip_repository.py          # implements TripRepository (incl. the atomic seat SQL)
+│   │   │   └── unit_of_work.py             # one AsyncSession + transaction per use case call
+│   │   ├── routing_client.py               # implements RoutingPort with httpx (timeouts, typed errors)
+│   │   ├── reputation_client.py            # implements ReputationPort (Accounts)
+│   │   ├── pricing_client.py               # implements PricingPort (Payments)
+│   │   └── outbox.py                       # implements EventPublisher: writes outbox rows in the same transaction
+│   │
+│   └── infrastructure/                     # Framework wiring and startup only
+│       ├── main.py                         # create_app(): FastAPI app, routers, lifespan (outbox relay, consumers)
+│       ├── container.py                    # builds use cases with their adapters (dependency wiring)
+│       └── settings.py                     # pydantic-settings: DATABASE_URL, REDIS_URL, ROUTING_URL, …
+└── tests/
+    ├── domain/                             # Fast unit tests, no fakes needed
+    ├── application/                        # Use case tests with in-memory fakes of the ports
+    ├── adapters/                           # Integration: testcontainers (PostGIS, Redis), respx for HTTP
+    └── concurrency/test_seat_oversell.py   # The concurrency test from the user story
 ```
 
-**How Spring Boot maps onto the layers.** Spring annotations (`@RestController`, `@Entity`, `@Repository`, `@Configuration`) appear only in `adapters/` and `infrastructure/`. Domain classes and use case services are plain Java. Use cases are registered as beans in `UseCaseConfig`, so they don't need `@Service`:
+**How FastAPI maps onto the layers.** FastAPI, Pydantic request schemas, and SQLAlchemy appear only in `adapters/` and `infrastructure/`. Domain classes are plain dataclasses; use cases are plain classes that take their ports in the constructor. Ports are `typing.Protocol`s, so adapters and test fakes satisfy them without inheriting anything:
 
-```java
-@Configuration
-class UseCaseConfig {
-    @Bean
-    RequestSeatUseCase requestSeat(TripRepository trips, SeatRequestRepository requests,
-                                   RoutingPort routing, PricingPort pricing,
-                                   ReputationPort reputation, EventPublisher events, Clock clock) {
-        return new RequestSeatService(trips, requests, routing, pricing, reputation, events, clock);
-    }
-}
+```python
+# application/ports.py
+class RoutingPort(Protocol):
+    async def quote_detour(self, trip_id: UUID, pickup: GeoPoint) -> DetourQuote: ...
+
+# application/request_seat.py
+class RequestSeat:
+    def __init__(self, uow: UnitOfWork, routing: RoutingPort, reputation: ReputationPort,
+                 events: EventPublisher, clock: Clock) -> None: ...
+    async def __call__(self, cmd: RequestSeatCommand) -> RequestSeatResult: ...
+
+# infrastructure/container.py
+def request_seat(session: AsyncSession = Depends(get_session)) -> RequestSeat:
+    return RequestSeat(SqlUnitOfWork(session), RoutingClient(http), ReputationClient(http),
+                       OutboxPublisher(session), SystemClock())
+
+# adapters/api/requests_router.py
+@router.post("/trips/{trip_id}/requests", status_code=201)
+async def create_request(trip_id: UUID, body: SeatRequestIn,
+                         user: User = Depends(current_user),
+                         use_case: RequestSeat = Depends(request_seat)) -> SeatRequestOut:
+    result = await use_case(RequestSeatCommand(trip_id, user.id, body.pickup_point_id))
+    return SeatRequestOut.from_result(result)
 ```
 
-Transactions: put `@Transactional` on the adapter that calls the use case (the controller or listener), or wrap use cases with a small transaction decorator in `infrastructure/`, so the application layer stays framework-free.
+**Transactions:** a `UnitOfWork` port wraps one SQLAlchemy `AsyncSession`. The use case calls `async with self.uow:`; the adapter commits on success and rolls back on error, so the state change and its outbox event are saved together, while the application layer never imports SQLAlchemy.
 
-**Enforcing the dependency rule.** Start with packages + ArchUnit (cheap, fast to set up). Move a service to Gradle sub-modules (`domain`, `application`, `adapters`, `app`) only if ArchUnit violations keep appearing.
+**Enforcing the dependency rule** with import-linter, run in CI for every service:
 
-```java
-@AnalyzeClasses(packages = "ca.getdrove.trips")
-class ArchitectureTest {
-    @ArchTest
-    static final ArchRule layers = layeredArchitecture().consideringOnlyDependenciesInLayers()
-        .layer("Domain").definedBy("..domain..")
-        .layer("Application").definedBy("..application..")
-        .layer("Adapters").definedBy("..adapters..")
-        .layer("Infrastructure").definedBy("..infrastructure..")
-        .whereLayer("Infrastructure").mayNotBeAccessedByAnyLayer()
-        .whereLayer("Adapters").mayOnlyBeAccessedByLayers("Infrastructure")
-        .whereLayer("Application").mayOnlyBeAccessedByLayers("Adapters", "Infrastructure")
-        .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Adapters", "Infrastructure");
+```toml
+# services/trips/pyproject.toml
+[tool.importlinter]
+root_package = "trips"
 
-    @ArchTest
-    static final ArchRule domainIsPure = noClasses().that().resideInAPackage("..domain..")
-        .should().dependOnClassesThat().resideInAnyPackage("org.springframework..", "jakarta.persistence..");
-}
+[[tool.importlinter.contracts]]
+name = "Clean Architecture layers"
+type = "layers"
+layers = ["trips.infrastructure", "trips.adapters", "trips.application", "trips.domain"]
+
+[[tool.importlinter.contracts]]
+name = "Domain and use cases stay framework-free"
+type = "forbidden"
+source_modules = ["trips.domain", "trips.application"]
+forbidden_modules = ["fastapi", "sqlalchemy", "redis", "httpx", "stripe", "pydantic_settings"]
 ```
+
+mypy --strict checks that adapters really satisfy the port Protocols, which gives most of the compile-time safety a Java interface would.
 
 ### 2.4 Full vs light Clean Architecture
 
 | Service | Level | Why |
 |---|---|---|
-| **Trips** | Full: separate domain model and JPA entities, policies, domain events | Most business rules (seats, eligibility, auto-accept, recurrence, state machine). Most tests live here. |
+| **Trips** | Full: separate domain dataclasses and SQLAlchemy models, policies, domain events | Most business rules (seats, eligibility, auto-accept, recurrence, state machine). Most tests live here. |
 | **Routing** | Full in the core: matching, pickup selection, and detour/insertion algorithms are pure domain code; OSRM and PostGIS are adapters | The algorithms are the hardest code in the project and must be unit-testable without OSRM. |
 | **Payments** | Full | Money rules (pricing, no-show policy, hold expiry) need to be precise and tested; Stripe sits behind a port so tests never hit Stripe. |
-| **Accounts** | Light: same folders, but JPA entities may double as the domain model for simple data (users, documents); keep real rules (email domain, token expiry, rating visibility) in domain classes | Mostly CRUD plus a few rules. |
+| **Accounts** | Light: same folders, but simple data (users, documents) can use one model mapped directly with SQLAlchemy; keep real rules (email domain, token expiry, rating visibility) in domain classes | Mostly CRUD plus a few rules. |
 | **Notifications** | Light: use cases + ports for email/WebSocket senders and the scheduler; minimal domain model | Mostly plumbing: consume events, store, deliver. |
 
-**Starting lean in Sprint 1 without a rewrite later:** create all four package folders in every service on day one, write use cases as plain classes behind `port.in` interfaces, and put every external call (DB, OSRM, Stripe, broker, email) behind a `port.out` interface from the first commit. Skip separate mapper classes and command objects where a record suffices. Because the boundaries exist from day one, adding detail later is additive, not a rewrite.
+**Starting lean in Sprint 1 without a rewrite later:** create all four package folders in every service on day one, write use cases as plain classes, and put every external call (DB, OSRM, Stripe, broker, email) behind a Protocol in `application/ports.py` from the first commit. Skip separate mapper functions and command classes where a simple dataclass suffices. Because the boundaries exist from day one, adding detail later is additive, not a rewrite.
 
 ### 2.5 Frontend structure (Next.js + TypeScript) ✅ Decided
 
@@ -411,14 +392,14 @@ web/
         ├── api/
         │   ├── generated/          # Types generated from contracts/openapi (openapi-typescript)
         │   ├── http.ts             # fetch wrapper: base URL, token, refresh, ProblemDetail parsing
-        │   └── realtime.ts         # WebSocket/STOMP client with reconnect
+        │   └── realtime.ts         # WebSocket client (JSON messages) with reconnect
         ├── lib/                    # Formatting (money, times), geo helpers
         └── config/
 ```
 
 **How Next.js fits this architecture:**
 
-- **Next.js is the frontend only.** The Spring Boot services stay the backend; we don't put business logic in Next.js route handlers or server actions. Traefik routes `/api/*` and `/ws` to the services and everything else to the Next.js server, so the browser talks to one origin.
+- **Next.js is the frontend only.** The FastAPI services stay the backend; we don't put business logic in Next.js route handlers or server actions. Traefik routes `/api/*` and `/ws` to the services and everything else to the Next.js server, so the browser talks to one origin.
 - **Mostly client components.** Pages with maps, live location, chat, and forms are interactive, so they use `"use client"` and TanStack Query. MapLibre touches the browser's `window`, so the map component is loaded with `next/dynamic` and `ssr: false`. Server rendering is useful mainly for the sign-up page and the public share page (fast first load).
 - **Route protection:** `middleware.ts` checks for the refresh-token cookie (set by Accounts on the same origin) and redirects to `/login` if it's missing. Real authorization is still enforced by each backend service.
 - **Page files stay thin:** a `page.tsx` composes components from `features/`; it doesn't call APIs directly.
@@ -435,8 +416,10 @@ Rules enforced by `eslint-plugin-boundaries`: `app/` pages may import only from 
 | | Sprint 1 (≈ weeks 1–3) | Sprint 2 (≈ weeks 4–6) | Sprint 3 (≈ weeks 7–9) |
 |---|---|---|---|
 | **Product goal** | Walking skeleton + first vertical slice: sign up, post a trip, find trips that pass near you | The core loop: request, detour, accept, pickup points, payment holds, notifications | The ride and trust: live trip, chat, completion, capture, ratings, safety, earnings |
-| **Engineering goal** | CI, tests with coverage, API docs, live deployment | Regression suite, CD from `develop`, cross-team testing | Load test, profiling, security scanning, DockerHub, final docs |
-| **Release** | `v0.1.0` | `v0.2.0` | `v1.0.0` |
+| **Engineering goal** | CI, tests with coverage, API docs, live deployment | Regression suite, CD (`develop` → images, `main` → live site), cross-team testing | Load test, profiling, security scanning, DockerHub, final docs |
+| **Release closing the sprint** | `v0.1.0` | `v0.2.0` | `v1.0.0` |
+
+The live site deploys from `main`, so it only changes when we release. Besides the release that closes each sprint, make interim releases whenever a useful set of stories is done on `develop`, and always before a demo meeting.
 | **Stories** | 3 + new login story | 11 | 10 |
 
 Stories per sprint (by issue title):
@@ -459,10 +442,10 @@ Stories per sprint (by issue title):
 
 | Person | Service / area | Sprint 1 work |
 |---|---|---|
-| **Andrew** | Trips + DevOps + events | Monorepo + Gradle skeleton, shared libs scaffolding, **Docker Compose for local dev, CI workflow, hosting setup and deploy pipeline to the live server**, **event library in `libs/events`** (envelope, outbox publisher, Redis Streams consumer helpers), Trips: post one-off trip, list my trips, search endpoint (time filter + call Routing) |
+| **Andrew** | Trips + DevOps + events | Monorepo + uv workspace skeleton, shared libs scaffolding, **Docker Compose for local dev, CI workflow, hosting setup and deploy pipeline to the live server**, **event library in `libs/events`** (envelope, outbox publisher, Redis Streams consumer helpers), Trips: post one-off trip, list my trips, search endpoint (time filter + call Routing) |
 | **Fola** | Accounts | Signup with domain validation, verification tokens (24 h expiry, resend), login + JWT (RS256) + JWKS endpoint, `common-security` library (Rayan reviews as Technical Lead), duplicate-email handling |
 | **Rayan** | Routing | OSRM spike (day 1–4), compute and store route on trip post (PostGIS LineString), corridor search (prefilter + road-network check), route duration for the post-trip confirmation |
-| **Chimdi** | Payments + testing lead | Pricing domain (distance-based quote) + `POST /payments/quotes`, owns `docs/testing/testing-strategy.md` and the coverage setup (JaCoCo + Vitest) across services |
+| **Chimdi** | Payments + testing lead | Pricing domain (distance-based quote) + `POST /payments/quotes`, owns `docs/testing/testing-strategy.md` and the coverage setup (coverage.py + Vitest) across services |
 | **Daniel** | Notifications + docs | Notifications consumes `UserRegistered` and sends the verification email (Mailpit locally) using the event library, docs lead for setup, API docs, and sprint1.md |
 | **Kelvin** | Web app | Next.js + TypeScript scaffold (App Router), design tokens from the mockups, shared UI (Button, BottomSheet, MapView), pages: sign-up, verify, login, rider home, results, post trip; API client generated from OpenAPI |
 
@@ -479,7 +462,7 @@ Stories per sprint (by issue title):
 | Week | Focus | Done when |
 |---|---|---|
 | **1** | Decisions + ADRs, monorepo skeleton, Compose (Postgres + PostGIS, Redis, OSRM, Mailpit, Traefik), CI running lint + build on PRs, `common-security` draft, signup endpoint, pricing domain, frontend scaffold + design tokens, OSRM serving Winnipeg routes | `docker compose up` starts everything; CI is green on a trivial PR; OSRM returns a route between two Winnipeg points |
-| **2** | Signup → `UserRegistered` → verification email, login + JWT, post trip with real route, corridor search, quotes, frontend pages wired to real APIs; **deploy the skeleton to the live server** | A trip posted locally appears in a search from Osborne Village but not from across the river; the live URL serves the frontend and `/health` of every service |
+| **2** | Signup → `UserRegistered` → verification email, login + JWT, post trip with real route, corridor search, quotes, frontend pages wired to real APIs; **deploy the skeleton to the live server** through an early release to `main` (`v0.0.1`) | A trip posted locally appears in a search from Osborne Village but not from across the river; the live URL serves the frontend and `/health` of every service |
 | **3** | Integration and hardening of the slice, unit + integration tests, coverage reports, API docs, architecture diagram update, local-setup doc, sprint1.md, retro, release `v0.1.0`, demo rehearsal | The full slice works on the live URL with seeded data; all checklist items below are ticked |
 
 #### Course deliverables and owners
@@ -488,15 +471,15 @@ Stories per sprint (by issue title):
 |---|---|---|
 | Working integrated vertical slice | Everyone (Andrew coordinates integration) | The goal above |
 | Unit + integration tests, acceptance-criteria evidence | Each owner for their service; Chimdi reviews | Link tests to stories in the issue (e.g. "AC 1 → `SignupServiceTest.rejectsNonUofMEmail`") |
-| Testing documentation + coverage evidence | Chimdi | `docs/testing/testing-strategy.md`, JaCoCo + Vitest screenshots/artifacts |
+| Testing documentation + coverage evidence | Chimdi | `docs/testing/testing-strategy.md`, coverage.py + Vitest HTML reports/screenshots |
 | CI workflow + explanation | Andrew | Lint + unit + integration tests on PRs and pushes to `develop` |
-| API / interface documentation | Each owner; Daniel compiles `docs/api/README.md` | springdoc Swagger UI per service + exported specs in `contracts/openapi/`, event schemas in `contracts/events/` |
+| API / interface documentation | Each owner; Daniel compiles `docs/api/README.md` | FastAPI's Swagger UI per service + exported specs in `contracts/openapi/`, event schemas in `contracts/events/` |
 | Architecture diagram (current) | Rayan (Technical Lead) | Update `docs/architecture/architecture.md` to show Traefik, Redis, OSRM, Mailpit/email |
 | Local setup documentation | Daniel (Andrew writes the Compose and environment sections) | `docs/deployment/local-setup.md` |
 | Live deployment (full-mark target) | Andrew | Live URL + deployment notes (`docs/deployment/deployment.md`) |
 | Reflection / retro + known issues | Chimdi (facilitates as Project Coordinator) | `docs/retros/sprint1.md`, summarized in sprint1.md |
 | sprint1.md | Daniel (Documentation Lead) | Structure below |
-| Release `v0.1.0` | Andrew (GitHub Manager) | Release branch → main → tag |
+| Release `v0.1.0` | Andrew (GitHub Manager) | Release branch → main (deploys the live site) → tag |
 
 #### Demo meeting (Sprint 1)
 
@@ -513,8 +496,8 @@ Prepare: two seeded accounts already verified (in case email is slow), seeded tr
 | Criterion | Excellent looks like… | Our evidence | Owner |
 |---|---|---|---|
 | Documentation & milestone readiness | sprint1.md clear and complete, all evidence linked and current | sprint1.md with every section below; links checked the day before submission | Daniel |
-| Working software & codebase quality | Integrated functionality that adds value; readable, modular, separated responsibilities | The vertical slice; Clean Architecture packages + ArchUnit test; Spotless formatting | Everyone; Rayan reviews structure |
-| Testing strategy & evidence | Unit + integration tests, AC evidence, tools/mocking documented, coverage interpreted | testing-strategy.md naming JUnit 5, Mockito, Testcontainers, WireMock, Vitest, MSW; coverage screenshots with a paragraph on what's under-tested and why | Chimdi |
+| Working software & codebase quality | Integrated functionality that adds value; readable, modular, separated responsibilities | The vertical slice; Clean Architecture packages + import-linter contracts; Ruff and mypy --strict passing | Everyone; Rayan reviews structure |
+| Testing strategy & evidence | Unit + integration tests, AC evidence, tools/mocking documented, coverage interpreted | testing-strategy.md naming pytest, pytest-asyncio, testcontainers-python, respx, Vitest, MSW; coverage screenshots with a paragraph on what's under-tested and why | Chimdi |
 | CI & automation | CI runs automatically on a sensible event with meaningful checks and tests; trigger documented | `ci.yml` on PRs and pushes to `develop`: lint, unit, integration, coverage; explained in sprint1.md | Andrew |
 | Architecture, API & developer docs | Current architecture, usable API contracts, clear setup/run/test instructions | Updated diagram, Swagger + exported specs + event catalogue, local-setup.md tested by someone who didn't write it | Rayan, Daniel |
 | Deployment progress & reflection | Accessible deployment, config documented, secrets handled; thoughtful reflection incl. testing in workflow | Live URL; deployment.md; GitHub Secrets only; retro answering every course prompt | Andrew, Chimdi |
@@ -537,13 +520,13 @@ Following the Sprint 1 instructions: **Sprint summary** (value added, link to th
 
 ### 3.2 Sprint 2: the core loop
 
-**Sprint goal:** A rider can request a seat with a private pickup point and a known cost; the driver sees the detour each request adds and accepts manually or automatically; seats are never oversold; the rider's share is held on their card; everyone gets notified and reminded. Recurring trips and cancellation work, and drivers must be approved. Every merge to `develop` deploys automatically.
+**Sprint goal:** A rider can request a seat with a private pickup point and a known cost; the driver sees the detour each request adds and accepts manually or automatically; seats are never oversold; the rider's share is held on their card; everyone gets notified and reminded. Recurring trips and cancellation work, and drivers must be approved. Every merge to `develop` is tested and packaged automatically, and every release to `main` deploys automatically.
 
 #### Who leads what
 
 | Person | Sprint 2 work |
 |---|---|
-| **Andrew** | Request seat (eligibility rules, overlap check), accept/decline, **atomic seat counting + concurrency test**, request-status lifecycle, consuming `PaymentFailed`, **CD workflow from `develop`** (build images, deploy, smoke test, Discord alerts), release `v0.2.0` |
+| **Andrew** | Request seat (eligibility rules, overlap check), accept/decline, **atomic seat counting + concurrency test**, request-status lifecycle, consuming `PaymentFailed`, **CD workflows** (`develop` → build and publish images; `main` → deploy, smoke test, Discord alerts), release `v0.2.0` |
 | **Fola** | Driver documents upload + storage, vehicle details, approval status, admin approve/reject (endpoint + minimal page with Kelvin), `DriverApproved` event, reputation endpoint (rating, no-shows, blocks) for Trips, **recurring trips and cancel trip in Trips** (with Andrew reviewing) |
 | **Rayan** | Pickup point selection (snap to drivable road, walking distance via OSRM foot profile, "choose a different point"), **detour quote with pickup-order insertion**, route caching, trimmed route for riders (start hidden), Routing error handling when OSRM is down |
 | **Chimdi** | Stripe test mode: rider card setup (SetupIntent + Elements with Kelvin), hold on `RequestAccepted` (manual-capture PaymentIntent), release on decline/cancel/trip cancel, payment failure flow, hold-expiry scheduling, capture use case ready (wired in Sprint 3) |
@@ -556,13 +539,13 @@ Following the Sprint 1 instructions: **Sprint summary** (value added, link to th
 2. Detour quote (Rayan) must exist before auto-accept (Daniel) can be finished; until then, auto-accept tests use a fake `RoutingPort`.
 3. Hold on acceptance (Chimdi) consumes `RequestAccepted`; agree the event schema in `contracts/events/` in week 1.
 4. Reminders (Daniel) consume `RequestAccepted` and `TripCancelled`; same.
-5. CD (Andrew) should be live by the **end of week 1**, so the rest of the sprint is deployed continuously.
+5. CD (Andrew) should be live by the **end of week 1**, so the rest of the sprint is packaged continuously and every interim release deploys itself.
 
 #### Week by week
 
 | Week | Focus | Done when |
 |---|---|---|
-| **4** | Contracts for requests, detours, pickup points, events; Stripe spike; seat atomicity + concurrency test; documents upload; CD pipeline from `develop`; frontend trip detail + request flow against mocks | Concurrency test passes in CI; a merge to `develop` deploys automatically |
+| **4** | Contracts for requests, detours, pickup points, events; Stripe spike; seat atomicity + concurrency test; documents upload; CD pipelines (`develop` → images, `main` → deploy); frontend trip detail + request flow against mocks | Concurrency test passes in CI; a merge to `develop` publishes images and a release to `main` deploys automatically |
 | **5** | Detour + insertion, pickup points, accept/decline, auto-accept, holds and releases, notifications and reminders, recurring trips, cancel trip, admin approval; frontend pending requests + settings | Full journey on the live site: request → driver sees +N min → accept → hold appears in Stripe dashboard → rider notified |
 | **6** | **Cross-team testing** (review assigned team, triage feedback we receive), regression doc, coverage + gaps, docs and diagram update, sprint2.md, retro, release `v0.2.0`, WebSocket spike, demo rehearsal | All checklist items ticked; feedback classified |
 
@@ -575,7 +558,7 @@ Cross-team testing timing is set by the course; whenever it lands, keep half a d
 | Value beyond Sprint 1, integrated and demonstrable | Everyone |
 | Regression testing process (what runs, selection, when, duration, failure handling, evidence) | Daniel (with Chimdi) — `docs/testing/regression.md` |
 | Coverage + known testing gaps with rationale | Chimdi |
-| CI/CD: deploy on changes to `develop`; secrets; success/failure visibility | Andrew |
+| CI/CD: automated delivery on changes to `develop` and deployment on releases to `main`; secrets; success/failure visibility | Andrew |
 | Live deployment + test credentials | Andrew |
 | Cross-team review of another team | Kelvin leads, two others help |
 | Feedback received: ≥ 2 items across ≥ 2 categories explained | Kelvin + Chimdi |
@@ -594,7 +577,7 @@ Live: rider requests a seat with a pickup point → driver's screen shows `+3 mi
 | Documentation & milestone readiness | sprint2.md covering regression, testing gaps, CI/CD, live URL + credentials, cross-team testing, feedback, API/architecture, reflection, final-iteration risks | Daniel |
 | Working software & codebase quality | Core loop working on live site; refactoring noted (e.g. shared client for internal HTTP calls) | Everyone |
 | Regression testing & known gaps | regression.md answering all seven course questions; recent CI run link; coverage interpreted; 2–3 real gaps with issue links and plan | Daniel, Chimdi |
-| CI/CD & live deployment | `cd.yml` deploys on push to `develop`; post-deploy smoke test; status visible in Actions and in Discord via webhook; secrets in GitHub Secrets | Andrew |
+| CI/CD & live deployment | `delivery.yml` builds and publishes images on push to `develop`; `deploy.yml` deploys on push to `main` with a post-deploy smoke test; status visible in Actions and in Discord via webhook; secrets in GitHub Secrets; sprint2.md explains why the live site tracks `main` | Andrew |
 | Architecture, API & developer docs | Diagram shows Traefik, broker, OSRM, Stripe, hosting; contracts current; deployment.md updated | Rayan, Andrew, Daniel |
 | Cross-team testing, feedback & reflection | Useful review delivered; feedback classified with reasons; individual reflections; risks for Sprint 3 listed | Kelvin, Chimdi |
 
@@ -740,13 +723,13 @@ All 10 mocked screens are built, plus about 12 screens the stories need but the 
 
 Everything on the backend, grouped by sprint and then by area: shared platform work, then each service. Endpoint paths, tables, and events match the designs in [section 4](#4-per-service-design). Owners follow the sprint tables above.
 
-**Kinds of work:** *Infra* (containers, pipelines, servers) · *Lib* (shared code in `libs/`) · *Table* (Flyway migration) · *Endpoint* (public REST, via Traefik) · *Internal* (service-to-service, `/internal/…`, not exposed) · *Event* (publish or consume on Redis Streams) · *Job* (scheduled task) · *Test* (notable tests beyond normal unit tests).
+**Kinds of work:** *Infra* (containers, pipelines, servers) · *Lib* (shared code in `libs/`) · *Table* (Alembic migration) · *Endpoint* (public REST, via Traefik) · *Internal* (service-to-service, `/internal/…`, not exposed) · *Event* (publish or consume on Redis Streams) · *Job* (scheduled task) · *Test* (notable tests beyond normal unit tests).
 
 **At a glance**
 
 | Area | Sprint 1 | Sprint 2 | Sprint 3 |
 |---|---|---|---|
-| Platform | Monorepo, shared libs, Compose, CI, first deployment | CD from `develop`, contracts in CI, WebSocket spike | Security scanning, DockerHub, load testing, hardening |
+| Platform | Monorepo, shared libs, Compose, CI, first deployment | CD (`develop` → images, `main` → deploy), contracts in CI, WebSocket spike | Security scanning, DockerHub, load testing, hardening |
 | Accounts | Signup, verification, login, tokens | Driver documents, vehicle, approval, profiles, reputation | Ratings, blocks, reports |
 | Trips | Post one-off trip, my trips, search | Recurring trips, cancel, requests, accept/decline, seats, auto-accept | Trip execution, no-show rules, block filtering, share links |
 | Routing | OSRM, route on post, corridor matching | Pickup points, detours, rider-safe geometry | Pickup ordering, ETAs, performance work |
@@ -761,8 +744,8 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 
 | Kind | Item | Notes |
 |---|---|---|
-| Infra | Gradle monorepo, version catalog, Spotless, JaCoCo, ArchUnit base test | Every service builds with `./gradlew build` |
-| Infra | Five service skeletons with the four-layer packages, Flyway, springdoc, Actuator health | Each serves `/actuator/health` and Swagger UI |
+| Infra | uv workspace, shared Ruff/mypy/pytest config, import-linter contracts, coverage | `uv sync` installs everything; `uv run pytest` and `uv run mypy` pass for every service |
+| Infra | Five FastAPI service skeletons with the four-layer packages, Alembic, health endpoint | Each serves `/health` and Swagger UI at `/docs` |
 | Lib | `libs/common-web` | ProblemDetail error handler, correlation-ID filter, JSON logging setup |
 | Lib | `libs/common-security` | JWT validation against the JWKS endpoint, current-user resolver, role checks, dev test-token profile |
 | Lib | `libs/events` | Event envelope, `outbox` table + relay to Redis Streams, consumer helper with `processed_events` idempotency |
@@ -797,7 +780,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Endpoint | `GET /api/trips/search?lat=&lng=&direction=&arriveBy=` | Time and seat filter in Trips, geography in Routing, cost from Payments; sorted by departure |
 | Endpoint | `GET /api/trips/{id}` | Basic detail (pickup point added in Sprint 2) |
 | Event | Publish `TripPosted` | |
-| Test | Trip rules (past departure, seat range), search integration with WireMock stubs for Routing and Payments | |
+| Test | Trip rules (past departure, seat range), search integration with respx stubs for Routing and Payments | |
 
 **Routing (Rayan)**
 
@@ -807,7 +790,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Internal | `POST /internal/routes` | Compute and store the route; under 3 s |
 | Internal | `POST /internal/matches` | PostGIS prefilter, then OSRM foot `table` check; returns best sample, walk time, and rider distance per matching trip |
 | Endpoint | `GET /api/routing/trips/{id}/geometry` | Full route for now (trimming in Sprint 2) |
-| Test | Matching on a hand-built test grid (rider across a river doesn't match), OSRM adapter against WireMock, `503` when OSRM is down | |
+| Test | Matching on a hand-built test grid (rider across a river doesn't match), OSRM adapter against respx stubs, `503` when OSRM is down | |
 
 **Payments (Chimdi)**
 
@@ -832,7 +815,8 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 
 | Kind | Item | Notes |
 |---|---|---|
-| Infra | CD workflow (`cd.yml`) | Push to `develop` → images tagged by SHA to GHCR → deploy → smoke test → Discord alert on failure |
+| Infra | Delivery workflow (`delivery.yml`) | Push to `develop` → tests → `linux/amd64` images tagged by SHA to GHCR |
+| Infra | Deploy workflow (`deploy.yml`) | Push to `main` → deploy release images to the VM → smoke test → Discord alert on failure |
 | Infra | Required status checks on `develop` | Failed CI blocks merging |
 | Infra | Export OpenAPI specs to `contracts/openapi/` in CI; frontend type check against them | Breaking API changes fail the build |
 | Lib | Event JSON Schemas in `contracts/events/`, validated in tests | |
@@ -974,11 +958,11 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Kind | Item | Notes |
 |---|---|---|
 | Table | `chat_messages`, `trip_chat_state` | Latest locations in Redis, not Postgres |
-| Endpoint | WebSocket `/ws` (STOMP) | JWT checked on connect |
-| Endpoint | `/topic/trips/{id}/location` · `/app/trips/{id}/location` | Only the driver sends, only while in progress; subscription limited to active trip members |
-| Endpoint | `/topic/trips/{id}/chat` · `/app/trips/{id}/chat` · `GET /api/notifications/trips/{id}/messages` | Read-only after completion; removed riders lose access |
-| Endpoint | `/user/queue/notifications` | Realtime push replaces polling |
-| Endpoint | `/topic/share/{token}/location` | Public share viewers, validated by signed share token |
+| Endpoint | WebSocket `/ws` (FastAPI, JSON messages) | JWT checked on connect |
+| Endpoint | `location` messages on channel `trip:{id}` | Only the driver sends, only while in progress; subscription limited to active trip members |
+| Endpoint | `chat` messages on channel `trip:{id}` · `GET /api/notifications/trips/{id}/messages` | Read-only after completion; removed riders lose access |
+| Endpoint | `notification` messages on the user's own channel | Realtime push replaces polling |
+| Endpoint | `location` messages on channel `share:{token}` | Public share viewers, validated by signed share token |
 | Other | Heartbeats and server timestamps for the stale-data indicator | |
 | Event | Consume `TripStarted`, `RiderPickedUp`, `TripCompleted` | Start and stop location sharing; "rate your trip" prompt |
 | Test | Unauthorized subscriptions rejected; location stops after completion; chat read-only after completion | |
@@ -987,7 +971,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 
 ## 4. Per-service design
 
-Conventions for every service: base path `/api/<service>/…` behind Traefik; internal-only endpoints under `/internal/…` (not routed by Traefik, reachable only on the private Docker network); Flyway migrations; one PostgreSQL schema and one database user per service with grants on its own schema only, so "each service owns its data" is enforced by the database, not just by convention.
+Conventions for every service: base path `/api/<service>/…` behind Traefik; internal-only endpoints under `/internal/…` (not routed by Traefik, reachable only on the private Docker network); Alembic migrations; one PostgreSQL schema and one database user per service with grants on its own schema only, so "each service owns its data" is enforced by the database, not just by convention.
 
 ### 4.1 Accounts (Fola)
 
@@ -1099,7 +1083,7 @@ UPDATE trips
 RETURNING seats_available;
 ```
 
-If zero rows come back, the use case throws `NoSeatsLeftException` → `409 Conflict` with "This seat was just taken." The `CHECK (seats_available >= 0)` constraint is a second safety net, and the partial unique index stops duplicate active requests. Seats return immediately on cancel/decline (`+1` with a `seats_available < seats_total` guard). Seats are taken at **acceptance**, not at request time (the story says a request is pending until the driver responds); auto-accept uses the same statement, so it can't exceed the seat count either.
+If zero rows come back, the use case raises `NoSeatsLeft` → `409 Conflict` with "This seat was just taken." The `CHECK (seats_available >= 0)` constraint is a second safety net, and the partial unique index stops duplicate active requests. Seats return immediately on cancel/decline (`+1` with a `seats_available < seats_total` guard). Seats are taken at **acceptance**, not at request time (the story says a request is pending until the driver responds); auto-accept uses the same statement, so it can't exceed the seat count either.
 
 **Challenge: hold expiry with recurring trips.** Stripe authorizations expire after about 7 days. If a rider is accepted on an occurrence more than 6 days away, Trips still accepts, but Payments schedules the hold for 24 h before departure (see 4.4).
 
@@ -1155,7 +1139,7 @@ Only the pickup point and walking time leave Routing; the rider's raw coordinate
 3. Try inserting the new pickup at each position between start and destination (n + 1 options), compute the total duration for each, and pick the minimum.
 4. Detour = best total − current total, in minutes (rounded up). The chosen position is the rider's place in the pickup order.
 
-Cache the current stop sequence and its matrix per trip (Redis or Caffeine, invalidated on accept/cancel), so a quote is one small table call. If OSRM fails or times out (set ~800 ms), return a typed error; Trips shows the request with an error state rather than a misleading number, as the story requires. For the final pickup order when a trip fills, re-run insertion for all accepted riders (or try all permutations, since 6! = 720 is still trivial).
+Cache the current stop sequence and its matrix per trip (Redis, or an in-process TTL cache, invalidated on accept/cancel), so a quote is one small table call. If OSRM fails or times out (set ~800 ms), return a typed error; Trips shows the request with an error state rather than a misleading number, as the story requires. For the final pickup order when a trip fills, re-run insertion for all accepted riders (or try all permutations, since 6! = 720 is still trivial).
 
 **Challenge: hiding the driver's start.** The rider-facing geometry starts at the first pickup point (or, before anyone is accepted, at the point where the route enters the rider's corridor). The driver's own view shows the full route.
 
@@ -1183,7 +1167,7 @@ Cache the current stop sequence and its matrix per trip (Redis or Caffeine, inva
 
 **Events:** consumes `RequestAccepted` (create hold), `RequestDeclined`/`RequestCancelled`/`TripCancelled` (release), `TripCompleted` + `RiderNoShow` (capture per policy). Publishes `PaymentHeld`, `PaymentFailed`, `PaymentCaptured`, `PaymentReleased`.
 
-**Ports/adapters:** `PaymentGatewayPort` (`authorize`, `capture`, `cancel`, `createSetupIntent`) implemented with the Stripe Java SDK; tests use a fake gateway, and adapter tests use **stripe-mock** or WireMock.
+**Ports/adapters:** `PaymentGatewayPort` (`authorize`, `capture`, `cancel`, `create_setup_intent`) implemented with the official `stripe` Python SDK; tests use a fake gateway, and adapter tests use **stripe-mock** or WireMock.
 
 **Challenge: hold, capture, release with Stripe.**
 
@@ -1211,7 +1195,7 @@ Cache the current stop sequence and its matrix per trip (Redis or Caffeine, inva
 
 Latest driver positions live in **Redis** (`trip:{id}:location`, with a timestamp and a short TTL), not in Postgres.
 
-**Endpoints:** `GET /api/notifications` · `POST /api/notifications/{id}/read` · `GET /api/notifications/trips/{id}/messages` · WebSocket endpoint `/ws` (STOMP) with destinations `/topic/trips/{id}/location`, `/topic/trips/{id}/chat`, `/user/queue/notifications`, and app destinations `/app/trips/{id}/location` (driver sends) and `/app/trips/{id}/chat`. Public share viewers subscribe to `/topic/share/{token}/location`.
+**Endpoints:** `GET /api/notifications` · `POST /api/notifications/{id}/read` · `GET /api/notifications/trips/{id}/messages` · WebSocket endpoint `/ws` (FastAPI) using small JSON messages: the client sends `{"type": "subscribe", "channel": "trip:{id}"}`, the driver sends `{"type": "location", …}`, and anyone on the trip sends `{"type": "chat", …}`; the server pushes `location`, `chat`, and `notification` messages. Public share viewers subscribe to `share:{token}`. Messages are fanned out through Redis pub/sub, so it keeps working if Notifications ever runs more than one instance.
 
 **Events consumed:** `UserRegistered` (verification email), `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `TripUpdated`, `TripStarted`, `RiderPickedUp`, `TripCompleted`, `PaymentFailed`, `DriverApproved`.
 
@@ -1225,9 +1209,9 @@ Latest driver positions live in **Redis** (`trip:{id}:location`, with a timestam
 
 **Challenge: authorized WebSocket subscriptions.**
 
-1. The client connects with the access token in the STOMP `CONNECT` header; a channel interceptor validates the JWT with `common-security` and attaches the user.
-2. A `SUBSCRIBE` interceptor checks `trip_members`: only the driver and **active accepted riders** may subscribe to `/topic/trips/{id}/…`. Removed riders are set inactive on `RequestCancelled`, and their sessions are unsubscribed.
-3. Only the trip's driver may send to `/app/trips/{id}/location`, and only while the trip is `IN_PROGRESS`; on `TripCompleted`/`TripCancelled` the server stops accepting and broadcasting positions.
+1. The client connects with the access token (as a query parameter or the first `auth` message, since browsers can't set headers on WebSockets); the handler validates the JWT with `common-security` and closes the socket with code 4401 if it's invalid.
+2. Each `subscribe` message is checked against `trip_members`: only the driver and **active accepted riders** may join `trip:{id}`. Removed riders are set inactive on `RequestCancelled`, and their sockets are removed from the channel.
+3. Only the trip's driver may send `location` messages, and only while the trip is `IN_PROGRESS`; on `TripCompleted`/`TripCancelled` the server stops accepting and broadcasting positions.
 4. **Stale data:** every position carries a server timestamp; the client shows "Last updated 40 s ago" instead of "Live" if nothing arrives for 30 s, and the server sends a heartbeat so the client can detect a dropped connection.
 5. Share links are signed tokens (JWT with trip id and expiry = trip completion), so Notifications can validate share viewers without calling Trips.
 6. Traefik supports WebSocket upgrade natively; confirm this in the Sprint 2 spike on the live server.
@@ -1237,23 +1221,23 @@ Latest driver positions live in **Redis** (`trip:{id}:location`, with a timestam
 ```mermaid
 sequenceDiagram
     participant UI as Web (features/ride)
-    participant C as SeatRequestController (adapter in)
-    participant UC as RequestSeatService (application)
-    participant D as Trip + RequestEligibility (domain)
-    participant R as RoutingPort → RoutingHttpAdapter
-    participant A as ReputationPort → ReputationHttpAdapter
+    participant C as requests_router (adapter in)
+    participant UC as RequestSeat use case (application)
+    participant D as Trip + policies (domain)
+    participant R as RoutingPort → RoutingClient
+    participant A as ReputationPort → ReputationClient
     participant P as Repositories (adapter out)
-    participant E as EventPublisher → Outbox
+    participant E as EventPublisher → OutboxPublisher
 
     UI->>C: POST /api/trips/{id}/requests {pickupPointId}
-    C->>UC: RequestSeatCommand(riderId from JWT, tripId, pickupPointId)
+    C->>UC: RequestSeatCommand(rider_id from JWT, trip_id, pickup_point_id)
     UC->>P: load Trip, rider's active requests
     UC->>A: blocked? (rider, driver)
-    UC->>D: eligibility.check(trip, rider, activeRequests, blocked)
-    UC->>R: quoteDetour(trip, acceptedPickups, pickup)
-    UC->>D: trip.requestSeat(rider, pickup, quote) → SeatRequest + SeatRequested event
+    UC->>D: check_eligibility(trip, rider, active_requests, blocked)
+    UC->>R: quote_detour(trip, accepted_pickups, pickup)
+    UC->>D: trip.request_seat(rider, pickup, quote) → SeatRequest + SeatRequested event
     UC->>A: reputation(rider) (for auto-accept)
-    UC->>D: autoAcceptPolicy.evaluate(rule, quote, reputation, seats)
+    UC->>D: auto_accept(rule, quote, reputation, seats)
     alt auto-accept passes
         UC->>P: atomic seat decrement + request ACCEPTED
         UC->>E: RequestAccepted
@@ -1265,10 +1249,10 @@ sequenceDiagram
     C-->>UI: 201 Created {status, detourMinutes, cost}
 ```
 
-- **Domain** knows nothing about HTTP or the database: `Trip.requestSeat(...)` enforces invariants and raises the event; `AutoAcceptPolicy` is a pure function.
+- **Domain** knows nothing about HTTP or the database: `Trip.request_seat(...)` enforces invariants and raises the event; `auto_accept()` is a pure function.
 - **Application** orchestrates: load, check, quote, decide, save, publish. It depends only on port interfaces, so its unit tests use in-memory fakes and run in milliseconds.
-- **Adapters** translate: the controller maps JSON ↔ commands and domain exceptions ↔ ProblemDetail responses (`409` no seats, `422` overlapping request, `403` blocked); the HTTP adapters call Routing and Accounts with timeouts; the persistence adapter runs the atomic SQL; the outbox adapter stores the event in the same transaction.
-- **Infrastructure** wires it together (`UseCaseConfig`, security, transactions).
+- **Adapters** translate: the FastAPI router maps JSON ↔ commands and domain exceptions ↔ ProblemDetail responses (`409` no seats, `422` overlapping request, `403` blocked); the HTTP adapters call Routing and Accounts with timeouts; the persistence adapter runs the atomic SQL; the outbox adapter stores the event in the same transaction.
+- **Infrastructure** wires it together (`container.py`, the FastAPI app, settings).
 
 
 ---
@@ -1278,21 +1262,21 @@ sequenceDiagram
 ### 5.1 Authentication across services
 
 - **Accounts issues tokens:** short-lived access token (15 min, RS256-signed JWT with `sub`, `email`, `roles`) + refresh token (7 days, stored hashed, rotated on use, sent as an `HttpOnly` cookie).
-- **Every service validates tokens itself** using Spring Security's OAuth2 resource server, pointed at Accounts' JWKS endpoint. This is configured once in `libs/common-security`. **Decided: per service** ([ADR 0006](docs/architecture/adr/0006-gateway-and-authentication.md)): defense in depth, works the same locally and in tests, and no extra auth hop. Traefik only routes.
+- **Every service validates tokens itself** with a FastAPI dependency (`current_user`) that verifies the RS256 signature with PyJWT against Accounts' JWKS endpoint (keys cached and refreshed on rotation). This lives once in `libs/common-security`. **Decided: per service** ([ADR 0006](docs/architecture/adr/0006-gateway-and-authentication.md)): defense in depth, works the same locally and in tests, and no extra auth hop. Traefik only routes.
 - **Service-to-service calls** go over the private Docker network to `/internal/…` endpoints, which Traefik never exposes. When a call is made on behalf of a user, forward the user's token; for event-driven work no token is needed.
 - **Public endpoints:** signup, login, verify, refresh, JWKS, health, and the share-link page.
 
 ### 5.2 API contracts
 
-- **Code-first with springdoc:** controllers and DTOs generate the OpenAPI spec; Swagger UI at `/api/<service>/docs` (disabled or protected in production if preferred).
+- **Code-first with FastAPI:** routers and Pydantic schemas generate the OpenAPI spec; Swagger UI at `/api/<service>/docs` (disabled or protected in production if preferred).
 - CI exports each spec to `contracts/openapi/<service>.yaml`. The PR diff shows contract changes, and a reviewer from the consuming side must approve any change.
 - The frontend generates TypeScript types from those files (`openapi-typescript`), so a breaking API change fails the frontend build instead of failing in the browser.
-- **Contracts-first for new endpoints between people:** write the DTOs, annotations, and one example in a small PR before implementing.
+- **Contracts-first for new endpoints between people:** write the Pydantic schemas, the route signature, and one example in a small PR before implementing.
 - Every operation documents status codes and error shapes, satisfying the course's "inputs, outputs, status/error behaviour, examples" requirement.
 
 ### 5.3 Event schemas
 
-Every event uses one envelope (records in `libs/events`, JSON Schema in `contracts/events/`):
+Every event uses one envelope (Pydantic models in `libs/events`, JSON Schema in `contracts/events/` generated from them):
 
 ```json
 {
@@ -1311,28 +1295,28 @@ Rules: payloads carry IDs and the minimum data consumers need (never home addres
 
 ### 5.4 Error handling
 
-- RFC 7807 **ProblemDetail** everywhere (built into Spring 6), via `libs/common-web`: `type`, `title`, `status`, `detail`, plus `code` (machine-readable, e.g. `SEAT_TAKEN`) and `correlationId`.
+- RFC 7807 **ProblemDetail** (`application/problem+json`) everywhere, via exception handlers in `libs/common-web`: `type`, `title`, `status`, `detail`, plus `code` (machine-readable, e.g. `SEAT_TAKEN`) and `correlationId`.
 - Domain exceptions map to status codes in one place per service: validation `400`, auth `401/403`, not found `404`, state conflicts `409`, business-rule violations `422`, dependency down `503` with a user-friendly message (e.g. Routing unavailable).
 - Never a blank 500: a catch-all handler returns a ProblemDetail and logs the stack trace with the correlation ID.
 - The frontend's `http.ts` turns ProblemDetails into readable messages keyed on `code`.
 
 ### 5.5 Configuration and secrets
 
-- 12-factor: all configuration via environment variables; Spring profiles `local`, `test`, `prod`.
+- 12-factor: all configuration via environment variables, loaded with pydantic-settings; an `ENVIRONMENT` variable (`local`, `test`, `prod`) switches defaults.
 - `.env.example` lists every variable with a description and a fake value; real `.env` files are git-ignored.
 - Secrets (JWT private key, DB passwords, Stripe test secret key, email API key, DockerHub token, SSH deploy key) live in **GitHub Actions Secrets**, written to the server's `.env` during deploy with restrictive permissions.
 - Each service gets its own DB credentials (least privilege). Add a secret scan (GitHub secret scanning or gitleaks) to CI.
 
 ### 5.6 Logging and observability
 
-- Structured JSON logs (Logback + logstash encoder) with `service`, `level`, `correlationId`, `userId` (never emails or locations).
-- A correlation-ID filter reads or creates `X-Request-Id`, passes it to outbound HTTP calls and event envelopes, so one request can be followed across services with `docker compose logs | grep <id>`.
-- Spring Boot Actuator `/actuator/health` (used by Compose health checks, CD smoke tests, and Traefik) and `/actuator/prometheus` metrics. Prometheus + Grafana are optional; useful for the Sprint 3 profiling story but not required.
+- Structured JSON logs (structlog) with `service`, `level`, `correlationId`, `userId` (never emails or locations).
+- A correlation-ID middleware reads or creates `X-Request-Id`, passes it to outbound HTTP calls and event envelopes, so one request can be followed across services with `docker compose logs | grep <id>`.
+- A `/health` endpoint per service (used by Compose health checks, CD smoke tests, and Traefik) and Prometheus metrics at `/metrics` (prometheus-fastapi-instrumentator). Prometheus + Grafana are optional; useful for the Sprint 3 profiling story but not required.
 
 ### 5.7 How the frontend talks to the backend
 
 - **REST** through one origin (`https://<host>/api/...`) via Traefik, so no CORS issues in production. TanStack Query handles caching, retries, and loading/error states (needed for the "Calculating…" and error states in the stories).
-- **WebSockets** (STOMP over WebSocket, `@stomp/stompjs`) to `wss://<host>/ws` for live location, chat, and notification push, with automatic reconnect and the stale-data indicator.
+- **WebSockets** (the browser's native WebSocket with a small reconnecting wrapper, JSON messages) to `wss://<host>/ws` for live location, chat, and notification push, with automatic reconnect and the stale-data indicator.
 - **Stripe Elements** for card entry, so card data goes straight to Stripe and never touches our servers.
 - **Maps:** MapLibre GL JS with a free OSM-based tile service (see decisions). Route geometry comes from Routing as an encoded polyline.
 
@@ -1352,79 +1336,84 @@ Rules: payloads carry IDs and the minimum data consumers need (never home addres
 | `osrm-car`, `osrm-foot` | Routing engine with Winnipeg data, two profiles |
 | `mailpit` | Catches emails locally, web UI to click verification links |
 | `stripe-mock` (optional) | Offline Stripe for tests |
-| `accounts`, `trips`, `routing`, `payments`, `notifications` | Services (built from source, Spring DevTools for fast restarts) |
+| `accounts`, `trips`, `routing`, `payments`, `notifications` | Services (source mounted, `uvicorn --reload` for instant restarts) |
 | `web` | Next.js dev server (`next dev`) with hot reload |
 
 **Map data:** `infra/osrm/prepare.sh` downloads the Manitoba extract from Geofabrik, clips it to a Winnipeg bounding box with `osmium extract`, and runs `osrm-extract` / `osrm-partition` / `osrm-customize` for car and foot profiles. The output is a few hundred MB and is **not committed**; developers run the script once (document it in local-setup.md), and the CD pipeline builds it on the server or bakes it into an image.
 
-Tips: `docker compose up postgres redis osrm-car osrm-foot` while running your own service from the IDE; set JVM memory caps (`-Xmx256m`) so the whole stack fits on a laptop; health checks + `depends_on: condition: service_healthy` so services start in order.
+Tips: `docker compose up postgres redis osrm-car osrm-foot` while running your own service from the IDE; set container memory limits so the whole stack fits on a laptop; health checks + `depends_on: condition: service_healthy` so services start in order.
 
 ### 6.2 CI pipeline growth across sprints
 
 | Stage | Sprint 1 | Sprint 2 | Sprint 3 |
 |---|---|---|---|
-| Lint/format (Spotless + Checkstyle, ESLint + Prettier) | ✅ | ✅ | ✅ |
+| Lint/format/types (Ruff + mypy --strict, ESLint + Prettier) | ✅ | ✅ | ✅ |
 | Unit tests (path-filtered per service) | ✅ | ✅ | ✅ |
-| Integration tests (Testcontainers) | ✅ | ✅ | ✅ |
-| ArchUnit / eslint-boundaries | ✅ | ✅ | ✅ |
-| Coverage reports (JaCoCo, Vitest) as artifacts + PR comment | ✅ | ✅ | ✅ |
+| Integration tests (testcontainers-python) | ✅ | ✅ | ✅ |
+| import-linter / eslint-boundaries | ✅ | ✅ | ✅ |
+| Coverage reports (coverage.py, Vitest) as artifacts + PR comment | ✅ | ✅ | ✅ |
 | Export OpenAPI + check frontend types compile | | ✅ | ✅ |
 | Required status checks on `develop` (block merge on failure) | | ✅ | ✅ |
-| Build `linux/arm64` Docker images, push to GHCR | (manual deploy OK) | ✅ | ✅ |
-| Deploy to live server on push to `develop` + smoke test | ✅ (target) | ✅ required | ✅ |
+| Build `linux/amd64` Docker images on push to `develop`, push to GHCR | (manual deploy OK) | ✅ | ✅ |
+| Deploy to live server on push to `main` + smoke test | ✅ (target) | ✅ required | ✅ |
 | Playwright E2E smoke against the live deploy | | ✅ | ✅ |
 | Dependabot | ✅ | ✅ | ✅ |
-| CodeQL (Java, JS/TS) + Trivy image scan | | started | ✅ required |
+| CodeQL (Python, JS/TS) + Trivy image scan | | started | ✅ required |
 | Publish versioned images to DockerHub on release tag | | | ✅ required |
 
-Use a path-filter step (e.g. `dorny/paths-filter`) so a frontend-only PR doesn't run five Java test suites; changes to `libs/` trigger all services. Keep the full PR pipeline **under ~10 minutes** (cache Gradle and npm, run services in a matrix).
+Use a path-filter step (e.g. `dorny/paths-filter`) so a frontend-only PR doesn't run five Python test suites; changes to `libs/` trigger all services. Keep the full PR pipeline **under ~10 minutes** (cache uv and npm, run services in a matrix).
 
-### 6.3 Hosting: Oracle Cloud Always Free ✅ Decided
+### 6.3 Hosting: Google Cloud VM ✅ Decided
 
-Decided in [ADR 0007](docs/architecture/adr/0007-hosting-and-environments.md). The goals were **free** and **low maintenance**. Serverless free tiers were ruled out because the system has always-running processes (outbox relays, stream consumers, schedulers, WebSockets, OSRM) that would need a redesign to fit scale-to-zero platforms.
+Decided in [ADR 0016](docs/architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md), which supersedes ADR 0007. The goals were **free** and **low maintenance**. Serverless free tiers were ruled out because the system has always-running processes (outbox relays, stream consumers, schedulers, WebSockets, OSRM) that would need a redesign to fit scale-to-zero platforms. Oracle Cloud's Always Free ARM VM was the first choice, but it returned "Out of capacity" in the Canadian region, and the AWS Free plan wasn't available for our account, so we use Google Cloud's free-trial credit.
+
+The server is already set up; see [`docs/deployment/server-setup.md`](docs/deployment/server-setup.md).
 
 | Setting | Choice |
 |---|---|
-| Provider | **Oracle Cloud Always Free** |
-| Shape | VM.Standard.A1.Flex, **2 OCPU / 12 GB RAM** (about three times the ~4 GB the stack needs, and within the free allowance) |
-| OS | Ubuntu 24.04 LTS, **ARM64** |
-| Storage | 100 GB boot volume (within the 200 GB free limit) |
-| Home region | Canada (Toronto or Montreal). It can't be changed later, and Always Free resources only exist there |
-| Runtime | Docker Compose (same setup as local), Traefik with Let's Encrypt HTTPS, a free subdomain (e.g. DuckDNS) |
-| Images | Built for `linux/arm64` in GitHub Actions; nothing is compiled on the VM |
-| **Backup** | **AWS Free plan** with a t4g.large (8 GB ARM). It can't charge the account; credits cover the term |
+| Provider | **Google Cloud Compute Engine**, paid by the free-trial credit (about US$300 / CA$425 for 90 days, from 2026-10-10) |
+| Machine | **e2-standard-2** (2 vCPU / 8 GB RAM, x86-64), about twice what the stack needs |
+| OS | Ubuntu 24.04 LTS (amd64) |
+| Region | `northamerica-northeast2` (Toronto) |
+| Storage | 40 GB balanced persistent disk, daily snapshots |
+| IP | Static external IP `34.130.160.109` (`getdrove-ip`) |
+| Runtime | Docker Compose (same setup as local), Traefik; HTTPS once a domain is added (DuckDNS or sslip.io) |
+| Images | Built for `linux/amd64` in GitHub Actions; nothing is compiled on the VM |
 
-**Estimated cost: $0 per month.** HTTPS, CI/CD, GitHub Container Registry, DockerHub (public images), Brevo, Stripe test mode, and OpenFreeMap tiles are all free at our scale. The only optional cost is a custom domain.
+**Estimated cost:** about US$58/month for the VM and disk, plus a few dollars for the static IP and snapshots, so roughly US$190–200 of the credit over the trial. The trial ends in early January 2027, after the term, and Google does not charge unless the account is manually upgraded. CI/CD, GitHub Container Registry, DockerHub (public images), Brevo, Stripe test mode, and OpenFreeMap tiles are free at our scale.
 
 **Risks to manage**
 
-- **Signup and capacity aren't guaranteed.** Sign up in Sprint 1, week 1. If signup is rejected or no ARM capacity appears within a few days, switch to the AWS backup.
-- **Idle reclaim.** Oracle can reclaim Always Free instances that stay mostly idle. If this is a concern, upgrade the account to pay-as-you-go (usage within the free limits stays free) and set a **$1 budget alert**.
-- **ARM compatibility.** Java, PostgreSQL/PostGIS, Redis, Traefik, and Node all have ARM images. Confirm OSRM runs on ARM during the Sprint 1 spike; GraphHopper is the backup routing engine if not.
+- **Credit and trial end.** Check **Billing → Overview** every couple of weeks. Load tests in Sprint 3 add a little usage but stay well within the credit.
+- **Memory.** 8 GB is plenty (Python services use roughly 80–150 MB each); watch `free -h` during load tests.
+- **No HTTPS until a domain is added.** Add one before the first demo meeting.
 
 ### 6.4 CD and Git Flow
 
-Sprint 2 requires that changes to the **main development branch** trigger deployment. In our Git Flow that branch is `develop`. Decided setup ([ADR 0007](docs/architecture/adr/0007-hosting-and-environments.md)):
+The Sprint 2 rubric asks that changes to the **main development branch** (`develop` in our Git Flow) take part in an automated delivery or deployment workflow. The team also wants the evaluated live site to show only released code. Decided setup ([ADR 0016](docs/architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md)):
 
 ```mermaid
 flowchart LR
     F[feature/* PR] -->|CI: lint, tests, coverage| D[develop]
-    D -->|cd.yml: build images :sha → GHCR, deploy, smoke test| L[Live environment]
+    D -->|delivery.yml: tests, build images :sha → GHCR| G[(GHCR images)]
     D --> R[release/x.y.0]
     R -->|PR + approval| M[main]
+    M -->|deploy.yml: pull release images, deploy, smoke test| L[Live site]
     M -->|tag vX.Y.Z → release.yml| H[DockerHub images :X.Y.Z + :latest]
 ```
 
-- **Live environment tracks `develop`.** This is the URL in every sprintN.md, so the instructor always sees the current product. Each deploy pulls the new images on the VM (`docker compose pull && docker compose up -d`) over SSH from Actions, then runs a smoke test (health endpoints + a Playwright login/search). A failed smoke test marks the run red and posts to Discord; the previous containers keep running if the new ones fail their health checks (or redeploy the previous image tag).
-- **`main` holds tagged releases.** Merging a release branch and tagging `vX.Y.Z` publishes versioned images to DockerHub (the Sprint 3 requirement).
-- **One environment only.** A separate staging/production split was considered and rejected: it doubles server resources and release work without earning marks. Explain this choice in deployment.md and sprint2.md.
-- **Rolling back:** if a merge breaks the live site, redeploy the images from the last release tag on `main`, then fix forward on `develop`.
+- **`develop` → continuous delivery.** Every merge runs the full suite and builds and publishes deployable `linux/amd64` images to GHCR, tagged with the commit SHA. This is the automated workflow for our main development branch.
+- **`main` → continuous deployment.** Every merge (release or hotfix) deploys to the live VM over SSH from Actions (`docker compose pull && docker compose up -d`), then runs a smoke test (health endpoints + a Playwright login/search). A failed smoke test marks the run red and posts to Discord; the previous containers keep running if the new ones fail their health checks.
+- **The live site always matches a release.** This is the URL in every sprintN.md. Because it only changes on releases, release at the end of every sprint and whenever useful work is ready, especially before demo meetings.
+- **Release tags publish to DockerHub** (the Sprint 3 requirement).
+- **One environment only.** A separate staging environment was considered and rejected: it doubles server resources and work without earning marks. Explain this choice, and why the live site tracks `main`, in deployment.md and sprint2.md.
+- **Rolling back:** redeploy the previous release tag's images, then fix with a hotfix.
 
 ### 6.5 Docker images
 
-- Multi-stage Dockerfiles: build with Gradle (or use Spring Boot's layered jars), run on a slim JRE image (e.g. Eclipse Temurin 21 JRE), as a non-root user, with a health check.
+- Multi-stage Dockerfiles: install dependencies with uv (`uv sync --frozen --no-dev --package <service>`) in a build stage, then copy the virtual environment into `python:3.13-slim`, run Uvicorn as a non-root user, with a health check.
 - Frontend: multi-stage build with `next build` and `output: 'standalone'`, then run the small standalone Node server (`node server.js`) as a non-root user.
-- Build every image for **`linux/arm64`** (the Oracle VM is ARM) using Docker Buildx in GitHub Actions, or GitHub's ARM runners.
+- Build every image for **`linux/amd64`** (the Google Cloud VM is x86-64), which is the default on GitHub's runners and on most laptops' Docker Desktop builds.
 - Tag images with the git SHA for deploys and semantic versions for releases. Scan with Trivy in CI.
 - The instructor won't pull and run them; DockerHub publishing is evidence of packaging. The live site can run the same images from GHCR.
 
@@ -1444,11 +1433,11 @@ Sprint 3 says not to add orchestration unless the architecture genuinely benefit
 
 | Layer | Test type | Tools | Example |
 |---|---|---|---|
-| Domain | Unit (no mocks) | JUnit 5, AssertJ | `Trip.requestSeat` rejects a full trip; `AutoAcceptPolicy` truth table; cheapest-insertion picks the right position on a fixed matrix |
-| Application (use cases) | Unit with in-memory fakes of ports | JUnit 5, simple fake classes (Mockito where a fake is overkill) | `RequestSeatService` auto-accepts when all conditions pass; stays pending when Accounts times out |
-| Adapters out | Integration | Testcontainers (PostGIS, Redis), WireMock (OSRM, Accounts), stripe-mock | Repository atomic seat SQL; corridor prefilter query uses the GiST index; OSRM adapter parses responses and handles timeouts |
-| Adapters in | Integration (slice) | Spring `@WebMvcTest` / `MockMvc`, Spring Security test | Validation → 400 ProblemDetail; missing token → 401; another user's trip → 403 |
-| Service-to-service contracts | Contract | Exported OpenAPI + request/response validation in consumer tests (e.g. swagger-request-validator), JSON Schema validation of events | The Trips client for Routing sends requests the Routing spec accepts; published events match `contracts/events` |
+| Domain | Unit (no mocks) | pytest (Hypothesis for policies where useful) | `Trip.request_seat` rejects a full trip; `auto_accept()` truth table; cheapest-insertion picks the right position on a fixed matrix |
+| Application (use cases) | Unit with in-memory fakes of ports | pytest, pytest-asyncio, simple fake classes (`unittest.mock.AsyncMock` where a fake is overkill) | `RequestSeat` auto-accepts when all conditions pass; stays pending when Accounts times out |
+| Adapters out | Integration | testcontainers-python (PostGIS, Redis), respx (OSRM, Accounts), stripe-mock | Repository atomic seat SQL; corridor prefilter query uses the GiST index; OSRM client parses responses and handles timeouts |
+| Adapters in | Integration (API) | FastAPI `TestClient` / `httpx.AsyncClient` with dependency overrides | Validation → 400 ProblemDetail; missing token → 401; another user's trip → 403 |
+| Service-to-service contracts | Contract | Exported OpenAPI + request/response validation in consumer tests (e.g. openapi-core), JSON Schema validation of events | The Trips client for Routing sends requests the Routing spec accepts; published events match `contracts/events` |
 | Whole system | End-to-end | Playwright against Compose (CI) and the live URL (smoke) | Sign up → verify (via Mailpit API) → post trip → search → request → accept |
 | Frontend | Unit/component | Vitest, React Testing Library, MSW | Pending request card shows "Calculating…" then "+5 min"; error state when the API returns `503` |
 
@@ -1458,33 +1447,31 @@ Sprint 3 says not to add orchestration unless the architecture genuinely benefit
 
 | Sprint | Focus |
 |---|---|
-| 1 | Domain + use case unit tests for the slice; Testcontainers set up for every service; one E2E happy path; coverage tooling; testing-strategy.md |
+| 1 | Domain + use case unit tests for the slice; testcontainers set up for every service; one E2E happy path; coverage tooling; testing-strategy.md |
 | 2 | **Seat concurrency test**; payment adapter tests with stripe-mock; event contract validation; regression suite defined; Playwright smoke after deploy |
 | 3 | Edge/error-case tests from the instructor-style sweep; WebSocket authorization tests; load testing; profiling; final coverage and gap analysis |
 
 ### 7.3 The seat concurrency test (required by the story)
 
-```java
-@Testcontainers
-class SeatOversellIT {
-    @Test
-    void exactlyOneRiderGetsTheLastSeat() throws Exception {
-        UUID tripId = givenTripWithSeats(1);
-        List<UUID> requests = givenPendingRequests(tripId, 20);   // 20 riders
+```python
+# tests/concurrency/test_seat_oversell.py
+@pytest.mark.asyncio
+async def test_exactly_one_rider_gets_the_last_seat(db: AsyncEngine) -> None:
+    trip_id = await given_trip_with_seats(db, seats=1)
+    request_ids = await given_pending_requests(db, trip_id, count=20)   # 20 riders
 
-        var start = new CountDownLatch(1);
-        var pool = Executors.newFixedThreadPool(20);
-        List<Future<Boolean>> results = requests.stream()
-            .map(id -> pool.submit(() -> { start.await(); return tryAccept(id); }))
-            .toList();
-        start.countDown();                                        // release all threads at once
+    # Each acceptance runs in its own session/connection, all at the same moment.
+    results = await asyncio.gather(
+        *(accept_in_new_session(db, request_id) for request_id in request_ids),
+        return_exceptions=True,
+    )
 
-        long accepted = results.stream().filter(this::getQuietly).count();
-        assertThat(accepted).isEqualTo(1);
-        assertThat(seatsAvailable(tripId)).isZero();               // never negative
-        assertThat(acceptedRequests(tripId)).hasSize(1);
-    }
-}
+    accepted = [r for r in results if r is True]
+    rejected = [r for r in results if isinstance(r, NoSeatsLeft)]
+    assert len(accepted) == 1
+    assert len(rejected) == 19
+    assert await seats_available(db, trip_id) == 0          # never negative
+    assert len(await accepted_requests(db, trip_id)) == 1
 ```
 
 Run it against a real PostgreSQL container (not H2), so it tests the real locking behaviour. Add a second test for auto-accept racing a manual accept, and an HTTP-level variant that checks the losers receive `409` with the "seat is taken" message.
@@ -1492,7 +1479,7 @@ Run it against a real PostgreSQL container (not H2), so it tests the real lockin
 ### 7.4 Regression suite (Sprint 2)
 
 - **What runs:** every unit and integration test of the changed services on each PR; the full suite of all services on every push to `develop`; Playwright smoke after each deploy; full Playwright suite nightly (scheduled workflow).
-- **How tests are selected:** everything is in the suite (practical at our size); path filters only decide *which services* run on PRs; tests tagged `@Tag("slow")` run on `develop` only if PR time creeps past 10 minutes.
+- **How tests are selected:** everything is in the suite (practical at our size); path filters only decide *which services* run on PRs; tests marked `@pytest.mark.slow` run on `develop` only if PR time creeps past 10 minutes.
 - **On failure:** the PR can't merge (required checks); a failure on `develop` posts to Discord, and the author of the breaking merge fixes or reverts the same day; a failed post-deploy smoke test keeps the previous version running.
 - Record the suite's duration from the Actions logs in regression.md each sprint.
 
@@ -1508,7 +1495,7 @@ Run it against a real PostgreSQL container (not H2), so it tests the real lockin
 
 Pick the hottest path from the load test, most likely **search** or **detour quotes**. A good candidate with a clear before/after:
 
-- Use `EXPLAIN ANALYZE` on the corridor prefilter query and Java Flight Recorder (or async-profiler) on the Routing service during a load run.
+- Use `EXPLAIN ANALYZE` on the corridor prefilter query and py-spy (sampling profiler, no code changes) on the Routing service during a load run.
 - Typical findings: missing or unused GiST index (e.g. `geometry` vs `geography` mismatch, or a function wrapping the column), too many OSRM calls per search (fix: batch into one `table` call, or cache per trip), or N+1 calls from Trips to Accounts during search (fix: batch reputation lookup).
 - Write up: what we investigated and why, tools, observation, fix, before/after numbers.
 
@@ -1523,27 +1510,27 @@ All decisions were made at the end of Sprint 0. Each has an Architecture Decisio
 |---|---|---|---|
 | 1 | Repository | Monorepo | 0001 |
 | 2 | Frontend | Next.js + TypeScript (App Router) | 0002 |
-| 3 | Backend | Java 21 + Spring Boot 3 for all services (Spring Data JPA, Flyway, Spring Security, springdoc, STOMP); PostgreSQL + PostGIS, one schema per service | 0003 |
-| 4 | Build tool | Gradle (Kotlin DSL) with a shared version catalog | 0004 |
+| 3 | Backend | Python 3.13 + FastAPI for all services (Pydantic v2, SQLAlchemy 2 async + GeoAlchemy2, Alembic, PyJWT, built-in WebSockets); PostgreSQL + PostGIS, one schema per service (replaces Java/Spring in 0003) | 0017 |
+| 4 | Dependencies and monorepo | uv workspace with one lockfile (replaces Gradle in 0004) | 0017 |
 | 5 | Message broker | Redis Streams with the transactional outbox and idempotent consumers | 0005 |
 | 6 | Gateway | Traefik (routing + HTTPS only) | 0006 |
 | 7 | JWT validation | In each service, using Accounts' JWKS (`libs/common-security`) | 0006 |
-| 8 | Hosting | Oracle Cloud Always Free VM (A1.Flex, 2 OCPU / 12 GB, Ubuntu 24.04 ARM64, Canadian region) with Docker Compose; AWS Free plan (t4g.large) as backup | 0007 |
-| 9 | Environments | One live environment deployed from `develop`; tagged releases on `main` publish to DockerHub | 0007 |
+| 8 | Hosting | Google Cloud VM (e2-standard-2, 2 vCPU / 8 GB, Ubuntu 24.04, Toronto) with Docker Compose, paid by free-trial credit (replaces the Oracle plan in 0007) | 0016 |
+| 9 | Environments | One live environment deployed from `main`; merges to `develop` build and publish images; release tags publish to DockerHub | 0016 |
 | 10 | Routing engine | OSRM, car + foot profiles, Winnipeg extract; GraphHopper as backup | 0008 |
 | 11 | Maps | MapLibre GL JS + OpenFreeMap tiles; MapTiler as backup | 0009 |
 | 12 | Email | Mailpit locally, Brevo in production | 0010 |
 | 13 | Document storage | Docker volume behind a `DocumentStorage` port | 0011 |
 | 14 | Pricing | Rider distance × $0.45/km, rounded to 5¢, $2.00 minimum (configurable) | 0012 |
 | 15 | No-show charge | 100% of the quoted share (configurable) | 0012 |
-| 16 | Testing | Backend: JUnit 5, Mockito, AssertJ, Testcontainers, WireMock, stripe-mock, ArchUnit, JaCoCo. Frontend: Vitest, React Testing Library, MSW, Playwright | 0013 |
+| 16 | Testing | Backend: pytest, pytest-asyncio, coverage.py, testcontainers-python, respx, stripe-mock, import-linter. Frontend: Vitest, React Testing Library, MSW, Playwright | 0013, 0017 |
 | 17 | Contract testing | OpenAPI + JSON Schema validation; frontend types generated from specs | 0013 |
-| 18 | Formatting and linting | Spotless (google-java-format) + Checkstyle; Prettier + ESLint | 0013 |
+| 18 | Formatting, linting, types | Ruff + mypy --strict; Prettier + ESLint | 0013, 0017 |
 | 19 | Security analysis | CodeQL + Trivy + Dependabot | 0014 |
 | 20 | Load testing | JMeter | 0014 |
 | 21 | Driver approval | Minimal admin page + seeded admin account | 0015 |
 
-**Follow-up checks in Sprint 1** (they could trigger a backup option): Oracle signup and ARM capacity (Andrew), OSRM on ARM (Rayan), Brevo delivery to a real `@myumanitoba.ca` address (Daniel).
+**Follow-up checks in Sprint 1** (they could trigger a backup option): OSRM running in Docker Compose with the Winnipeg extract (Rayan), Brevo delivery to a real `@myumanitoba.ca` address (Daniel), and a domain for HTTPS before the first demo (Andrew).
 
 ---
 
@@ -1555,12 +1542,13 @@ All decisions were made at the end of Sprint 0. Each has an Architecture Decisio
 |---|---|---|---|---|
 | Integration problems between six people and five services | High | High | Contracts-first PRs; walking skeleton deployed in week 2; integration day each Friday; Andrew coordinates | Andrew |
 | OSRM setup or data issues block routing work | Medium | High | Day 1–4 spike; stub `RoutingPort` adapter (straight-line) as fallback so others aren't blocked | Rayan |
-| Oracle signup rejected, no ARM capacity, or idle instance reclaimed | Medium | High | Sign up in Sprint 1 week 1; switch to the AWS Free plan backup if blocked within a few days; pay-as-you-go upgrade with a $1 budget alert to avoid reclaim | Andrew |
-| Live deployment fails or the VM runs out of memory | Medium | High | Deploy skeleton early; JVM memory caps; health checks; rollback to previous image tag; monitor disk | Andrew |
+| Google Cloud credit runs low or the trial ends before the final demo | Low | High | Budget alerts; check Billing → Overview every two weeks; usage is about US$200 of US$300; the trial ends in early January 2027, after the term | Andrew |
+| Live site falls behind `develop` because releases are rare | Medium | Medium | Release at least every sprint and before each demo meeting; interim releases are cheap | Andrew |
+| Live deployment fails or the VM runs out of memory | Medium | High | Deploy skeleton early; container memory limits; health checks; rollback to previous image tag; monitor disk | Andrew |
 | Event bugs: lost, duplicated, or out-of-order messages | Medium | Medium | Outbox; consumer groups; idempotent consumers; Redis AOF; event contract tests | Andrew, Daniel |
 | Stripe complexity (expiry, failures, idempotency) | Medium | Medium | Manual-capture PaymentIntents; idempotency keys; scheduled holds; fake gateway for most tests | Chimdi |
 | WebSockets misbehave behind the proxy | Medium | Medium | Spike on the live server in Sprint 2; polling fallback for location (every 5 s) if needed | Daniel, Andrew |
-| Clean Architecture boilerplate slows delivery | Medium | Medium | Light version in Accounts/Notifications; no mappers where a record suffices; review in Sprint 1 retro | Rayan |
+| Clean Architecture boilerplate slows delivery | Medium | Medium | Light version in Accounts/Notifications; no mappers where a simple dataclass suffices; review in Sprint 1 retro | Rayan |
 | Uneven workload or knowledge silos | Medium | Medium | Balance check at each planning; pair on hard parts; teach-backs before demos | Fola, Chimdi |
 | Exam weeks and reduced availability | High | Medium | Plan lighter weeks; finish sprint work 2–3 days early (team goal); feature freeze in Sprint 3 | Fola |
 | Demo-day failure (network, external service) | Low | High | Seeded accounts; tested the day before; recorded backup; Stripe test mode works offline-ish via stored state | Kelvin |
@@ -1586,26 +1574,26 @@ All decisions were made at the end of Sprint 0. Each has an Architecture Decisio
 
 ## 10. Getting started this week
 
-### Day 1–2: confirm decisions and start hosting signup
+### Day 1–2: confirm decisions
 
-The technology decisions are already made (section 8). In the first team meeting (Chimdi organizes), walk through the decisions table and approve the ADR PR, so every ADR moves from *Proposed* to *Accepted*. In parallel, Andrew starts the Oracle Cloud signup, since that's the step most likely to need the backup plan.
+The technology decisions are already made (section 8). In the first team meeting (Chimdi organizes), walk through the decisions table and approve the ADR PR, so every ADR moves from *Proposed* to *Accepted*. The production server is already set up on Google Cloud ([server setup](docs/deployment/server-setup.md)).
 
 ### Checklist
 
 | # | Task | Who | Done when |
 |---|---|---|---|
-| 1 | Team walks through the decisions table and approves the ADR PR | Chimdi | All 15 ADRs marked *Accepted* |
+| 1 | Team walks through the decisions table and approves the ADR PR | Chimdi | All ADRs marked *Accepted* (done; ADR 0016 replaces 0007 for hosting) |
 | 2 | Create the Sprint 1 milestone; add missing issues (login, contracts, infra tasks); assign Sprint 1 issues | Andrew + Fola | Board shows Sprint 1 Todo with owners |
-| 3 | Monorepo skeleton: Gradle multi-project, version catalog, `libs/` stubs, five empty services with the four-layer packages, ArchUnit test, Spotless | Andrew | `./gradlew build` passes; every service starts and serves `/actuator/health` |
+| 3 | Monorepo skeleton: uv workspace, `libs/` stubs, five FastAPI services with the four-layer packages, import-linter contracts, Ruff + mypy + pytest config | Andrew | `uv run pytest` and `uv run mypy` pass; every service starts and serves `/health` |
 | 4 | `infra/docker-compose.yml`: PostGIS, Redis (AOF), Mailpit, Traefik, services; Postgres init with schema + user per service | Andrew | `docker compose up` starts the stack |
 | 5 | OSRM spike: prepare Winnipeg car + foot data, add to Compose, document | Rayan | A curl from Wolseley to campus returns a route and duration |
 | 6 | CI v1: lint + build + unit tests on PRs and `develop` pushes | Andrew | Green check on a PR |
 | 7 | `common-security` + Accounts JWT design: RS256 keys, JWKS, resource-server config | Fola (Rayan reviews) | A service rejects requests without a valid token in a test |
 | 7b | `libs/events`: event envelope, outbox table + relay, Redis Streams consumer helper with idempotency | Andrew | Accounts can publish `UserRegistered` and Notifications receives it once, even after a restart |
 | 8 | Signup endpoint with domain validation + tests | Fola | Unit + integration tests pass |
-| 9 | Pricing domain + quote endpoint + tests; testing-strategy.md outline; JaCoCo set up | Chimdi | Coverage report appears in CI artifacts |
+| 9 | Pricing domain + quote endpoint + tests; testing-strategy.md outline; coverage.py set up | Chimdi | Coverage report appears in CI artifacts |
 | 10 | Frontend scaffold: Next.js + TS (App Router), route folders matching the mockup URLs, design tokens from mockups, shared UI components, MapLibre map (client-only), MSW mocks, ESLint boundaries | Kelvin | Sign-up page renders and matches the mockup on mobile and desktop |
-| 11 | Oracle Cloud Always Free signup (Canadian home region), A1.Flex VM (2 OCPU / 12 GB, Ubuntu 24.04 ARM64), free subdomain, SSH deploy key in GitHub Secrets; switch to the AWS Free plan if blocked within a few days | Andrew | VM reachable; `docker` installed |
+| 11 | ✅ Done: Google Cloud VM (e2-standard-2, Ubuntu 24.04, Toronto), static IP, Docker, deploy key and GitHub secrets. Remaining: a domain for HTTPS | Andrew | VM reachable; `docker` installed; deploy key works |
 | 12 | Write first contracts: signup/login, post trip, search, quotes, `UserRegistered` event schema | Owners (Fola, Andrew, Rayan, Chimdi) | Contract PRs approved by consumers (Kelvin reviews all frontend-facing ones) |
 | 13 | Teach-back schedule and integration Friday on the team calendar | Chimdi | Calendar invites sent |
 

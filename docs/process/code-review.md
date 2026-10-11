@@ -12,7 +12,7 @@ Every change reaches `develop` or `main` through a reviewed pull request. Branch
 - Fill in the pull request template, including `Closes #<issue-number>`. Note that GitHub only closes the issue automatically when merging into the default branch (`develop`); close it manually otherwise.
 - All automated checks (build, tests, linting) must pass.
 - At least **one approval** from another team member is required before merging.
-- The **author** merges their own work-branch pull request into `develop` after approval, then deletes the branch. Release and hotfix pull requests into `main` are merged by the GitHub Manager (Andrew).
+- The **author** merges their own work-branch pull request into `develop` after approval, then deletes the branch. Release and hotfix pull requests into `main` are merged by the GitHub Manager (Andrew); because merging into `main` deploys the live site, check the deploy workflow passes afterwards.
 - Changes that affect other services (a new or changed API, a new event format) or the overall architecture also need approval from the Technical Lead (Rayan), and should be discussed with the team before the pull request is opened.
 - Merge method: **Squash and merge** for work branches into `develop`, so each task becomes one clean commit. **Create a merge commit** for release and hotfix branches, so `main` and `develop` keep a shared history.
 

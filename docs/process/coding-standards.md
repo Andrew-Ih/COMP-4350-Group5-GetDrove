@@ -4,21 +4,23 @@
 
 ## Tech stack
 
-See the [technology stack](../architecture/tech-stack.md): Java 21 + Spring Boot 3 with Gradle for the backend, Next.js + TypeScript for the frontend.
+See the [technology stack](../architecture/tech-stack.md): Python 3.13 + FastAPI with uv for the backend, Next.js + TypeScript for the frontend.
 
 ## Formatting and linting
 
 | Area | Formatter | Linter |
 |---|---|---|
 | Frontend (Next.js + TypeScript) | Prettier | ESLint |
-| Backend (Java 21 + Spring Boot 3) | Spotless with google-java-format | Checkstyle |
+| Backend (Python 3.13 + FastAPI) | Ruff (`ruff format`) | Ruff (`ruff check`) and mypy --strict |
 
-- Run the formatter before every commit (`./gradlew spotlessApply` for Java, `npm run format` for the frontend). Pull requests with lint errors are not merged; CI runs the linters on every pull request.
+- Run the formatter before every commit (`uv run ruff format` and `uv run ruff check --fix` for Python, `npm run format` for the frontend). Pull requests with lint or type errors are not merged; CI runs Ruff, mypy, and ESLint on every pull request.
+- Type hints are required on all Python functions and class attributes (mypy strict). Don't silence mypy with `# type: ignore` or `Any` without a comment explaining why.
 
 ## Naming
 
 - TypeScript: `camelCase` for variables and functions, `PascalCase` for components, types, and classes, `UPPER_SNAKE_CASE` for constants.
-- Java: `camelCase` for variables and methods, `PascalCase` for classes and records, `UPPER_SNAKE_CASE` for constants, lowercase package names (`ca.getdrove.trips.domain`).
+- Python ([PEP 8](https://peps.python.org/pep-0008/)): `snake_case` for variables, functions, and modules; `PascalCase` for classes; `UPPER_SNAKE_CASE` for constants; package names lowercase (`trips.domain`).
+- JSON fields in APIs and events use `camelCase` (Pydantic aliases), so the frontend's generated TypeScript types read naturally.
 - REST endpoints use plural nouns and kebab-case, e.g. `/trips/{id}/seat-requests`.
 
 ## Code quality
@@ -33,6 +35,9 @@ See the [technology stack](../architecture/tech-stack.md): Java 21 + Spring Boot
 - Discuss major changes with the team before starting them.
 
 ## Services
+
+- Each service follows the Clean Architecture layout (`domain`, `application`, `adapters`, `infrastructure`); import-linter enforces that inner layers never import outer ones, and FastAPI, SQLAlchemy, and other frameworks are only imported in `adapters` and `infrastructure`.
+- Code is async end to end: use async drivers and clients (asyncpg, redis.asyncio, httpx), never blocking calls inside request handlers.
 
 - Each service owns its own database schema and never reads another service's data directly.
 - Services communicate only through documented APIs or events. Changes to an API or event format are discussed with the team first.
@@ -49,4 +54,4 @@ Documentation is updated in the same pull request as the code it describes.
 - Tests run automatically in CI (GitHub Actions) on every pull request.
 - Each user story's acceptance criteria should be covered by at least one test where practical.
 - Concurrency-sensitive code (such as seat booking) must have a test that simulates simultaneous requests.
-- Run the full test suite locally before opening a pull request.
+- Run the full test suite locally before opening a pull request (`uv run pytest` for a service, `npm test` for the frontend).

@@ -49,6 +49,10 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 - [Architecture](docs/architecture/architecture.md)
 - [Architecture Decision Records](docs/architecture/adr/README.md)
 
+**Deployment**
+
+- [Server setup](docs/deployment/server-setup.md)
+
 **Team process**
 
 - [Working agreement](docs/process/working-agreement.md)

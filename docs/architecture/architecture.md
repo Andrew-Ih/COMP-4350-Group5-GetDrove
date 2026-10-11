@@ -11,14 +11,14 @@ flowchart TB
     users(["Riders & drivers"]) --> web
 
     subgraph client["Browser"]
-        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · STOMP client · Stripe Elements"]
+        web["Web app<br/>Next.js + TypeScript<br/>MapLibre · WebSocket client · Stripe Elements"]
     end
 
-    subgraph vm["Oracle Cloud VM · Docker Compose"]
+    subgraph vm["Google Cloud VM · Docker Compose"]
         traefik["Traefik<br/>HTTPS · routing"]
         next["Next.js server"]
 
-        subgraph services["Backend services · Java 21 + Spring Boot 3"]
+        subgraph services["Backend services · Python 3.13 + FastAPI"]
             accounts["Accounts<br/>signup · login · JWT · approval · ratings"]
             trips["Trips<br/>trips · requests · seats · execution"]
             routing["Routing<br/>routes · matching · pickups · detours"]
@@ -86,7 +86,7 @@ flowchart TB
 
 ## Communication boundaries
 
-- **Browser to backend:** REST over HTTPS and WebSockets (STOMP) over WSS, always through Traefik. One origin, so no CORS in production.
+- **Browser to backend:** REST over HTTPS and WebSockets (JSON messages) over WSS, always through Traefik. One origin, so no CORS in production.
 - **Authentication:** Accounts issues short-lived JWTs. **Each service validates tokens itself** using Accounts' public key (JWKS). Traefik does no auth.
 - **Synchronous calls between services:** REST over the private Docker network to `/internal/…` endpoints, which Traefik never exposes. Used when the caller needs an answer immediately (e.g. Trips asking Routing for a detour quote).
 - **Asynchronous events:** published to **Redis Streams** through a **transactional outbox** (the event is saved in the same database transaction as the change, then relayed). Each consuming service reads with its own consumer group and processes events idempotently, so events survive restarts and duplicates are harmless.
@@ -129,7 +129,7 @@ sequenceDiagram
 
 ## Deployment
 
-Everything runs as Docker containers on one **Oracle Cloud Always Free VM** (ARM64), started with Docker Compose. Every merge to `develop` triggers GitHub Actions to build `linux/arm64` images, push them to GitHub Container Registry, and redeploy the live site. Tagged releases on `main` publish versioned images to DockerHub. The same Compose setup runs the whole system locally with one command. See [ADR 0007](adr/0007-hosting-and-environments.md).
+Everything runs as Docker containers on one **Google Cloud Compute Engine VM** (e2-standard-2, Ubuntu 24.04, Toronto region), started with Docker Compose. Every merge to `develop` triggers GitHub Actions to run the tests, build `linux/amd64` images, and push them to GitHub Container Registry. Every merge to `main` (a release or hotfix) deploys those images to the live site and runs a smoke test, and release tags publish versioned images to DockerHub. The same Compose setup runs the whole system locally with one command. See [ADR 0016](adr/0016-google-cloud-hosting-and-deploy-from-main.md) and the [server setup guide](../deployment/server-setup.md).
 
 ## How the design supports our non-functional expectations
 
