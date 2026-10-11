@@ -48,6 +48,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 - [Technology stack](docs/architecture/tech-stack.md)
 - [Architecture](docs/architecture/architecture.md)
 - [Architecture Decision Records](docs/architecture/adr/README.md)
+- [Monorepo structure](docs/architecture/monorepo.md)
 
 **Deployment**
 
@@ -85,6 +86,6 @@ Run one service (each has its own port, from 8001 for Accounts to 8005 for Notif
 uv run --package trips uvicorn trips.infrastructure.main:app --reload --port 8002
 ```
 
-Then open http://localhost:8002/health or the API docs at http://localhost:8002/docs. Each service's README lists its port and how to check its architecture rules.
+Then open http://localhost:8002/health or the API docs at http://localhost:8002/docs. Each service's README lists its port and how to check its architecture rules. For how the repo is laid out and how to work in it, see [Monorepo structure](docs/architecture/monorepo.md).
 
 The whole system (databases, Redis, OSRM, the gateway and every service) will run with a single Docker Compose command once [#105](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/105) lands. Full instructions will be in the local setup guide.
