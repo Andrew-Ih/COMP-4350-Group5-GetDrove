@@ -1,7 +1,9 @@
 # ADR 0007: Oracle Cloud Always Free VM, one live environment from develop
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0016](0016-google-cloud-hosting-and-deploy-from-main.md)
 - **Date:** 2026-10-04
+
+> **Superseded.** Hosting moved to a Google Cloud VM, and the live site now deploys from `main`. See [ADR 0016](0016-google-cloud-hosting-and-deploy-from-main.md). This record is kept for history.
 
 ## Context
 

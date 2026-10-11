@@ -1,6 +1,6 @@
 # ADR 0013: Testing, contract, and code-quality tools
 
-- **Status:** Accepted
+- **Status:** Accepted; backend tools superseded by [ADR 0017](0017-python-fastapi-backend.md)
 - **Date:** 2026-10-04
 
 ## Context

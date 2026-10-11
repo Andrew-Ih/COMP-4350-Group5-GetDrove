@@ -1,7 +1,9 @@
 # ADR 0003: Java 21 + Spring Boot 3 for all backend services
 
-- **Status:** Accepted
+- **Status:** Superseded by [ADR 0017](0017-python-fastapi-backend.md)
 - **Date:** 2026-10-04
+
+> **Superseded.** The team switched the backend to Python and FastAPI. See [ADR 0017](0017-python-fastapi-backend.md). This record is kept for history.
 
 ## Context
 
