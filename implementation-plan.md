@@ -416,9 +416,11 @@ Rules enforced by `eslint-plugin-boundaries`: `app/` pages may import only from 
 | **Product goal** | Walking skeleton + first vertical slice: sign up, post a trip, find trips that pass near you | The core loop: request, detour, accept, pickup points, payment holds, notifications | The ride and trust: trip-day status, chat, completion, capture, ratings, safety, earnings |
 | **Engineering goal** | CI, tests with coverage, API docs, live deployment | Regression suite, CD (`develop` → images, `main` → live site), cross-team testing | Load test, profiling, security scanning, DockerHub, final docs |
 | **Release closing the sprint** | `v0.1.0` | `v0.2.0` | `v1.0.0` |
+| **Stories** | 3 + new login story | 11 | 9 |
 
 The live site deploys from `main`, so it only changes when we release. Besides the release that closes each sprint, make interim releases whenever a useful set of stories is done on `develop`, and always before a demo meeting.
-| **Stories** | 3 + new login story | 11 | 9 |
+
+Each sprint submission is also tagged on `main` as `sprint-1`, `sprint-2`, `sprint-3` (`sprint-0` already marks the planning submission), and each `sprintN.md` links to its tag. See [Milestone submission tags](docs/process/git-workflow.md#milestone-submission-tags).
 
 Stories per sprint (by issue title):
 
@@ -1399,6 +1401,7 @@ flowchart LR
 - **Release tags publish to DockerHub** (the Sprint 3 requirement).
 - **One environment only.** A separate staging environment was considered and rejected: it doubles server resources and work without earning marks. Explain this choice, and why the live site tracks `main`, in deployment.md and sprint2.md.
 - **Rolling back:** redeploy the previous release tag's images, then fix with a hotfix.
+- **`main` is the repository's default branch** (it shows the released code and the `sprint-N` submission tags). Because of this, new pull requests default to `main`: authors change the base to `develop` for work branches, and `Closes #N` only auto-closes issues when a release reaches `main`, so authors close issues after merging into `develop`.
 
 ### 6.5 Docker images
 

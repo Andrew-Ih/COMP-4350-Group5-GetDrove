@@ -9,7 +9,8 @@ Every change reaches `develop` or `main` through a reviewed pull request. Branch
 - Open a pull request as soon as the work is ready for review. Use a **draft** pull request if you want early feedback.
 - Keep pull requests small, ideally one task each. Large pull requests are slow to review and more likely to hide bugs.
 - Work branches (`feature/*`, `fix/*`, etc.) target `develop`. Release and hotfix branches target `main`, followed by a second pull request into `develop`, as described in the [Git workflow](git-workflow.md).
-- Fill in the pull request template, including `Closes #<issue-number>`. Note that GitHub only closes the issue automatically when merging into the default branch (`develop`); close it manually otherwise.
+- **Check the base branch.** `main` is the default branch, so GitHub suggests `main` for every new pull request. For work branches, change the base to `develop` before creating the pull request. Reviewers: if a work-branch pull request targets `main`, ask the author to change the base (use **Edit** next to the title) before approving.
+- Fill in the pull request template, including `Closes #<issue-number>`. GitHub only closes the issue automatically when the change reaches the default branch (`main`), which happens at the next release. After merging into `develop`, close the issue yourself.
 - All automated checks (build, tests, linting) must pass.
 - At least **one approval** from another team member is required before merging.
 - The **author** merges their own work-branch pull request into `develop` after approval, then deletes the branch. Release and hotfix pull requests into `main` are merged by the GitHub Manager (Andrew); because merging into `main` deploys the live site, check the deploy workflow passes afterwards.
