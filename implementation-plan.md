@@ -1302,8 +1302,8 @@ Rules: payloads carry IDs and the minimum data consumers need (never home addres
 
 ### 5.6 Logging and observability
 
-- Structured JSON logs (structlog) with `service`, `level`, `correlationId`, `userId` (never emails or locations).
-- A correlation-ID middleware reads or creates `X-Request-Id`, passes it to outbound HTTP calls and event envelopes, so one request can be followed across services with `docker compose logs | grep <id>`.
+- Structured JSON logs (Python's standard `logging`, ADR 0019) with `service`, `level`, `requestId`, `userId` (never emails or locations).
+- A correlation-ID middleware reads or creates `X-Request-ID`, passes it to outbound HTTP calls and event envelopes, so one request can be followed across services with `docker compose logs | grep <id>`.
 - A `/health` endpoint per service (used by Compose health checks, CD smoke tests, and Traefik) and Prometheus metrics at `/metrics` (prometheus-fastapi-instrumentator). Prometheus + Grafana are optional; useful for the Sprint 3 profiling story but not required.
 
 ### 5.7 How the frontend talks to the backend

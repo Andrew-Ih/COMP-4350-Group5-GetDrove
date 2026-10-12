@@ -44,6 +44,15 @@ See the [technology stack](../architecture/tech-stack.md): Python 3.13 + FastAPI
 - Every service has a README covering what it does, how to run it, its API, and the tools its owner chose and why.
 - The whole system must keep running locally with a single Docker Compose command. If you add a service or dependency, add it to the Compose file.
 
+## Errors and logging
+
+- Every service calls `install(app, service="<name>")` from `common_web.app`, which gives all services the same error format, request IDs and logging. See [libs/common-web](../../libs/common-web/README.md).
+- To return an error, raise a subclass of a `common_web` error (`NotFoundError`, `ConflictError`, `ForbiddenError`, `InvalidInputError`, …) with its own `code`, e.g. `NoSeatsLeftError(ConflictError)` with `code = "no_seats_left"`. Don't raise FastAPI's `HTTPException` from domain or application code.
+- Error `code` values are part of the API contract: the frontend checks them, so don't rename them without telling the team.
+- Log with Python's `logging` (`logger = logging.getLogger(__name__)`), adding fields with `extra={...}` ([ADR 0019](../architecture/adr/0019-standard-library-logging.md)).
+- **Never log personal data**: no emails, names, addresses, locations, passwords or tokens. Log IDs instead.
+- When calling another service, send the current request ID (`common_web.current_request_id()`) as the `X-Request-ID` header; when publishing an event, use it as the `correlation_id`.
+
 ## Documentation
 
 Documentation is updated in the same pull request as the code it describes.
