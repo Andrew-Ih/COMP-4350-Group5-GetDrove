@@ -133,6 +133,7 @@ services:
       TRIPS_ROUTING_URL: http://routing:8000
       TRIPS_PAYMENTS_URL: http://payments:8000
       TRIPS_ACCOUNTS_URL: http://accounts:8000
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
       - traefik.http.routers.trips.rule=PathPrefix(`/api/trips`) && !PathPrefix(`/api/trips/internal`)
@@ -151,6 +152,7 @@ services:
     environment:
       ROUTING_DATABASE_URL: postgresql+asyncpg://routing:${ROUTING_DB_PASSWORD:-routing}@postgres:5432/getdrove
       ROUTING_REDIS_URL: redis://redis:6379/0
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
       - traefik.http.routers.routing.rule=PathPrefix(`/api/routing`) && !PathPrefix(`/api/routing/internal`)
@@ -169,6 +171,7 @@ services:
     environment:
       PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD:-payments}@postgres:5432/getdrove
       PAYMENTS_REDIS_URL: redis://redis:6379/0
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
       - traefik.http.routers.payments.rule=PathPrefix(`/api/payments`) && !PathPrefix(`/api/payments/internal`)
@@ -189,6 +192,7 @@ services:
       NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
       NOTIFICATIONS_SMTP_HOST: mailpit
       NOTIFICATIONS_SMTP_PORT: "1025"
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
       - traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`) && !PathPrefix(`/api/notifications/internal`)

@@ -44,6 +44,14 @@ See the [technology stack](../architecture/tech-stack.md): Python 3.13 + FastAPI
 - Every service has a README covering what it does, how to run it, its API, and the tools its owner chose and why.
 - The whole system must keep running locally with a single Docker Compose command. If you add a service or dependency, add it to the Compose file.
 
+## Authentication
+
+- Every service calls `install_security(app)` from `common_security.dependencies` after `install(app, ...)`. See [libs/common-security](../../libs/common-security/README.md).
+- Endpoints that need a logged-in user take `user: AuthenticatedUser`; admin-only endpoints use `Depends(require_role("admin"))`. Never read or decode the `Authorization` header yourself.
+- Use cases receive the user's ID (or `CurrentUser`), not the token.
+- Test protected endpoints with `common_security.testing.TestAuth`, which issues test tokens without running Accounts.
+- Never log tokens, and never commit a private key: Accounts' signing key comes from `ACCOUNTS_JWT_PRIVATE_KEY` (GitHub Secrets) in production.
+
 ## Errors and logging
 
 - Every service calls `install(app, service="<name>")` from `common_web.app`, which gives all services the same error format, request IDs and logging. See [libs/common-web](../../libs/common-web/README.md).

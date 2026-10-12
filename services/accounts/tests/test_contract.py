@@ -6,6 +6,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from accounts.infrastructure.main import create_app
+from common_security.testing import TestAuth
 
 SIGNUP = {
     "email": "ada.lovelace@myumanitoba.ca",
@@ -17,7 +18,13 @@ SIGNUP = {
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    return AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test")
+    """A client logged in as a test user (common_security.testing)."""
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+    return AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
+    )
 
 
 def test_spec_documents_the_sprint_1_endpoints() -> None:
@@ -45,7 +52,6 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
         ("POST", "/auth/refresh", {}),
         ("POST", "/auth/logout", {}),
         ("GET", "/me", {}),
-        ("GET", "/.well-known/jwks.json", {}),
     ],
 )
 async def test_valid_requests_reach_the_not_yet_implemented_handler(

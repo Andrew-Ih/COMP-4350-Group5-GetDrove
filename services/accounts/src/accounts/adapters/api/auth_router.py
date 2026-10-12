@@ -1,7 +1,8 @@
 """Accounts API (Sprint 1 contract, issue #108): sign up, verify, log in, refresh, log out,
 the current user, and the public keys other services use to check tokens.
 
-Handlers return 501 Not Implemented until the real code lands (#3-#6, #90, #91).
+Handlers return 501 Not Implemented until the real code lands (#3-#6, #90); the JWKS
+endpoint is implemented (#91).
 Paths are relative to the gateway prefix /api/accounts, except the JWKS endpoint, which
 other services also call directly at http://accounts:8000/.well-known/jwks.json.
 
@@ -14,8 +15,7 @@ Tokens:
 
 from typing import Annotated, Any, NoReturn
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, Cookie, HTTPException, Request
 
 from accounts.adapters.api.schemas import (
     JwkSet,
@@ -28,13 +28,13 @@ from accounts.adapters.api.schemas import (
     User,
     VerifyEmailRequest,
 )
+from accounts.adapters.security.signing_key import SigningKey
+from common_security.dependencies import AuthenticatedUser
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
 users_router = APIRouter(tags=["users"])
 keys_router = APIRouter(tags=["keys"])
 
-bearer = HTTPBearer(auto_error=False, description="Access token from POST /auth/login.")
-Token = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 RefreshCookie = Annotated[
     str | None,
     Cookie(alias="refresh_token", description="Set by login and refresh; HttpOnly."),
@@ -159,7 +159,7 @@ async def logout(refresh_token: RefreshCookie = None) -> None:
     summary="The logged-in user",
     responses={401: _problem("Missing or invalid access token", "unauthorized")},
 )
-async def me(token: Token) -> User:
+async def me(user: AuthenticatedUser) -> User:
     _not_implemented()
 
 
@@ -172,5 +172,6 @@ async def me(token: Token) -> User:
     description="Other services fetch this (and cache it) to check access tokens without "
     "calling Accounts on every request.",
 )
-async def jwks() -> JwkSet:
-    _not_implemented()
+async def jwks(request: Request) -> JwkSet:
+    signing_key: SigningKey = request.app.state.signing_key
+    return JwkSet.model_validate(signing_key.jwks())

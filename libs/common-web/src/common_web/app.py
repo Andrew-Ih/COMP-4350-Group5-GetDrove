@@ -142,7 +142,13 @@ async def _domain_error_handler(request: Request, exc: Exception) -> JSONRespons
     if isinstance(error, InvalidInputError) and error.errors:
         extra["errors"] = [{"field": e.field, "message": e.message} for e in error.errors]
     return _problem(
-        request, error.status, code=error.code, title=error.title, detail=error.detail, **extra
+        request,
+        error.status,
+        code=error.code,
+        title=error.title,
+        detail=error.detail,
+        headers=error.headers,
+        **extra,
     )
 
 

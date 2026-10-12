@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from common_security.testing import TestAuth
 from routing.infrastructure.main import create_app
 
 TRIP_ID = "5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11"
@@ -13,7 +14,13 @@ POINT = {"lat": 49.88, "lng": -97.14}
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    return AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test")
+    """A client logged in as a test user (common_security.testing)."""
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+    return AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
+    )
 
 
 def test_spec_documents_the_sprint_1_endpoints() -> None:

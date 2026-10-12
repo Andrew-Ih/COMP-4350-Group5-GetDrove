@@ -573,7 +573,7 @@
     "securitySchemes": {
       "HTTPBearer": {
         "type": "http",
-        "description": "Access token from Accounts.",
+        "description": "Access token from POST /api/accounts/auth/login (`Authorization: Bearer <token>`).",
         "scheme": "bearer"
       }
     }

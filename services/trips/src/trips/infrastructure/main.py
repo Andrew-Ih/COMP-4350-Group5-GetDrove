@@ -5,6 +5,7 @@ To run it locally, see the service README.
 
 from fastapi import FastAPI
 
+from common_security.dependencies import install_security
 from common_web.app import install
 from trips.adapters.api import health, trips_router
 
@@ -15,6 +16,7 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
     install(app, service="trips")
+    install_security(app)
     app.include_router(health.router)
     app.include_router(trips_router.router)
     return app

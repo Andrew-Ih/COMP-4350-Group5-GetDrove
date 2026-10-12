@@ -8,22 +8,14 @@ Paths here are relative to the gateway prefix /api/trips.
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime
 
+from common_security.dependencies import AuthenticatedUser
 from trips.adapters.api.schemas import PostTripRequest, Problem, SearchResult, Trip
 from trips.domain.values import Direction
 
 router = APIRouter(tags=["trips"])
-
-# Documents that every endpoint needs a logged-in user. Token validation is added by
-# common-security (#91); until then the header is accepted but not checked.
-bearer = HTTPBearer(
-    auto_error=False,
-    description="Access token from the Accounts service (`Authorization: Bearer <token>`).",
-)
-Token = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 
 
 def _problem(description: str, example_code: str) -> dict[str, Any]:
@@ -56,7 +48,7 @@ def _not_implemented() -> NoReturn:
         503: _problem("The route couldn't be computed right now", "routing_unavailable"),
     },
 )
-async def post_trip(body: PostTripRequest, token: Token) -> Trip:
+async def post_trip(body: PostTripRequest, user: AuthenticatedUser) -> Trip:
     _not_implemented()
 
 
@@ -68,7 +60,7 @@ async def post_trip(body: PostTripRequest, token: Token) -> Trip:
     responses={**UNAUTHORIZED, **INVALID},
 )
 async def my_trips(
-    token: Token, role: Annotated[Literal["driver", "rider"], Query()] = "driver"
+    user: AuthenticatedUser, role: Annotated[Literal["driver", "rider"], Query()] = "driver"
 ) -> list[Trip]:
     _not_implemented()
 
@@ -89,7 +81,7 @@ async def my_trips(
     },
 )
 async def search_trips(
-    token: Token,
+    user: AuthenticatedUser,
     lat: Annotated[float, Query(ge=-90, le=90, description="Rider's latitude.")],
     lng: Annotated[float, Query(ge=-180, le=180, description="Rider's longitude.")],
     direction: Annotated[Direction, Query()],
@@ -112,5 +104,5 @@ async def search_trips(
         404: _problem("No trip with this ID", "trip_not_found"),
     },
 )
-async def get_trip(trip_id: UUID, token: Token) -> Trip:
+async def get_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
     _not_implemented()
