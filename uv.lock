@@ -363,6 +363,12 @@ source = { editable = "libs/common-security" }
 name = "common-web"
 version = "0.1.0"
 source = { editable = "libs/common-web" }
+dependencies = [
+    { name = "fastapi" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "fastapi", specifier = ">=0.118" }]
 
 [[package]]
 name = "coverage"
