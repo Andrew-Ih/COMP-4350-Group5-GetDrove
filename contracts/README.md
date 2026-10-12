@@ -5,7 +5,7 @@ The agreed interfaces between services and the frontend (issue #108). A contract
 | Folder | What's in it |
 |---|---|
 | `openapi/<service>.json` | Each service's OpenAPI spec, generated from its code. Paths are relative to `/api/<service>` (the spec's `servers` entry). |
-| `events/` | JSON Schemas for events on Redis Streams (added with the first shared events). |
+| `events/<event>.v<N>.json` | JSON Schema of each shared event, generated from `libs/events/src/events/catalog/`. |
 
 You can also browse each service's contract in Swagger UI: `http://localhost/api/<service>/docs` with Docker Compose running, or `http://localhost:<port>/docs` when running one service with uv.
 
@@ -44,13 +44,7 @@ You can also browse each service's contract in Swagger UI: `http://localhost/api
 | Contract | Service | Consumers | Status |
 |---|---|---|---|
 | Post trip, my trips, trip detail, search | Trips | Frontend | Written |
-| Signup, verify, resend, login, refresh, logout, `GET /me`, JWKS | Accounts | Frontend, all services (JWKS) | To do |
-| `UserRegistered` event | Accounts | Notifications | To do |
-| Compute route, find matches, route geometry | Routing | Trips, frontend (geometry) | To do |
-| Price quote | Payments | Trips, frontend | To do |
-
-What Trips needs from the others (proposals for their owners to confirm):
-
-- **Routing** `POST /internal/routes`: `{tripId, origin, destination}` returns `{distanceMeters, durationSeconds}`.
-- **Routing** `POST /internal/matches`: `{rider: {lat, lng}, tripIds: [...]}` returns, per matching trip, `{tripId, pickup: {label, lat, lng}, walkSeconds, riderDistanceMeters}`.
-- **Payments** `POST /internal/quotes`: `{distanceMeters}` returns `{amountCents, currency, explanation}`.
+| Signup, verify, resend, login, refresh, logout, `GET /me`, JWKS | Accounts | Frontend, all services (JWKS) | Written |
+| `UserRegistered` event (`libs/events/src/events/catalog/`) | Accounts | Notifications | Written |
+| Compute route, find matches, route geometry | Routing | Trips, frontend (geometry) | Written |
+| Price quote (internal) | Payments | Trips | Written |

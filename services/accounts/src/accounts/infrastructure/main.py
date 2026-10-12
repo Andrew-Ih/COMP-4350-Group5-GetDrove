@@ -5,7 +5,7 @@ To run it locally, see the service README.
 
 from fastapi import FastAPI
 
-from accounts.adapters.api import health
+from accounts.adapters.api import auth_router, health
 
 
 def create_app() -> FastAPI:
@@ -14,6 +14,9 @@ def create_app() -> FastAPI:
         version="0.1.0",
     )
     app.include_router(health.router)
+    app.include_router(auth_router.auth_router)
+    app.include_router(auth_router.users_router)
+    app.include_router(auth_router.keys_router)
     return app
 
 
