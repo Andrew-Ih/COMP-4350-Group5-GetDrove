@@ -6,7 +6,7 @@ To run it locally, see the service README.
 from fastapi import FastAPI
 
 from common_web.app import install
-from payments.adapters.api import health
+from payments.adapters.api import health, payments_router
 
 
 def create_app() -> FastAPI:

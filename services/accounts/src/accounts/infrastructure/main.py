@@ -5,7 +5,7 @@ To run it locally, see the service README.
 
 from fastapi import FastAPI
 
-from accounts.adapters.api import health
+from accounts.adapters.api import auth_router, health
 from common_web.app import install
 
 
