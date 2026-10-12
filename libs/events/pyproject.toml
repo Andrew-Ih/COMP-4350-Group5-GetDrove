@@ -1,9 +1,13 @@
 [project]
 name = "events"
 version = "0.1.0"
-description = "Event envelope, transactional outbox and Redis Streams consumer helpers (issue #104)."
+description = "Event envelope, transactional outbox and Redis Streams consumer (issue #104)."
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "pydantic>=2.11",
+    "sqlalchemy[asyncio]>=2.0.43",
+    "redis>=6.0",
+]
 
 [build-system]
 requires = ["uv_build>=0.8,<0.14"]
