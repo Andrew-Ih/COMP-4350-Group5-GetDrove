@@ -1,0 +1,202 @@
+# Local development stack for GetDrove (issue #105).
+#
+# Run from the repo root:   docker compose up --build
+# Gateway (all APIs):       http://localhost/api/<service>/...   e.g. http://localhost/api/trips/health
+# Swagger UI per service:   http://localhost/api/<service>/docs
+# Traefik dashboard:        http://localhost:8080
+# Mailpit (caught emails):  http://localhost:8025
+#
+# Every value below has a local default, so no .env file is needed. To override one,
+# set it in a .env file in the repo root (gitignored). Never put real secrets here.
+
+x-service-defaults: &service-defaults
+  restart: unless-stopped
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=2)"]
+    interval: 10s
+    timeout: 3s
+    retries: 5
+    start_period: 20s
+
+services:
+  # ---------------------------------------------------------------- infrastructure
+
+  postgres:
+    # PostGIS images are built for x86-64 only; on Apple silicon Docker runs them through
+    # emulation, which is slower but works. The live server is x86-64, so it runs natively.
+    image: postgis/postgis:17-3.5
+    platform: linux/amd64
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: getdrove
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      # One database user per service (created by postgres/init). Local defaults only.
+      ACCOUNTS_DB_PASSWORD: ${ACCOUNTS_DB_PASSWORD:-accounts}
+      TRIPS_DB_PASSWORD: ${TRIPS_DB_PASSWORD:-trips}
+      ROUTING_DB_PASSWORD: ${ROUTING_DB_PASSWORD:-routing}
+      PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:-payments}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:-notifications}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432" # so `uv run alembic ...` and local services can reach it
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Mounted as a single file so the PostGIS image's own init scripts still run.
+      - ./postgres/init/20-create-service-schemas.sh:/docker-entrypoint-initdb.d/20-create-service-schemas.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d getdrove"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"] # keep events on disk across restarts
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mailpit:
+    # Catches every email the app sends; nothing reaches a real inbox.
+    image: axllent/mailpit:v1.27
+    restart: unless-stopped
+    ports:
+      - "${MAILPIT_UI_PORT:-8025}:8025" # web UI
+      - "${MAILPIT_SMTP_PORT:-1025}:1025" # SMTP, for services running outside Docker
+
+  traefik:
+    image: traefik:v3.6 # v3.6+ needed for Docker Engine 29 and newer
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --api.dashboard=true
+      - --api.insecure=true # dashboard on :8080, local only
+      - --ping=true
+    ports:
+      - "${GATEWAY_PORT:-80}:80"
+      - "${TRAEFIK_DASHBOARD_PORT:-8080}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # OSRM (routing engine) is added by the OSRM spike (#23), once the Winnipeg map data
+  # can be prepared. Until then Routing uses a stub adapter.
+
+  # ---------------------------------------------------------------- services
+  #
+  # Each service is reached through Traefik at /api/<service>. Traefik strips that prefix,
+  # so inside the service the routes are e.g. /health; --root-path makes Swagger UI work
+  # through the gateway. Paths under /api/<service>/internal are NOT exposed: they are only
+  # for service-to-service calls inside Docker (e.g. http://routing:8000/internal/...).
+
+  accounts:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infra/docker/python-service.Dockerfile
+      args:
+        SERVICE: accounts
+    environment:
+      ACCOUNTS_DATABASE_URL: postgresql+asyncpg://accounts:${ACCOUNTS_DB_PASSWORD:-accounts}@postgres:5432/getdrove
+      ACCOUNTS_REDIS_URL: redis://redis:6379/0
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.accounts.rule=PathPrefix(`/api/accounts`) && !PathPrefix(`/api/accounts/internal`)
+      - traefik.http.routers.accounts.entrypoints=web
+      - traefik.http.routers.accounts.middlewares=accounts-strip
+      - traefik.http.middlewares.accounts-strip.stripprefix.prefixes=/api/accounts
+      - traefik.http.services.accounts.loadbalancer.server.port=8000
+
+  trips:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infra/docker/python-service.Dockerfile
+      args:
+        SERVICE: trips
+    environment:
+      TRIPS_DATABASE_URL: postgresql+asyncpg://trips:${TRIPS_DB_PASSWORD:-trips}@postgres:5432/getdrove
+      TRIPS_REDIS_URL: redis://redis:6379/0
+      TRIPS_ROUTING_URL: http://routing:8000
+      TRIPS_PAYMENTS_URL: http://payments:8000
+      TRIPS_ACCOUNTS_URL: http://accounts:8000
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.trips.rule=PathPrefix(`/api/trips`) && !PathPrefix(`/api/trips/internal`)
+      - traefik.http.routers.trips.entrypoints=web
+      - traefik.http.routers.trips.middlewares=trips-strip
+      - traefik.http.middlewares.trips-strip.stripprefix.prefixes=/api/trips
+      - traefik.http.services.trips.loadbalancer.server.port=8000
+
+  routing:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infra/docker/python-service.Dockerfile
+      args:
+        SERVICE: routing
+    environment:
+      ROUTING_DATABASE_URL: postgresql+asyncpg://routing:${ROUTING_DB_PASSWORD:-routing}@postgres:5432/getdrove
+      ROUTING_REDIS_URL: redis://redis:6379/0
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.routing.rule=PathPrefix(`/api/routing`) && !PathPrefix(`/api/routing/internal`)
+      - traefik.http.routers.routing.entrypoints=web
+      - traefik.http.routers.routing.middlewares=routing-strip
+      - traefik.http.middlewares.routing-strip.stripprefix.prefixes=/api/routing
+      - traefik.http.services.routing.loadbalancer.server.port=8000
+
+  payments:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infra/docker/python-service.Dockerfile
+      args:
+        SERVICE: payments
+    environment:
+      PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD:-payments}@postgres:5432/getdrove
+      PAYMENTS_REDIS_URL: redis://redis:6379/0
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.payments.rule=PathPrefix(`/api/payments`) && !PathPrefix(`/api/payments/internal`)
+      - traefik.http.routers.payments.entrypoints=web
+      - traefik.http.routers.payments.middlewares=payments-strip
+      - traefik.http.middlewares.payments-strip.stripprefix.prefixes=/api/payments
+      - traefik.http.services.payments.loadbalancer.server.port=8000
+
+  notifications:
+    <<: *service-defaults
+    build:
+      context: ..
+      dockerfile: infra/docker/python-service.Dockerfile
+      args:
+        SERVICE: notifications
+    environment:
+      NOTIFICATIONS_DATABASE_URL: postgresql+asyncpg://notifications:${NOTIFICATIONS_DB_PASSWORD:-notifications}@postgres:5432/getdrove
+      NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
+      NOTIFICATIONS_SMTP_HOST: mailpit
+      NOTIFICATIONS_SMTP_PORT: "1025"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`) && !PathPrefix(`/api/notifications/internal`)
+      - traefik.http.routers.notifications.entrypoints=web
+      - traefik.http.routers.notifications.middlewares=notifications-strip
+      - traefik.http.middlewares.notifications-strip.stripprefix.prefixes=/api/notifications
+      - traefik.http.services.notifications.loadbalancer.server.port=8000
+
+volumes:
+  postgres-data:
+  redis-data:
