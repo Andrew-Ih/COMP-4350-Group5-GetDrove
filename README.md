@@ -55,6 +55,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 **Deployment**
 
 - [Server setup](docs/deployment/server-setup.md)
+- [Local Docker setup](docs/deployment/docker-setup.md)
 
 **Team process**
 
@@ -90,4 +91,12 @@ uv run --package trips uvicorn trips.infrastructure.main:app --reload --port 800
 
 Then open http://localhost:8002/health or the API docs at http://localhost:8002/docs. Each service's README lists its port and how to check its architecture rules. For how the repo is laid out and how to work in it, see [Monorepo structure](docs/architecture/monorepo.md).
 
-The whole system (databases, Redis, OSRM, the gateway and every service) will run with a single Docker Compose command once [#105](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/105) lands. Full instructions will be in the local setup guide.
+### Run the whole system with Docker
+
+With [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, from the repo root:
+
+```bash
+docker compose up --build
+```
+
+This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway and all five services. APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.

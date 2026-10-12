@@ -1,0 +1,6 @@
+# Lets you run the whole stack from the repo root with: docker compose up --build
+# The actual definition lives in infra/docker-compose.yml.
+name: getdrove
+
+include:
+  - infra/docker-compose.yml
