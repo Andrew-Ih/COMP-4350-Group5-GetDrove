@@ -1,0 +1,196 @@
+# Production stack for the live server (issue #109).
+#
+# The deploy workflow (.github/workflows/deploy.yml) copies this file to /opt/getdrove on
+# the server, writes /opt/getdrove/.env from GitHub Secrets, and runs:
+#   docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+#
+# Differences from the local stack (infra/docker-compose.yml):
+#   - ready-built images from GitHub Container Registry, tagged with the commit (IMAGE_TAG)
+#   - passwords and keys come from .env on the server; there are no defaults
+#   - only Traefik is reachable from the internet (port 80); no database, Redis or
+#     dashboard ports, and no Mailpit
+#   - memory limits, log rotation, and Accounts runs in production mode
+# See docs/deployment/deployment.md.
+
+name: getdrove
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-service: &service
+  restart: unless-stopped
+  logging: *logging
+  mem_limit: 384m
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+services:
+  # ---------------------------------------------------------------- infrastructure
+
+  postgres:
+    image: postgis/postgis:17-3.5
+    platform: linux/amd64
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 1g
+    environment:
+      POSTGRES_DB: getdrove
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set in .env}
+      ACCOUNTS_DB_PASSWORD: ${ACCOUNTS_DB_PASSWORD:?set in .env}
+      TRIPS_DB_PASSWORD: ${TRIPS_DB_PASSWORD:?set in .env}
+      ROUTING_DB_PASSWORD: ${ROUTING_DB_PASSWORD:?set in .env}
+      PAYMENTS_DB_PASSWORD: ${PAYMENTS_DB_PASSWORD:?set in .env}
+      NOTIFICATIONS_DB_PASSWORD: ${NOTIFICATIONS_DB_PASSWORD:?set in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init/20-create-service-schemas.sh:/docker-entrypoint-initdb.d/20-create-service-schemas.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d getdrove"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 256m
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  traefik:
+    image: traefik:v3.6
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 128m
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --ping=true
+      - --accesslog=true
+    ports:
+      - "80:80"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  # ---------------------------------------------------------------- services
+  # Same routing as locally: /api/<service> → the service with the prefix stripped,
+  # /api/<service>/internal never exposed.
+
+  accounts:
+    <<: *service
+    image: ${IMAGE_REGISTRY:?set in .env}/getdrove-accounts:${IMAGE_TAG:?set in .env}
+    environment:
+      ACCOUNTS_DATABASE_URL: postgresql+asyncpg://accounts:${ACCOUNTS_DB_PASSWORD}@postgres:5432/getdrove
+      ACCOUNTS_REDIS_URL: redis://redis:6379/0
+      ACCOUNTS_ENVIRONMENT: production
+      ACCOUNTS_JWT_PRIVATE_KEY: ${ACCOUNTS_JWT_PRIVATE_KEY:?set in .env}
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.accounts.rule=PathPrefix(`/api/accounts`) && !PathPrefix(`/api/accounts/internal`)
+      - traefik.http.routers.accounts.entrypoints=web
+      - traefik.http.routers.accounts.middlewares=accounts-strip
+      - traefik.http.middlewares.accounts-strip.stripprefix.prefixes=/api/accounts
+      - traefik.http.services.accounts.loadbalancer.server.port=8000
+
+  trips:
+    <<: *service
+    image: ${IMAGE_REGISTRY}/getdrove-trips:${IMAGE_TAG}
+    environment:
+      TRIPS_DATABASE_URL: postgresql+asyncpg://trips:${TRIPS_DB_PASSWORD}@postgres:5432/getdrove
+      TRIPS_REDIS_URL: redis://redis:6379/0
+      TRIPS_ROUTING_URL: http://routing:8000
+      TRIPS_PAYMENTS_URL: http://payments:8000
+      TRIPS_ACCOUNTS_URL: http://accounts:8000
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.trips.rule=PathPrefix(`/api/trips`) && !PathPrefix(`/api/trips/internal`)
+      - traefik.http.routers.trips.entrypoints=web
+      - traefik.http.routers.trips.middlewares=trips-strip
+      - traefik.http.middlewares.trips-strip.stripprefix.prefixes=/api/trips
+      - traefik.http.services.trips.loadbalancer.server.port=8000
+
+  routing:
+    <<: *service
+    image: ${IMAGE_REGISTRY}/getdrove-routing:${IMAGE_TAG}
+    environment:
+      ROUTING_DATABASE_URL: postgresql+asyncpg://routing:${ROUTING_DB_PASSWORD}@postgres:5432/getdrove
+      ROUTING_REDIS_URL: redis://redis:6379/0
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.routing.rule=PathPrefix(`/api/routing`) && !PathPrefix(`/api/routing/internal`)
+      - traefik.http.routers.routing.entrypoints=web
+      - traefik.http.routers.routing.middlewares=routing-strip
+      - traefik.http.middlewares.routing-strip.stripprefix.prefixes=/api/routing
+      - traefik.http.services.routing.loadbalancer.server.port=8000
+
+  payments:
+    <<: *service
+    image: ${IMAGE_REGISTRY}/getdrove-payments:${IMAGE_TAG}
+    environment:
+      PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD}@postgres:5432/getdrove
+      PAYMENTS_REDIS_URL: redis://redis:6379/0
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.payments.rule=PathPrefix(`/api/payments`) && !PathPrefix(`/api/payments/internal`)
+      - traefik.http.routers.payments.entrypoints=web
+      - traefik.http.routers.payments.middlewares=payments-strip
+      - traefik.http.middlewares.payments-strip.stripprefix.prefixes=/api/payments
+      - traefik.http.services.payments.loadbalancer.server.port=8000
+
+  notifications:
+    <<: *service
+    image: ${IMAGE_REGISTRY}/getdrove-notifications:${IMAGE_TAG}
+    environment:
+      NOTIFICATIONS_DATABASE_URL: postgresql+asyncpg://notifications:${NOTIFICATIONS_DB_PASSWORD}@postgres:5432/getdrove
+      NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
+      AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
+      # Production email (Brevo over SMTP, ADR 0010) is added with the verification email story.
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`) && !PathPrefix(`/api/notifications/internal`)
+      - traefik.http.routers.notifications.entrypoints=web
+      - traefik.http.routers.notifications.middlewares=notifications-strip
+      - traefik.http.middlewares.notifications-strip.stripprefix.prefixes=/api/notifications
+      - traefik.http.services.notifications.loadbalancer.server.port=8000
+
+  # ---------------------------------------------------------------- frontend
+
+  web:
+    image: ${IMAGE_REGISTRY}/getdrove-web:${IMAGE_TAG}
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 384m
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=PathPrefix(`/`)
+      - traefik.http.routers.web.priority=1
+      - traefik.http.routers.web.entrypoints=web
+      - traefik.http.services.web.loadbalancer.server.port=3000
+
+volumes:
+  postgres-data:
+  redis-data:

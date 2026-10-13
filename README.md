@@ -56,6 +56,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 **Deployment**
 
 - [Server setup](docs/deployment/server-setup.md)
+- [Deployment](docs/deployment/deployment.md)
 - [Local Docker setup](docs/deployment/docker-setup.md)
 
 **Team process**
