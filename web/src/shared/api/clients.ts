@@ -17,10 +17,15 @@ import type { paths as TripsPaths } from "./generated/trips";
  * Use them from client components (they call relative URLs) and from a feature's `api/`
  * folder, not directly from pages. Endpoints under /internal are for services only.
  */
-export const accountsApi = createClient<AccountsPaths>({ baseUrl: `${apiBaseUrl}/accounts` });
-export const tripsApi = createClient<TripsPaths>({ baseUrl: `${apiBaseUrl}/trips` });
-export const routingApi = createClient<RoutingPaths>({ baseUrl: `${apiBaseUrl}/routing` });
-export const paymentsApi = createClient<PaymentsPaths>({ baseUrl: `${apiBaseUrl}/payments` });
+// Looks up fetch on every request instead of keeping the one that existed at startup,
+// so the mock API (MSW), which replaces fetch in tests, intercepts these clients too.
+const fetch = (request: Request) => globalThis.fetch(request);
+
+export const accountsApi = createClient<AccountsPaths>({ baseUrl: `${apiBaseUrl}/accounts`, fetch });
+export const tripsApi = createClient<TripsPaths>({ baseUrl: `${apiBaseUrl}/trips`, fetch });
+export const routingApi = createClient<RoutingPaths>({ baseUrl: `${apiBaseUrl}/routing`, fetch });
+export const paymentsApi = createClient<PaymentsPaths>({ baseUrl: `${apiBaseUrl}/payments`, fetch });
 export const notificationsApi = createClient<NotificationsPaths>({
   baseUrl: `${apiBaseUrl}/notifications`,
+  fetch,
 });

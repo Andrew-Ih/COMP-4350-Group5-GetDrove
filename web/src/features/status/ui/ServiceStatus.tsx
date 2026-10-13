@@ -1,20 +1,26 @@
 "use client";
 
-import { useServiceHealth } from "../hooks/useServiceHealth";
-import { SERVICES } from "../model/services";
+import { Badge } from "@/shared/ui";
 
-const LABEL = { checking: "Checking…", up: "Up", down: "Down" } as const;
+import { useServiceHealth } from "../hooks/useServiceHealth";
+import { type Health, SERVICES } from "../model/services";
+
+const BADGE: Record<Health, { label: string; variant: "solid" | "dark" | "neutral" }> = {
+  checking: { label: "Checking…", variant: "neutral" },
+  up: { label: "Up", variant: "solid" },
+  down: { label: "Down", variant: "dark" },
+};
 
 /** Shows whether each backend service answers through the gateway. */
 export function ServiceStatus() {
   const health = useServiceHealth();
 
   return (
-    <ul className="status-list" aria-label="Service status">
+    <ul aria-label="Service status" className="divide-y divide-line">
       {SERVICES.map((service) => (
-        <li key={service} className="status-row">
-          <span className="status-name">{service}</span>
-          <span className={`status-badge status-${health[service]}`}>{LABEL[health[service]]}</span>
+        <li key={service} className="flex items-center justify-between py-3">
+          <span className="text-lg font-semibold capitalize">{service}</span>
+          <Badge variant={BADGE[health[service]].variant}>{BADGE[health[service]].label}</Badge>
         </li>
       ))}
     </ul>

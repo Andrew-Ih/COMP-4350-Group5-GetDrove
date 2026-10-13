@@ -24,6 +24,7 @@ With Docker Compose, the app also runs in its own container at **http://localhos
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server with hot reload |
+| `npm run dev:mock` | Dev server with the mock API, so pages work without the backend |
 | `npm run build` / `npm start` | Production build, then run it |
 | `npm run lint` | ESLint: Next.js rules, React hooks rules and the folder rules below |
 | `npm run typecheck` | TypeScript, strict |
@@ -41,7 +42,8 @@ web/
 ├── package.json / package-lock.json   # Dependencies; commit both
 ├── next.config.ts                     # Standalone output for Docker; /api proxy for npm run dev
 ├── eslint.config.mjs                  # Lint rules, including the folder rules
-├── vitest.config.mts                  # Unit tests
+├── postcss.config.mjs                 # Tailwind CSS
+├── vitest.config.mts                  # Unit and component tests (jsdom)
 ├── Dockerfile                         # deps → build → small runtime image (node server.js)
 ├── scripts/generate-api.mjs           # contracts/openapi/*.json → src/shared/api/generated/
 └── src/
@@ -54,7 +56,11 @@ web/
     │       ├── model/                 # Plain types and rules: no React, no network
     │       └── index.ts               # What other folders may use from this feature
     └── shared/
+        ├── ui/                        # Design system: Button, TextField, Card, Badge, BottomSheet, …
+        ├── map/                       # MapView (MapLibre), map colours, geo helpers, CAMPUS
+        ├── mocks/                     # Mock API (MSW) for building pages before endpoints exist
         ├── api/                       # Typed API clients, error handling, generated types
+        ├── lib/                       # Small helpers (cn)
         └── config/                    # Settings read from the environment
 ```
 
@@ -71,6 +77,34 @@ ESLint enforces these (the frontend's version of import-linter, using ESLint's b
 | `shared/` | `shared/` only |
 
 Outside a feature's own folder, import it as `@/features/<name>`, never `@/features/<name>/ui/...`, so each feature decides what it exposes in `index.ts`. Also, by convention, pages don't call APIs directly: they use a feature's components.
+
+## Styling and the design system
+
+Styling uses **Tailwind CSS**. The design tokens from the mockups (colours, font, corners, shadows) are defined once in `src/app/globals.css`, and Tailwind turns each into classes: `bg-brand`, `text-muted`, `border-line`, `rounded-lg`, `shadow-card`. Tailwind's default colours are switched off, so only our colours exist.
+
+- **See everything at [`/design`](http://localhost:3000/design)**: every colour, text style and shared component, and [`/design/layout`](http://localhost:3000/design/layout) for the panel + map layout (resize the window to see the mobile version).
+- **Use the shared components** from `@/shared/ui` before writing your own: `Button` (primary, dark, outline, secondary, soft), `TextField` (label, error, password toggle), `Card`, `Badge`, `Avatar`, `Eyebrow` ("PICKUP · 7:48 AM"), `PrivacyNote` (the lock line), `Logo`, `AppHeader`, `MapLayout`, `BottomSheet`.
+- **A new shared component** goes in `src/shared/ui/` with a test, an export in `index.ts`, and an example on `/design`.
+- **Font:** Figtree, self-hosted from npm (no request to Google). Icons: [Lucide](https://lucide.dev/icons/) (`lucide-react`).
+- **Mobile first:** write the phone layout first, then add `md:` classes for desktop. The mockups switch layout at tablet width (`md`, 768px).
+
+## Maps
+
+`MapView` from `@/shared/map` draws MapLibre with OpenFreeMap tiles (free, no key; ADR 0009), recoloured to match the mockups. It takes plain data and zooms to fit it:
+
+```tsx
+<MapView
+  routes={[{ id: "trip", coordinates: [[-97.1445, 49.8786], [-97.1366, 49.8075]], style: "primary" }]}
+  markers={[{ id: "pickup", lngLat: [-97.1445, 49.8786], kind: "pickup", label: "Pickup · 7:48 AM" }]}
+  area={{ center: [-97.1405, 49.8762], radiusMeters: 450 }}
+/>
+```
+
+Coordinates are `[longitude, latitude]` (GeoJSON order, the reverse of how they're usually said). `CAMPUS` is University Centre. The map loads in the browser only; give its container a height.
+
+## Building against the mock API
+
+`npm run dev:mock` (or `NEXT_PUBLIC_API_MOCKING=enabled` in `.env.local`) serves fake responses for the Sprint 1 endpoints from `src/shared/mocks/` using [MSW](https://mswjs.io/), so a page can be built before its endpoint exists. The fake data is typed against the contracts, so it can't drift from the real API. Special inputs trigger the error states (e.g. signing up with a non-UofM email); they're listed at the top of `src/shared/mocks/handlers.ts`. Add a handler there when you start a page whose endpoint isn't ready. Tests use the same handlers through `src/shared/mocks/server.ts`.
 
 ## Calling the backend
 
@@ -94,11 +128,22 @@ await unwrap(tripsApi.POST("/", { body: { /* typed */ } })); // typed request bo
 
 | Variable | Default | Used for |
 |---|---|---|
+| `NEXT_PUBLIC_API_MOCKING` | `disabled` | `enabled` serves the mock API in the browser |
 | `NEXT_PUBLIC_API_BASE_URL` | `/api` | Base URL of the APIs, as the browser sees it |
 | `API_PROXY_URL` | `http://localhost` | Where `npm run dev` forwards `/api/*` |
 
-Put local overrides in `web/.env.local` (gitignored). Anything starting with `NEXT_PUBLIC_` is built into the JavaScript that browsers download, so never put secrets in it.
+Put local overrides in `web/.env.local` (gitignored); `.env.example` lists them. Anything starting with `NEXT_PUBLIC_` is built into the JavaScript that browsers download, so never put secrets in it.
 
-## Still to do in #107
+## Libraries
 
-The infrastructure is in place. Still to come: design tokens from the mockups, shared UI components (Button, BottomSheet, …), the map component (MapLibre, client-only) and mock API responses for building pages before endpoints exist. The pages themselves (sign-up, login, post trip, …) belong to their own feature issues.
+| Need | Library |
+|---|---|
+| Styling | Tailwind CSS |
+| Data fetching and caching | TanStack Query (`QueryClientProvider` in `src/app/providers.tsx`) |
+| Bottom sheets | vaul |
+| Maps | MapLibre GL + react-map-gl |
+| Icons | lucide-react |
+| Mock API | MSW |
+| Tests | Vitest + Testing Library |
+
+Forms will use React Hook Form + Zod (from the plan); they're added with the first form, the sign-up page (#7).
