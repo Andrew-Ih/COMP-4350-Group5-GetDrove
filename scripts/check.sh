@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Runs every backend check that CI runs: format, lint, types, architecture rules and tests.
+# Runs every check that CI runs: the backend's format, lint, types, architecture rules and
+# tests, then the frontend's (API types, lint, types, tests).
 # Usage (from the repo root): bash scripts/check.sh
 set -euo pipefail
 
@@ -22,5 +23,12 @@ done
 
 echo "== Tests"
 uv run pytest
+
+echo "== Frontend (web/)"
+if [ -d web/node_modules ]; then
+  (cd web && npm run --silent check)
+else
+  echo "Skipped: run 'npm install' in web/ first."
+fi
 
 echo "All checks passed."

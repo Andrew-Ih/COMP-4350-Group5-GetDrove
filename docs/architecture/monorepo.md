@@ -2,7 +2,7 @@
 
 > Part of the [architecture docs](architecture.md). Back to [README](../../README.md).
 
-How the backend monorepo is laid out, what each part is for, and how to work in it. It was set up in issue #102. The decisions behind it are in [ADR 0001: Monorepo](adr/0001-monorepo.md) and [ADR 0017: Python and FastAPI backend](adr/0017-python-fastapi-backend.md).
+How the monorepo is laid out, what each part is for, and how to work in it. It was set up in issue #102; the frontend in `web/` was added in #107 and has its own guide, [web/README.md](../../web/README.md). The decisions behind it are in [ADR 0001: Monorepo](adr/0001-monorepo.md) and [ADR 0017: Python and FastAPI backend](adr/0017-python-fastapi-backend.md).
 
 ## 1. The big picture
 
@@ -26,15 +26,19 @@ COMP-4350-Group5-GetDrove/
 │   ├── common-web/         # (empty for now, #103) error responses, correlation IDs, logging
 │   ├── common-security/    # (empty for now, #91) JWT validation, current user, roles
 │   └── events/             # (empty for now, #104) event envelope, outbox, Redis Streams consumer
-└── services/
-    ├── accounts/           # port 8001
-    ├── trips/              # port 8002
-    ├── routing/            # port 8003
-    ├── payments/           # port 8004
-    └── notifications/      # port 8005
+├── services/
+│   ├── accounts/           # port 8001
+│   ├── trips/              # port 8002
+│   ├── routing/            # port 8003
+│   ├── payments/           # port 8004
+│   └── notifications/      # port 8005
+├── web/                    # Next.js + TypeScript frontend, managed with npm (see web/README.md)
+├── contracts/              # OpenAPI specs and event schemas (see contracts/README.md)
+├── infra/                  # Docker Compose, Traefik, Postgres init (see infra/README.md)
+└── .github/workflows/      # CI
 ```
 
-Not in the skeleton yet: `web/` (Next.js frontend, #107), `infra/` (Docker Compose, Traefik, Postgres init, #105), `.github/workflows/` (CI, #106), `contracts/` (OpenAPI specs and event schemas, #108).
+The frontend is not part of the uv workspace: it has its own `package.json` and `package-lock.json` in `web/`, and its own checks (ESLint, TypeScript, Vitest). Its API types are generated from `contracts/openapi`, so the backend and frontend share one source of truth for every endpoint.
 
 ## 3. Inside one service (Trips as the example)
 
@@ -186,4 +190,4 @@ After pulling changes that touch `pyproject.toml` or `uv.lock`, run `uv sync` ag
 | #103 common-web | Shared error responses (ProblemDetail), correlation IDs, JSON logging |
 | #91 common-security | JWT validation via the Accounts JWKS endpoint, current-user dependency |
 | #104 events | Event envelope, transactional outbox, Redis Streams consumer that handles each event once |
-| #107 Frontend scaffold | Next.js + TypeScript app in `web/` |
+| #107 Frontend scaffold | Next.js + TypeScript app in `web/` (done: see [web/README.md](../../web/README.md)) |

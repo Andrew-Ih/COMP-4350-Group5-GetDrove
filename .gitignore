@@ -53,6 +53,9 @@ test-results.xml
 node_modules/
 .next/
 out/
+next-env.d.ts
+*.tsbuildinfo
+web/coverage/
 
 # Environment and secrets
 .env
