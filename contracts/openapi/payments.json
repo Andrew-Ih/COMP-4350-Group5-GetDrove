@@ -1,0 +1,238 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GetDrove payments service",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/quotes": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Price a rider's share",
+        "description": "The rider's estimated cost for travelling `distanceMeters` in the car: $0.45 per km, rounded to the nearest 5 cents, with a $2.00 minimum, plus a one-line explanation. The quote shown when requesting is the amount charged unless the trip changes.",
+        "operationId": "quote_internal_quotes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuoteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Quote"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service"
+        ],
+        "title": "HealthOut"
+      },
+      "InvalidFieldOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "InvalidFieldOut"
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "instance": {
+            "type": "string",
+            "title": "Instance"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable error name.",
+            "examples": [
+              "invalid_input"
+            ]
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InvalidFieldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code"
+        ],
+        "title": "Problem",
+        "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
+      },
+      "Quote": {
+        "properties": {
+          "amountCents": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Amountcents",
+            "description": "$0.45 per km, rounded to the nearest 5 cents, at least $2.00.",
+            "examples": [
+              420
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "const": "CAD",
+            "title": "Currency",
+            "default": "CAD"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "One line for the rider.",
+            "examples": [
+              "9.3 km at $0.45/km"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "amountCents",
+          "explanation"
+        ],
+        "title": "Quote"
+      },
+      "QuoteRequest": {
+        "properties": {
+          "distanceMeters": {
+            "type": "integer",
+            "maximum": 200000.0,
+            "minimum": 0.0,
+            "title": "Distancemeters",
+            "description": "How far the rider travels in the car.",
+            "examples": [
+              9300
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "distanceMeters"
+        ],
+        "title": "QuoteRequest"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/payments"
+    }
+  ]
+}

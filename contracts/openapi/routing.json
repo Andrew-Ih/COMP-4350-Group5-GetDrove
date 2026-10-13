@@ -1,0 +1,586 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GetDrove routing service",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/routes": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Compute and store a trip's driving route",
+        "description": "Called by Trips when a trip is posted. Computes the driving route, stores it for matching, and returns its distance and duration. Target: under 3 seconds. Calling it again for the same trip replaces the route.",
+        "operationId": "compute_route_internal_routes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RouteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The routing engine (OSRM) is unavailable or too slow (code `routing_engine_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/matches": {
+      "post": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Find which trips pass near a rider",
+        "description": "From the candidate trips, returns those whose route passes within walking distance of the rider along the road network (a rider across a river with no nearby crossing doesn't match), with the best pickup point for each. Trips that don't match are left out; an empty list is a normal result.",
+        "operationId": "match_trips_internal_matches_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MatchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The routing engine (OSRM) is unavailable or too slow (code `routing_engine_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/trips/{trip_id}/geometry": {
+      "get": {
+        "tags": [
+          "routes"
+        ],
+        "summary": "A trip's route for the map",
+        "description": "The route as a GeoJSON LineString. From Sprint 2, riders get the route starting at their pickup point so the driver's start stays private; in Sprint 1 the full route is returned.",
+        "operationId": "route_geometry_trips__trip_id__geometry_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RouteFeature"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No route for this trip (code `route_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service"
+        ],
+        "title": "HealthOut"
+      },
+      "InvalidFieldOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "message": {
+            "type": "string",
+            "title": "Message"
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "InvalidFieldOut"
+      },
+      "LineString": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "LineString",
+            "title": "Type",
+            "default": "LineString"
+          },
+          "coordinates": {
+            "items": {
+              "prefixItems": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "number"
+                }
+              ],
+              "type": "array",
+              "maxItems": 2,
+              "minItems": 2
+            },
+            "type": "array",
+            "title": "Coordinates",
+            "description": "[lng, lat] pairs (GeoJSON order)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "coordinates"
+        ],
+        "title": "LineString"
+      },
+      "Match": {
+        "properties": {
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tripid"
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/Pickup",
+            "description": "Best point on the route for this rider."
+          },
+          "walkSeconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Walkseconds",
+            "description": "Walking time from the rider to the pickup."
+          },
+          "riderDistanceMeters": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Riderdistancemeters",
+            "description": "Distance the rider travels in the car (from the pickup to the trip's end)."
+          }
+        },
+        "type": "object",
+        "required": [
+          "tripId",
+          "pickup",
+          "walkSeconds",
+          "riderDistanceMeters"
+        ],
+        "title": "Match"
+      },
+      "MatchRequest": {
+        "properties": {
+          "rider": {
+            "$ref": "#/components/schemas/Point",
+            "description": "The rider's location. Used for matching only, never stored."
+          },
+          "tripIds": {
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "type": "array",
+            "maxItems": 500,
+            "title": "Tripids",
+            "description": "Candidate trips Trips has already filtered by time, seats and status."
+          }
+        },
+        "type": "object",
+        "required": [
+          "rider",
+          "tripIds"
+        ],
+        "title": "MatchRequest"
+      },
+      "MatchResponse": {
+        "properties": {
+          "matches": {
+            "items": {
+              "$ref": "#/components/schemas/Match"
+            },
+            "type": "array",
+            "title": "Matches",
+            "description": "Only trips whose route passes within walking distance."
+          }
+        },
+        "type": "object",
+        "required": [
+          "matches"
+        ],
+        "title": "MatchResponse"
+      },
+      "Pickup": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "Osborne St & River Ave"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "lat",
+          "lng"
+        ],
+        "title": "Pickup"
+      },
+      "Point": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "examples": [
+              49.8794
+            ]
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng",
+            "examples": [
+              -97.1663
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lng"
+        ],
+        "title": "Point"
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "instance": {
+            "type": "string",
+            "title": "Instance"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable error name.",
+            "examples": [
+              "routing_engine_unavailable"
+            ]
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InvalidFieldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code"
+        ],
+        "title": "Problem",
+        "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
+      },
+      "RouteFeature": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "Feature",
+            "title": "Type",
+            "default": "Feature"
+          },
+          "geometry": {
+            "$ref": "#/components/schemas/LineString"
+          },
+          "properties": {
+            "$ref": "#/components/schemas/RouteProperties"
+          }
+        },
+        "type": "object",
+        "required": [
+          "geometry",
+          "properties"
+        ],
+        "title": "RouteFeature",
+        "description": "A GeoJSON Feature (RFC 7946), ready for MapLibre."
+      },
+      "RouteProperties": {
+        "properties": {
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tripid"
+          },
+          "distanceMeters": {
+            "type": "integer",
+            "title": "Distancemeters"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "title": "Durationseconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tripId",
+          "distanceMeters",
+          "durationSeconds"
+        ],
+        "title": "RouteProperties"
+      },
+      "RouteRequest": {
+        "properties": {
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tripid"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/Point"
+          },
+          "destination": {
+            "$ref": "#/components/schemas/Point"
+          }
+        },
+        "type": "object",
+        "required": [
+          "tripId",
+          "origin",
+          "destination"
+        ],
+        "title": "RouteRequest"
+      },
+      "RouteResponse": {
+        "properties": {
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tripid"
+          },
+          "distanceMeters": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Distancemeters",
+            "examples": [
+              9800
+            ]
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Durationseconds",
+            "examples": [
+              1320
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "tripId",
+          "distanceMeters",
+          "durationSeconds"
+        ],
+        "title": "RouteResponse"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Access token from Accounts.",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/routing"
+    }
+  ]
+}

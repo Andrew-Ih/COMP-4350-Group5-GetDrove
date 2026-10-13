@@ -6,7 +6,7 @@ To run it locally, see the service README.
 from fastapi import FastAPI
 
 from common_web.app import install
-from trips.adapters.api import health
+from trips.adapters.api import health, trips_router
 
 
 def create_app() -> FastAPI:
@@ -16,6 +16,7 @@ def create_app() -> FastAPI:
     )
     install(app, service="trips")
     app.include_router(health.router)
+    app.include_router(trips_router.router)
     return app
 
 

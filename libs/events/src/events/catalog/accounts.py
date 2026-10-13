@@ -1,0 +1,25 @@
+"""Events published by the Accounts service."""
+
+from typing import ClassVar
+from uuid import UUID
+
+from pydantic import Field
+
+from events.envelope import EventPayload
+
+
+class UserRegistered(EventPayload):
+    """A student signed up. Notifications sends the verification email.
+
+    Published on the ``events.accounts`` stream. Consumers: Notifications.
+    """
+
+    event_type: ClassVar[str] = "UserRegistered"
+    event_version: ClassVar[int] = 1
+
+    user_id: UUID
+    email: str = Field(description="Where to send the verification email.")
+    first_name: str = Field(description="For the greeting in the email.")
+    verification_token: str = Field(
+        description="Goes into the verification link. Valid for 24 hours; a resend replaces it."
+    )
