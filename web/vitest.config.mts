@@ -7,6 +7,8 @@ export default defineConfig({
   },
   test: {
     include: ["src/**/*.test.{ts,tsx}"],
-    environment: "node",
+    // A simulated browser, so component tests can render and click.
+    environment: "jsdom",
+    setupFiles: ["./vitest.setup.ts"],
   },
 });

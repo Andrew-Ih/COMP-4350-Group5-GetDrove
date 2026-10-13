@@ -1,53 +1,77 @@
-/* Minimal base styles for the scaffold. Design tokens from the mockups replace these. */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
+@import "tailwindcss";
+
+/*
+ * GetDrove design tokens, taken from the UI mockups. Every colour, radius and shadow
+ * the app uses is defined here, and Tailwind turns each one into utility classes:
+ * --color-brand → bg-brand, text-brand, border-brand; --radius-lg → rounded-lg; …
+ *
+ * Tailwind's default colour palette is switched off (--color-*: initial), so only these
+ * colours exist: a page can't drift to a slightly different grey or green.
+ * To change the look everywhere, change it here. See web/README.md, "Styling".
+ */
+@theme {
+  --font-sans: "Figtree Variable", ui-sans-serif, system-ui, sans-serif;
+
+  --color-*: initial;
+  --color-white: #ffffff;
+
+  /* Text and dark surfaces */
+  --color-ink: #111111; /* headings, primary text, dark cards and buttons */
+  --color-ink-soft: #3f3f3f; /* body text */
+  --color-muted: #545454; /* secondary text, inactive nav */
+  --color-subtle: #6b6b6b; /* placeholders, disabled text */
+
+  /* Light surfaces and lines */
+  --color-surface: #ffffff; /* cards, sheets */
+  --color-surface-muted: #f3f3f3; /* inputs, info boxes, icon buttons */
+  --color-canvas: #f4f4f2; /* page background behind cards (sign-up) */
+  --color-line: #e6e6e6; /* card borders, dividers, disabled buttons */
+  --color-line-strong: #d6d6d6; /* secondary button borders */
+
+  /* Brand green */
+  --color-brand: #0e7c3a; /* primary buttons, selected route, accents */
+  --color-brand-hover: #0b6a31;
+  --color-brand-light: #93c4a6; /* the rest of a route */
+  --color-brand-soft: #dce6de; /* "your area" circle, avatar backgrounds */
+  --color-brand-tint: #eaf4ee; /* LIVE and status badge backgrounds */
+
+  /* Feedback (not in the mockups; used for form errors) */
+  --color-danger: #b42318;
+  --color-danger-tint: #fdecea;
+
+  /* Map (also in src/shared/map/colors.ts, which MapLibre needs as plain values) */
+  --color-map-land: #eeefec;
+  --color-map-water: #cadce5;
+  --color-map-park: #dde7d9;
+  --color-map-label: #7a7f79;
+
+  /* Corners */
+  --radius-sm: 0.5rem; /* small chips */
+  --radius-md: 0.75rem; /* buttons, inputs */
+  --radius-lg: 1rem; /* cards */
+  --radius-xl: 1.75rem; /* bottom sheets, dialogs */
+
+  /* Shadows */
+  --shadow-card: 0 1px 2px rgb(17 17 17 / 0.06), 0 4px 16px rgb(17 17 17 / 0.08);
+  --shadow-sheet: 0 -4px 24px rgb(17 17 17 / 0.12);
 }
 
-body {
-  margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  line-height: 1.5;
-  color: #1a1a1a;
-  background: #ffffff;
-}
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
 
-main {
-  max-width: 32rem;
-  margin: 0 auto;
-  padding: 2rem 1rem;
-}
+  body {
+    @apply bg-surface font-sans text-ink antialiased;
+  }
 
-.status-list {
-  list-style: none;
-  padding: 0;
-  margin: 1.5rem 0 0;
-}
+  h1,
+  h2,
+  h3 {
+    @apply font-extrabold tracking-tight text-ink;
+  }
 
-.status-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid #e5e5e5;
-}
-
-.status-name {
-  text-transform: capitalize;
-}
-
-.status-badge {
-  font-weight: 600;
-}
-
-.status-up {
-  color: #1a7f37;
-}
-
-.status-down {
-  color: #cf222e;
-}
-
-.status-checking {
-  color: #6e6e6e;
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-brand;
+  }
 }
