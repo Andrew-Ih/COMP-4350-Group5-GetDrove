@@ -34,6 +34,7 @@ class DomainError(Exception):
     status: ClassVar[int] = 400
     code: ClassVar[str] = "bad_request"
     title: ClassVar[str] = "Bad request"
+    headers: ClassVar[dict[str, str]] = {}  # extra response headers, e.g. WWW-Authenticate
 
     def __init__(self, detail: str | None = None) -> None:
         super().__init__(detail or self.title)
@@ -54,6 +55,7 @@ class UnauthorizedError(DomainError):
     status = 401
     code = "unauthorized"
     title = "Not logged in"
+    headers: ClassVar[dict[str, str]] = {"WWW-Authenticate": "Bearer"}
 
 
 class ForbiddenError(DomainError):

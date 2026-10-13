@@ -7,12 +7,12 @@
 Handlers return 501 Not Implemented until the real code lands (#23-#26 and the geometry task).
 """
 
-from typing import Annotated, Any, NoReturn
+from typing import Any, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import APIRouter, HTTPException
 
+from common_security.dependencies import AuthenticatedUser
 from routing.adapters.api.schemas import (
     MatchRequest,
     MatchResponse,
@@ -24,9 +24,6 @@ from routing.adapters.api.schemas import (
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 public_router = APIRouter(tags=["routes"])
-
-bearer = HTTPBearer(auto_error=False, description="Access token from Accounts.")
-Token = Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]
 
 Responses = dict[int | str, dict[str, Any]]
 
@@ -84,5 +81,5 @@ async def match_trips(body: MatchRequest) -> MatchResponse:
         404: _problem("No route for this trip", "route_not_found"),
     },
 )
-async def route_geometry(trip_id: UUID, token: Token) -> RouteFeature:
+async def route_geometry(trip_id: UUID, user: AuthenticatedUser) -> RouteFeature:
     _not_implemented()

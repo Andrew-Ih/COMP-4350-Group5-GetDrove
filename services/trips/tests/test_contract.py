@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from common_security.testing import TestAuth
 from trips.adapters.api.schemas import PostTripRequest
 from trips.infrastructure.main import create_app
 
@@ -19,7 +20,13 @@ SEARCH = {"lat": 49.88, "lng": -97.14, "direction": "to_campus", "time": "2026-1
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    return AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test")
+    """A client logged in as a test user (common_security.testing)."""
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+    return AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
+    )
 
 
 def test_spec_documents_the_sprint_1_endpoints() -> None:
@@ -80,3 +87,27 @@ async def test_trip_id_must_be_a_uuid(client: AsyncClient) -> None:
     response = await client.get("/not-a-uuid")
 
     assert response.status_code == 422
+
+
+async def test_requests_without_a_valid_token_are_rejected() -> None:
+    transport = ASGITransport(app=create_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as anonymous:
+        missing = await anonymous.get("/mine")
+        invalid = await anonymous.get("/mine", headers={"Authorization": "Bearer not-a-jwt"})
+
+    assert missing.status_code == 401
+    assert missing.json()["code"] == "unauthorized"
+    assert missing.headers["www-authenticate"] == "Bearer"
+    assert invalid.status_code == 401
+    assert invalid.json()["code"] == "invalid_token"
+
+
+async def test_expired_token_is_rejected() -> None:
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        response = await client.get("/mine", headers=auth.headers(expires_in=-120))
+
+    assert response.status_code == 401
+    assert response.json()["code"] == "token_expired"
