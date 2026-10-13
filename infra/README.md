@@ -28,7 +28,8 @@ The first build takes a few minutes. After that, code changes rebuild in seconds
 
 | What | URL / port | Notes |
 |---|---|---|
-| Gateway (Traefik) | http://localhost | All APIs at `/api/<service>/...` |
+| Web app | http://localhost | The Next.js frontend (production build). For hot reload, use `npm run dev` in `web/` |
+| Gateway (Traefik) | http://localhost | All APIs at `/api/<service>/...`; every other path goes to the web app |
 | Service APIs | http://localhost/api/accounts/health (and `trips`, `routing`, `payments`, `notifications`) | Swagger UI at `/api/<service>/docs` |
 | Traefik dashboard | http://localhost:8080 | Shows routes and which services are up |
 | Mailpit | http://localhost:8025 | Every email the app sends lands here |
@@ -39,8 +40,8 @@ OSRM (the routing engine) joins once the OSRM spike (#23) prepares the Winnipeg 
 
 ## How the pieces fit
 
-- **Gateway:** Traefik routes `/api/<service>/...` to that service and strips the prefix, so a service's own routes start at `/` (e.g. `/health`). Each service runs with `--root-path /api/<service>` so its Swagger UI works through the gateway.
-- **Internal endpoints are not exposed:** anything under `/api/<service>/internal` is blocked at the gateway. Services call each other directly inside Docker, e.g. `http://routing:8000/internal/...`.
+- **Gateway:** Traefik routes `/api/<service>/...` to that service and everything else to the web app, so the browser uses one address for pages and APIs. For APIs it strips the prefix, so a service's own routes start at `/` (e.g. `/health`). Each service runs with `--root-path /api/<service>` so its Swagger UI works through the gateway.
+- **Internal endpoints are not exposed:** anything under `/api/<service>/internal` never reaches the service (the web app answers it with a 404). Services call each other directly inside Docker, e.g. `http://routing:8000/internal/...`.
 - **Database:** `postgres/init/20-create-service-schemas.sh` runs once, on first start. It enables PostGIS and creates one database user and one schema per service (`accounts`, `trips`, `routing`, `payments`, `notifications`). Each user can only create and read tables in its own schema. To run it again, delete the data with `docker compose down -v`.
 - **Migrations:** each service container runs `alembic upgrade head` before starting, so `docker compose up` always gives you an up-to-date database. Set `RUN_MIGRATIONS=false` on a service to skip this.
 - **Images:** all five services use one Dockerfile, `docker/python-service.Dockerfile`, with a `SERVICE` build argument. It installs dependencies from `uv.lock` in a cached layer, then copies the code, and runs as a non-root user.

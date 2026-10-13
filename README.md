@@ -92,6 +92,18 @@ uv run --package trips uvicorn trips.infrastructure.main:app --reload --port 800
 
 Then open http://localhost:8002/health or the API docs at http://localhost:8002/docs. Each service's README lists its port and how to check its architecture rules. For how the repo is laid out and how to work in it, see [Monorepo structure](docs/architecture/monorepo.md).
 
+### Frontend
+
+You need Node 24. From `web/`:
+
+```bash
+npm install     # first time, and after package.json changes
+npm run dev     # http://localhost:3000, talks to the APIs from Docker Compose
+npm run check   # API types, lint, types and tests
+```
+
+See [web/README.md](web/README.md) for the folder layout and how to call the backend.
+
 ### Run the whole system with Docker
 
 With [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, from the repo root:
@@ -100,4 +112,4 @@ With [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, 
 docker compose up --build
 ```
 
-This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway and all five services. APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.
+This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway, all five services and the web app. The web app is at http://localhost, APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.

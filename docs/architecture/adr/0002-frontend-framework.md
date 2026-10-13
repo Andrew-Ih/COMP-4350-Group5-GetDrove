@@ -14,7 +14,7 @@ The web app must be mobile-first, match our mockups, show live maps, and talk to
 
 ## Decision
 
-Use **Next.js with TypeScript**, App Router. Next.js is the frontend only: business logic stays in the Spring Boot services.
+Use **Next.js with TypeScript**, App Router. Next.js is the frontend only: business logic stays in the FastAPI services ([ADR 0017](0017-python-fastapi-backend.md)).
 
 ## Consequences
 

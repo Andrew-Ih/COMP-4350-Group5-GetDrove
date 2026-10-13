@@ -6,7 +6,7 @@ How the local development stack is set up with Docker Compose, what each part do
 
 ## 1. The big picture
 
-- **One command runs everything.** `docker compose up --build` from the repo root starts the database, Redis, the email catcher, the gateway and all five services.
+- **One command runs everything.** `docker compose up --build` from the repo root starts the database, Redis, the email catcher, the gateway, all five services and the web app.
 - **The same containers locally and on the server.** The images built here are the ones the live server will run (with production settings), so "works on my machine" and "works on the server" mean the same thing.
 - **Nothing to install except Docker Desktop.** No local Postgres, Redis or Python is needed to run the stack. (Python and uv are still used for writing code and running tests outside Docker.)
 - **Safe local defaults.** Every setting has a default in the Compose file, so no `.env` file is needed. The passwords are for local development only; the live server sets its own.
@@ -16,8 +16,8 @@ How the local development stack is set up with Docker Compose, what each part do
                        │
                        ▼
           ┌──────────────────────────┐
-          │   Traefik (gateway) :80  │   dashboard :8080
-          └────────────┬─────────────┘
+          │   Traefik (gateway) :80  │── any other path ──▶ web (Next.js :3000)
+          └────────────┬─────────────┘   dashboard :8080
        /api/accounts   │   /api/trips   /api/routing   /api/payments   /api/notifications
           ┌────────────┼──────────────┬──────────────┬───────────────┐
           ▼            ▼              ▼              ▼               ▼
@@ -39,7 +39,7 @@ COMP-4350-Group5-GetDrove/
 ├── .dockerignore                    # Keeps .venv, .git, .env, docs and tests out of images
 └── infra/
     ├── README.md                    # Quick reference: commands, URLs, common problems
-    ├── docker-compose.yml           # The whole stack: infrastructure + five services
+    ├── docker-compose.yml           # The whole stack: infrastructure, five services, web app
     ├── docker/
     │   ├── python-service.Dockerfile  # One image recipe for all five services
     │   └── entrypoint.sh              # Container start-up: migrations, then Uvicorn
@@ -48,7 +48,7 @@ COMP-4350-Group5-GetDrove/
             └── 20-create-service-schemas.sh   # First-start database setup
 ```
 
-`compose.yaml` at the root only contains `include: infra/docker-compose.yml`. Paths inside the included file are relative to `infra/`, so the build context `..` is the repo root.
+`compose.yaml` at the root only contains `include: infra/docker-compose.yml`. Paths inside the included file are relative to `infra/`, so the build context `..` is the repo root. The web app is built from `web/Dockerfile` with `web/` as its build context (see section 7).
 
 ## 3. The containers
 
@@ -59,6 +59,7 @@ COMP-4350-Group5-GetDrove/
 | `mailpit` | `axllent/mailpit:v1.27` | 8025 (UI), 1025 (SMTP) | Catches every email the app sends (e.g. verification emails) so nothing reaches a real inbox. |
 | `traefik` | `traefik:v3.6` | 80 (gateway), 8080 (dashboard) | The gateway: routes `/api/<service>` to the right service. |
 | `accounts`, `trips`, `routing`, `payments`, `notifications` | Built from `python-service.Dockerfile` | none | The five FastAPI services, reached only through Traefik. |
+| `web` | Built from `web/Dockerfile` | none | The Next.js frontend, reached through Traefik at every path that isn't `/api/<service>`. |
 
 Why these choices:
 
@@ -122,6 +123,8 @@ Alembic records which migrations have run in an `alembic_version` table **inside
 
 Traefik reads its routing rules from **labels** on each service in the Compose file, through the Docker socket (mounted read-only). Only containers with `traefik.enable=true` are exposed.
 
+The web app's router is `PathPrefix(/)` with **priority 1**, so it's the fallback: any request that no `/api/<service>` rule matches goes to Next.js. That gives the browser one origin for pages and APIs (no CORS, and Accounts' refresh-token cookie works on the same site). A request to `/api/<service>/internal/...` falls through to the web app too, which answers 404, so internal endpoints still never reach a service.
+
 For each service, the labels set up:
 
 | Label | Effect |
@@ -168,6 +171,10 @@ All five services are built from **one** Dockerfile, `infra/docker/python-servic
 2. Starts Uvicorn on `0.0.0.0:8000` with `--root-path /api/<service>` (override with `ROOT_PATH`) and `--proxy-headers`, so the service sees the original client address and protocol behind Traefik.
 
 It uses `exec`, so Uvicorn becomes the container's main process and shuts down cleanly on `docker compose down`.
+
+### The web app image
+
+`web/Dockerfile` has three stages: `npm ci` from `package-lock.json` (cached until dependencies change), `npm run build`, then a runtime stage on `node:24-alpine` that holds only Next.js' **standalone** server (`.next/standalone`, no `node_modules`) and static files, running as the non-root `node` user with `node server.js` on port 3000. `web/.dockerignore` keeps `node_modules`, `.next`, `.env` files and tests out of the build context.
 
 ### What's kept out of images
 

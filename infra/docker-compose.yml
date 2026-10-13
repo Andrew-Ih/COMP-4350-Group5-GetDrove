@@ -1,6 +1,7 @@
 # Local development stack for GetDrove (issue #105).
 #
 # Run from the repo root:   docker compose up --build
+# Web app (frontend):       http://localhost
 # Gateway (all APIs):       http://localhost/api/<service>/...   e.g. http://localhost/api/trips/health
 # Swagger UI per service:   http://localhost/api/<service>/docs
 # Traefik dashboard:        http://localhost:8080
@@ -200,6 +201,29 @@ services:
       - traefik.http.routers.notifications.middlewares=notifications-strip
       - traefik.http.middlewares.notifications-strip.stripprefix.prefixes=/api/notifications
       - traefik.http.services.notifications.loadbalancer.server.port=8000
+
+  # ---------------------------------------------------------------- frontend
+  #
+  # The Next.js app (web/). Traefik sends every path that isn't /api/<service> here, so
+  # the browser uses one origin for the pages and the APIs. Router priority 1 makes this
+  # the fallback: the longer /api/... rules always win.
+
+  web:
+    build:
+      context: ../web
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.web.rule=PathPrefix(`/`)
+      - traefik.http.routers.web.priority=1
+      - traefik.http.routers.web.entrypoints=web
+      - traefik.http.services.web.loadbalancer.server.port=3000
 
 volumes:
   postgres-data:

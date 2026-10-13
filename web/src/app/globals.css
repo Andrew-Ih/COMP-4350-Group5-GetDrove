@@ -1,0 +1,53 @@
+/* Minimal base styles for the scaffold. Design tokens from the mockups replace these. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #ffffff;
+}
+
+main {
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+.status-list {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0 0;
+}
+
+.status-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e5e5e5;
+}
+
+.status-name {
+  text-transform: capitalize;
+}
+
+.status-badge {
+  font-weight: 600;
+}
+
+.status-up {
+  color: #1a7f37;
+}
+
+.status-down {
+  color: #cf222e;
+}
+
+.status-checking {
+  color: #6e6e6e;
+}
