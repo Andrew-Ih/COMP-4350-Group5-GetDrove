@@ -4,6 +4,8 @@ Everything needed to run GetDrove on your laptop with one command (issue #105).
 
 For a full explanation of how the stack is set up (database permissions, gateway routing, the service image), see [Local Docker setup](../docs/deployment/docker-setup.md).
 
+The live server runs `docker-compose.prod.yml` instead; see [Deployment](../docs/deployment/deployment.md).
+
 ## Requirements
 
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/), running

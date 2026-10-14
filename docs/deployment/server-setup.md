@@ -145,13 +145,7 @@ Add these repository secrets in **GitHub → Settings → Secrets and variables 
 
 ## Deploying the application
 
-Deployment is automated by GitHub Actions ([Git workflow](../process/git-workflow.md#deployment-and-branches)):
-
-- **Merge to `develop`:** tests run, then `linux/amd64` images are built and pushed to GitHub Container Registry, tagged with the commit SHA.
-- **Merge to `main`** (a release or hotfix): Actions connects with the deploy key, copies the production Compose file and environment to `/opt/getdrove`, runs `docker compose pull && docker compose up -d`, and runs a smoke test.
-- **Release tag on `main`:** versioned images are also published to DockerHub.
-
-The production Compose file, Traefik configuration, and deploy workflow are added during Sprint 1.
+Deployment is automated by GitHub Actions: every merge to `main` (a release or hotfix) builds the images, copies the production Compose file and `.env` to `/opt/getdrove` with the deploy key, runs `docker compose pull && docker compose up -d`, and runs a smoke test. How it works, the secrets it needs and how to roll back: **[Deployment](deployment.md)**.
 
 ## Maintenance
 
@@ -161,7 +155,7 @@ The production Compose file, Traefik configuration, and deploy workflow are adde
 | View a service's logs | `docker compose -f /opt/getdrove/docker-compose.prod.yml logs -f trips` |
 | Check disk space | `df -h` (clean old images with `docker image prune -a` if it gets full) |
 | Check memory | `free -h` |
-| Roll back | Redeploy the previous release tag (see [Git workflow](../process/git-workflow.md#deployment-and-branches)) |
+| Roll back | Run the Deploy workflow with an earlier commit's images ([Deployment](deployment.md#5-rolling-back)) |
 | Restore from backup | **Compute Engine → Snapshots**, create a disk from the latest snapshot |
 | Give a teammate server access | Add their public key in **VM → Edit → SSH Keys** (no Google Cloud account access needed) |
 | Check remaining credit | **Billing → Overview** |

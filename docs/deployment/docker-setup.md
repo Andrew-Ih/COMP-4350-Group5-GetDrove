@@ -1,6 +1,6 @@
 # Local Docker Setup
 
-> Back to [README](../../README.md). Related: [Server setup](server-setup.md) · [Monorepo structure](../architecture/monorepo.md)
+> Back to [README](../../README.md). Related: [Server setup](server-setup.md) · [Deployment](deployment.md) · [Monorepo structure](../architecture/monorepo.md)
 
 How the local development stack is set up with Docker Compose, what each part does, and how the pieces connect. It was set up in issue #105. For the quick "how do I run it" reference, see [infra/README.md](../../infra/README.md); for how the Python code is organised, see [Monorepo structure](../architecture/monorepo.md).
 
