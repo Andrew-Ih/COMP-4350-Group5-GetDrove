@@ -4,7 +4,7 @@
 
 Each core feature is a GitHub issue labelled `feature`. Its user stories, with acceptance criteria, are sub-issues, and stories that need a technical breakdown have development tasks as their own sub-issues. Everything is tracked on the [project board](https://github.com/users/Andrew-Ih/projects/3).
 
-**Totals:** 7 core features · 22 user stories · 52 development tasks · 5 stretch goals
+**Totals:** 7 core features · 21 core user stories · 47 core development tasks · 6 stretch goals (live driver tracking keeps its story and 5 tasks under its stretch goal)
 
 ## Core features
 
@@ -39,9 +39,11 @@ Stories: Request a seat on a trip · Detour cost per request · Auto-accept rule
 ### Trip execution
 **Issue:** [#51](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/51)
 
-Once a trip fills, the system orders the pickups, gives everyone a pickup point and an ETA, and opens a group chat for the trip. On the day: departure reminders, live driver location, marking riders as picked up or no-show, and driver confirmation that the trip happened.
+Once a trip fills, the system orders the pickups, gives everyone a pickup point and an ETA, and opens a group chat for the trip. On the day: departure reminders, trip status updates (started, picked up, completed), marking riders as picked up or no-show, and driver confirmation that the trip happened.
 
-Stories: Trip reminder before departure · Live driver location · Mark riders as picked up or no-show · Trip group chat
+Live driver location was moved to the stretch goals after instructor feedback ([ADR 0018](../architecture/adr/0018-live-tracking-as-stretch-goal.md)).
+
+Stories: Trip reminder before departure · Mark riders as picked up or no-show · Trip group chat
 
 ### Cost splitting and payment
 **Issue:** [#65](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/65)
@@ -53,7 +55,7 @@ Stories: See my cost before requesting · Charge only after the trip happens · 
 ### Ratings and safety
 **Issue:** [#74](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/74)
 
-Both sides rate each other after a trip. No-shows are recorded and count against auto-accept eligibility. Users can report or block someone, and riders can share trip details with someone outside the app.
+Both sides rate each other after a trip. No-shows are recorded and count against auto-accept eligibility. Users can report or block someone, and riders can share trip details and status with someone outside the app.
 
 Stories: Rate the other party after a trip · Exclude repeat no-shows from auto-accept · Report or block a user · Share trip with someone outside the app
 
@@ -70,5 +72,6 @@ These support the vision but are **not part of the core scope**. They're labelle
 - **Live rerouting.** The driver is already en route and a rider cancels, or traffic closes a street. The system recomputes the pickup order mid-trip and pushes updated ETAs to everyone still waiting.
 - **Schedule-based suggestions.** Students enter their class timetable once and the system tells them which recurring trips fit their whole semester, instead of hunting for a ride every night.
 - **Cancellation recovery.** A driver cancels at 7am and the system finds the stranded riders another trip leaving nearby with a free seat before they even realize they're stuck.
-- **Native mobile app.** Push notifications that actually work, background location for live tracking, and a faster experience than a web app on a phone in winter.
+- **Live driver tracking.** Riders watch the driver's position on a map in real time, with a stale-data indicator if the connection drops. Moved from core scope after instructor feedback: it needs real-time connections and background location, which suit a mobile app better than a website. Its story and tasks are already written and sit under this stretch goal.
+- **Native mobile app.** Push notifications that actually work, background location (which would make live driver tracking reliable), and a faster experience than a web app on a phone in winter.
 - **Driver reliability scoring.** Learn from trip history which drivers actually show up and arrive on time, and factor that into what riders see rather than relying only on star ratings people rarely leave.

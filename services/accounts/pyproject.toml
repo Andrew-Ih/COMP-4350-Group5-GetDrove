@@ -1,0 +1,50 @@
+[project]
+name = "accounts"
+version = "0.1.0"
+description = "GetDrove accounts service"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.118",
+    "uvicorn[standard]>=0.37",
+    "pydantic>=2.11",
+    "pydantic-settings>=2.11",
+    "sqlalchemy[asyncio]>=2.0.43",
+    "asyncpg>=0.30",
+    "alembic>=1.16",
+    "common-web",
+    "common-security",
+    "events",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+common-web = { workspace = true }
+common-security = { workspace = true }
+events = { workspace = true }
+
+# Clean Architecture rules, checked by `lint-imports` (run from this folder).
+# Outer layers may import inner ones, never the other way round.
+[tool.importlinter]
+root_package = "accounts"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Clean Architecture layers"
+type = "layers"
+layers = [
+    "accounts.infrastructure",
+    "accounts.adapters",
+    "accounts.application",
+    "accounts.domain",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain and use cases stay framework-free"
+type = "forbidden"
+source_modules = ["accounts.domain", "accounts.application"]
+# import-linter only accepts external packages this service actually imports somewhere.
+# Add httpx, redis and stripe here when the service starts using them.
+forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings"]

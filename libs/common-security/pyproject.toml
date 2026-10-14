@@ -1,0 +1,21 @@
+[project]
+name = "common-security"
+version = "0.1.0"
+description = "Checks access tokens against the Accounts JWKS endpoint; current-user and role dependencies (issue #91)."
+requires-python = ">=3.13"
+dependencies = [
+    "common-web",
+    "fastapi>=0.118",
+    "httpx>=0.28",
+    "pyjwt[crypto]>=2.10",
+]
+
+[build-system]
+requires = ["uv_build>=0.8,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+common-web = { workspace = true }
+
+[tool.uv.build-backend]
+module-name = "common_security"

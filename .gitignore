@@ -24,4 +24,45 @@ hs_err_pid*
 replay_pid*
 
 # Github management
+github_scripts
 create_issues.sh
+create_sprint1.sh
+
+# Architecture diagram 
+# getdrove-architecture.drawio
+
+# Planning documents
+# implementation-plan.md
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+test-results.xml
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+next-env.d.ts
+*.tsbuildinfo
+web/coverage/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# OS and editors
+.DS_Store
+.idea/
+.vscode/

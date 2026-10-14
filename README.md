@@ -1,8 +1,10 @@
 # GetDrove
 
+[![CI](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml)
+
 **GetDrove gives UofM students a seat that's actually theirs.**
 
-GetDrove is a carpooling platform for University of Manitoba students commuting to the Fort Garry campus. Drivers post their commute, the system works out their real driving route and shows the trip to students along it, and drivers see how many extra minutes each rider would add before accepting. Riders get a confirmed seat, a private pickup point, a live ETA, and a fair share of the cost based on how far they rode. Every user is a verified UofM student.
+GetDrove is a carpooling platform for University of Manitoba students commuting to the Fort Garry campus. Drivers post their commute, the system works out their real driving route and shows the trip to students along it, and drivers see how many extra minutes each rider would add before accepting. Riders get a confirmed seat, a private pickup point, a pickup time and ETA, and a fair share of the cost based on how far they rode. Every user is a verified UofM student.
 
 > **Sprint 0:** see [sprint0.md](sprint0.md) for this milestone's planning and setup work.
 
@@ -16,7 +18,7 @@ Each feature links to its GitHub issue, which contains its user stories and acce
 | [Trip posting](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/13) | One-off or recurring weekday trips with departure time, route, and seats |
 | [Route matching](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/21) | Riders only see trips whose real driving route passes near them; private pickup points |
 | [Requests and acceptance](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/33) | Seat requests with the detour cost shown to the driver, auto-accept rules, no overselling |
-| [Trip execution](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/51) | Reminders, live driver location, pickup and no-show tracking, trip group chat |
+| [Trip execution](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/51) | Reminders, trip status updates, pickup and no-show tracking, trip group chat |
 | [Cost splitting and payment](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/65) | Distance-based cost shares, payment held on acceptance and charged after the trip |
 | [Ratings and safety](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/74) | Mutual ratings, no-show tracking, report and block, trip sharing links |
 
@@ -47,6 +49,15 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 
 - [Technology stack](docs/architecture/tech-stack.md)
 - [Architecture](docs/architecture/architecture.md)
+- [Architecture Decision Records](docs/architecture/adr/README.md)
+- [API contracts](contracts/README.md)
+- [Monorepo structure](docs/architecture/monorepo.md)
+
+**Deployment**
+
+- [Server setup](docs/deployment/server-setup.md)
+- [Deployment](docs/deployment/deployment.md)
+- [Local Docker setup](docs/deployment/docker-setup.md)
 
 **Team process**
 
@@ -63,4 +74,43 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 
 ## Getting started
 
-The whole system will run locally with a single Docker Compose command. Setup instructions will be added here once the first services exist.
+You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed. It installs Python 3.13 for you.
+
+```bash
+uv sync                 # install every library and service, plus dev tools, into .venv
+uv run pytest           # run all tests
+uv run mypy             # type-check every package (strict)
+uv run ruff check .     # lint
+uv run ruff format .    # format
+bash scripts/check.sh   # everything CI checks, in one go
+```
+
+Run one service (each has its own port, from 8001 for Accounts to 8005 for Notifications):
+
+```bash
+uv run --package trips uvicorn trips.infrastructure.main:app --reload --port 8002
+```
+
+Then open http://localhost:8002/health or the API docs at http://localhost:8002/docs. Each service's README lists its port and how to check its architecture rules. For how the repo is laid out and how to work in it, see [Monorepo structure](docs/architecture/monorepo.md).
+
+### Frontend
+
+You need Node 24. From `web/`:
+
+```bash
+npm install     # first time, and after package.json changes
+npm run dev     # http://localhost:3000, talks to the APIs from Docker Compose
+npm run check   # API types, lint, types and tests
+```
+
+See [web/README.md](web/README.md) for the folder layout and how to call the backend.
+
+### Run the whole system with Docker
+
+With [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, from the repo root:
+
+```bash
+docker compose up --build
+```
+
+This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway, all five services and the web app. The web app is at http://localhost, APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.

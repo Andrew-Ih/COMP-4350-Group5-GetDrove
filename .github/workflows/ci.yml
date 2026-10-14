@@ -1,0 +1,126 @@
+# Continuous integration (issue #106).
+# Runs the backend and frontend checks on pull requests into develop or main, and on every
+# push to develop.
+# The same checks run locally with: bash scripts/check.sh
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop]
+  workflow_dispatch: # lets us run it by hand from the Actions tab
+
+# Read-only access is all CI needs.
+permissions:
+  contents: read
+
+# A new push to the same branch cancels the run that's still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python and dependencies
+        # --locked fails if uv.lock is out of date with the pyproject.toml files,
+        # so a forgotten lockfile update is caught here instead of on someone's laptop.
+        run: uv sync --locked
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: Ruff lint
+        run: uv run ruff check --output-format=github .
+
+      - name: mypy (strict)
+        run: uv run mypy
+
+      - name: Architecture rules (import-linter)
+        run: |
+          for service in services/*/; do
+            echo "::group::${service}"
+            (cd "$service" && uv run lint-imports)
+            echo "::endgroup::"
+          done
+
+      - name: Tests with coverage
+        run: >
+          uv run pytest
+          --cov
+          --cov-report=term
+          --cov-report=xml
+          --cov-report=html
+          --junitxml=test-results.xml
+
+      - name: Coverage summary
+        if: always()
+        run: |
+          if [ -f .coverage ]; then
+            echo "## Backend coverage" >> "$GITHUB_STEP_SUMMARY"
+            uv run coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload coverage and test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage-report
+          path: |
+            htmlcov/
+            coverage.xml
+            test-results.xml
+          retention-days: 14
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        # npm ci installs exactly what package-lock.json says, and fails if it's out of date.
+        run: npm ci
+
+      - name: API types match the contracts
+        run: npm run api:check
+
+      - name: ESLint (including folder rules)
+        run: npm run lint
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      - name: Production build
+        run: npm run build

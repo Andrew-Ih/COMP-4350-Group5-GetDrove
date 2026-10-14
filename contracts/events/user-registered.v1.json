@@ -1,0 +1,34 @@
+{
+  "description": "A student signed up. Notifications sends the verification email.\n\nPublished on the ``events.accounts`` stream. Consumers: Notifications.",
+  "properties": {
+    "userId": {
+      "format": "uuid",
+      "title": "Userid",
+      "type": "string"
+    },
+    "email": {
+      "description": "Where to send the verification email.",
+      "title": "Email",
+      "type": "string"
+    },
+    "firstName": {
+      "description": "For the greeting in the email.",
+      "title": "Firstname",
+      "type": "string"
+    },
+    "verificationToken": {
+      "description": "Goes into the verification link. Valid for 24 hours; a resend replaces it.",
+      "title": "Verificationtoken",
+      "type": "string"
+    }
+  },
+  "required": [
+    "userId",
+    "email",
+    "firstName",
+    "verificationToken"
+  ],
+  "title": "UserRegistered",
+  "type": "object",
+  "x-event-version": 1
+}

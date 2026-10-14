@@ -1,0 +1,896 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GetDrove accounts service",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/signup": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign up",
+        "description": "Creates an unverified account and sends a verification email whose link is valid for 24 hours. Publishes the UserRegistered event.",
+        "operationId": "signup_auth_signup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SignupResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, an email that isn't @myumanitoba.ca, or a password under 10 characters (code `invalid_input / email_not_uofm`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "An account with this email already exists (code `email_taken`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/verify": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Verify email",
+        "description": "Marks the email as verified using the token from the link.",
+        "operationId": "verify_email_auth_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Unknown or already-used token (code `invalid_token`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "The link has expired; request a new one with /auth/resend-verification (code `token_expired`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/resend-verification": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Resend the verification email",
+        "description": "Sends a new link and makes older links stop working. Always returns 202, even for an unknown or already-verified email, so it can't be used to find out who has an account.",
+        "operationId": "resend_verification_auth_resend_verification_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResendVerificationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Log in",
+        "description": "Returns an access token and sets the `refresh_token` cookie.",
+        "operationId": "login_auth_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Wrong email or password (one message for both) (code `invalid_credentials`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The email hasn't been verified yet; the user can resend the email (code `email_not_verified`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Get a new access token",
+        "description": "Uses the `refresh_token` cookie; returns a new access token and replaces the cookie.",
+        "operationId": "refresh_auth_refresh_post",
+        "parameters": [
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Set by login and refresh; HttpOnly.",
+              "title": "Refresh Token"
+            },
+            "description": "Set by login and refresh; HttpOnly."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing, expired or already-used refresh token (code `invalid_refresh_token`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Log out",
+        "description": "Ends the session on this device: the refresh token stops working and the cookie is cleared.",
+        "operationId": "logout_auth_logout_post",
+        "parameters": [
+          {
+            "name": "refresh_token",
+            "in": "cookie",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Set by login and refresh; HttpOnly.",
+              "title": "Refresh Token"
+            },
+            "description": "Set by login and refresh; HttpOnly."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "The logged-in user",
+        "operationId": "me_me_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/.well-known/jwks.json": {
+      "get": {
+        "tags": [
+          "keys"
+        ],
+        "summary": "Public keys for checking access tokens",
+        "description": "Other services fetch this (and cache it) to check access tokens without calling Accounts on every request.",
+        "operationId": "jwks__well_known_jwks_json_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JwkSet"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service"
+        ],
+        "title": "HealthOut"
+      },
+      "InvalidFieldOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "examples": [
+              "password"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "examples": [
+              "String should have at least 10 characters"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "InvalidFieldOut"
+      },
+      "Jwk": {
+        "properties": {
+          "kty": {
+            "type": "string",
+            "const": "RSA",
+            "title": "Kty",
+            "default": "RSA"
+          },
+          "kid": {
+            "type": "string",
+            "title": "Kid",
+            "description": "Key ID; matches the `kid` in each token's header.",
+            "examples": [
+              "2026-10-k1"
+            ]
+          },
+          "use": {
+            "type": "string",
+            "const": "sig",
+            "title": "Use",
+            "default": "sig"
+          },
+          "alg": {
+            "type": "string",
+            "const": "RS256",
+            "title": "Alg",
+            "default": "RS256"
+          },
+          "n": {
+            "type": "string",
+            "title": "N",
+            "description": "RSA modulus, base64url."
+          },
+          "e": {
+            "type": "string",
+            "title": "E",
+            "description": "RSA exponent, base64url.",
+            "examples": [
+              "AQAB"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "kid",
+          "n",
+          "e"
+        ],
+        "title": "Jwk",
+        "description": "One public signing key (RFC 7517). Field names follow the standard, not camelCase."
+      },
+      "JwkSet": {
+        "properties": {
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/Jwk"
+            },
+            "type": "array",
+            "title": "Keys"
+          }
+        },
+        "type": "object",
+        "required": [
+          "keys"
+        ],
+        "title": "JwkSet"
+      },
+      "LoginRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "description": "UofM student email (must end in @myumanitoba.ca).",
+            "examples": [
+              "ada.lovelace@myumanitoba.ca"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password"
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "LoginRequest"
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "examples": [
+              "Conflict"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status",
+            "examples": [
+              409
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "examples": [
+              "An account with this email already exists"
+            ]
+          },
+          "instance": {
+            "type": "string",
+            "title": "Instance",
+            "examples": [
+              "/api/accounts/auth/signup"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable error name for the frontend to check.",
+            "examples": [
+              "email_taken"
+            ]
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid",
+            "examples": [
+              "b1e2c3d4e5f6"
+            ]
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InvalidFieldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors",
+            "description": "Only on 422: the invalid fields."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code"
+        ],
+        "title": "Problem",
+        "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
+      },
+      "ResendVerificationRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "description": "UofM student email (must end in @myumanitoba.ca).",
+            "examples": [
+              "ada.lovelace@myumanitoba.ca"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "email"
+        ],
+        "title": "ResendVerificationRequest"
+      },
+      "SignupRequest": {
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "minLength": 3,
+            "title": "Email",
+            "description": "UofM student email (must end in @myumanitoba.ca).",
+            "examples": [
+              "ada.lovelace@myumanitoba.ca"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "description": "At least 10 characters.",
+            "examples": [
+              "correct horse battery"
+            ]
+          },
+          "firstName": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Firstname",
+            "examples": [
+              "Ada"
+            ]
+          },
+          "lastName": {
+            "type": "string",
+            "maxLength": 50,
+            "minLength": 1,
+            "title": "Lastname",
+            "examples": [
+              "Lovelace"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "email",
+          "password",
+          "firstName",
+          "lastName"
+        ],
+        "title": "SignupRequest"
+      },
+      "SignupResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "title": "Emailverified",
+            "description": "Always false: a verification email has been sent.",
+            "default": false
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email"
+        ],
+        "title": "SignupResponse"
+      },
+      "TokenResponse": {
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "title": "Accesstoken",
+            "examples": [
+              "eyJhbGciOiJSUzI1NiIsImtpZCI6ImsxIn0..."
+            ]
+          },
+          "tokenType": {
+            "type": "string",
+            "const": "Bearer",
+            "title": "Tokentype",
+            "default": "Bearer"
+          },
+          "expiresIn": {
+            "type": "integer",
+            "title": "Expiresin",
+            "description": "Seconds until the access token expires (900).",
+            "examples": [
+              900
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "accessToken",
+          "expiresIn"
+        ],
+        "title": "TokenResponse",
+        "description": "An access token. Send it as `Authorization: Bearer <accessToken>`.\n\nThe refresh token is never in the body: it's set as an HttpOnly cookie."
+      },
+      "User": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "examples": [
+              "ada.lovelace@myumanitoba.ca"
+            ]
+          },
+          "firstName": {
+            "type": "string",
+            "title": "Firstname",
+            "examples": [
+              "Ada"
+            ]
+          },
+          "lastName": {
+            "type": "string",
+            "title": "Lastname",
+            "examples": [
+              "Lovelace"
+            ]
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "title": "Emailverified"
+          },
+          "roles": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "user",
+                "admin"
+              ]
+            },
+            "type": "array",
+            "title": "Roles",
+            "description": "Every account is a `user` (rider and driver). `admin` can approve drivers (Sprint 2).",
+            "examples": [
+              [
+                "user"
+              ]
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "email",
+          "firstName",
+          "lastName",
+          "emailVerified",
+          "roles"
+        ],
+        "title": "User"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      },
+      "VerifyEmailRequest": {
+        "properties": {
+          "token": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Token",
+            "description": "The token from the verification link."
+          }
+        },
+        "type": "object",
+        "required": [
+          "token"
+        ],
+        "title": "VerifyEmailRequest"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Access token from POST /api/accounts/auth/login (`Authorization: Bearer <token>`).",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/accounts"
+    }
+  ]
+}

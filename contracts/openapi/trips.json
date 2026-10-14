@@ -1,0 +1,805 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "GetDrove trips service",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "Health",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthOut"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Post a trip",
+        "description": "A driver posts a one-off trip to or from campus. The driving route is computed when the trip is posted; if it can't be, nothing is saved.",
+        "operationId": "post_trip__post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostTripRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, including seats outside 1-6 or a departure in the past (code `invalid_input / departure_in_past`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The route couldn't be computed right now (code `routing_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/mine": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "My upcoming trips",
+        "description": "The logged-in user's upcoming trips, soonest first. `role=driver` lists trips they've posted. `role=rider` (trips they've requested) arrives in Sprint 2.",
+        "operationId": "my_trips_mine_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "role",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "driver",
+                "rider"
+              ],
+              "type": "string",
+              "default": "driver",
+              "title": "Role"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Trip"
+                  },
+                  "title": "Response My Trips Mine Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/search": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Find trips that pass near the rider",
+        "description": "Scheduled trips with free seats whose driving route passes within walking distance of the rider, excluding the rider's own trips, soonest first. For `to_campus`, `time` is when the rider wants to arrive (trips arriving in the hour before it); for `from_campus`, when they want to leave (trips leaving in the hour after it). An empty list is a normal result. The rider's location is used for matching only and is never stored or shown to drivers.",
+        "operationId": "search_trips_search_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "lat",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 90,
+              "minimum": -90,
+              "description": "Rider's latitude.",
+              "title": "Lat"
+            },
+            "description": "Rider's latitude."
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "number",
+              "maximum": 180,
+              "minimum": -180,
+              "description": "Rider's longitude.",
+              "title": "Lng"
+            },
+            "description": "Rider's longitude."
+          },
+          {
+            "name": "direction",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Direction"
+            }
+          },
+          {
+            "name": "time",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "description": "Arrive by (to_campus) or leave after (from_campus).",
+              "title": "Time"
+            },
+            "description": "Arrive by (to_campus) or leave after (from_campus)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SearchResult"
+                  },
+                  "title": "Response Search Trips Search Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Matching is unavailable right now (code `routing_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{trip_id}": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Trip detail",
+        "description": "One trip. The driver's own end of the trip is returned only to its driver. The pickup point and cost for a specific rider are added in Sprint 2.",
+        "operationId": "get_trip__trip_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No trip with this ID (code `trip_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Cost": {
+        "properties": {
+          "amountCents": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Amountcents",
+            "examples": [
+              420
+            ]
+          },
+          "currency": {
+            "type": "string",
+            "const": "CAD",
+            "title": "Currency",
+            "default": "CAD"
+          },
+          "explanation": {
+            "type": "string",
+            "title": "Explanation",
+            "description": "One line explaining the amount.",
+            "examples": [
+              "9.3 km at $0.45/km"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "amountCents",
+          "explanation"
+        ],
+        "title": "Cost"
+      },
+      "Direction": {
+        "type": "string",
+        "enum": [
+          "to_campus",
+          "from_campus"
+        ],
+        "title": "Direction",
+        "description": "Every trip goes to the Fort Garry campus or leaves from it."
+      },
+      "HealthOut": {
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "ok",
+            "title": "Status"
+          },
+          "service": {
+            "type": "string",
+            "title": "Service"
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "service"
+        ],
+        "title": "HealthOut"
+      },
+      "InvalidFieldOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "examples": [
+              "seatsTotal"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "examples": [
+              "Input should be less than or equal to 6"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "InvalidFieldOut"
+      },
+      "Pickup": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "Osborne St & River Ave"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "walkSeconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Walkseconds",
+            "description": "Walking time from the rider to this point."
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "lat",
+          "lng",
+          "walkSeconds"
+        ],
+        "title": "Pickup",
+        "description": "Where the rider would be picked up, on the driver's route."
+      },
+      "Place": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Label",
+            "examples": [
+              "Wolseley Ave & Arlington St"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "examples": [
+              49.8794
+            ]
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng",
+            "examples": [
+              -97.1663
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "lat",
+          "lng"
+        ],
+        "title": "Place",
+        "description": "A named point. Labels come from the frontend's address search."
+      },
+      "PostTripRequest": {
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/Direction",
+            "description": "to_campus: the driver starts at `place` and ends at campus. from_campus: the driver starts at campus and ends at `place`."
+          },
+          "place": {
+            "$ref": "#/components/schemas/Place",
+            "description": "The driver's end of the trip (usually near home). Never shown to riders."
+          },
+          "departureAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Departureat",
+            "description": "When the driver leaves. Must be in the future.",
+            "examples": [
+              "2026-10-20T13:10:00Z"
+            ]
+          },
+          "seatsTotal": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Seatstotal",
+            "description": "Seats offered to riders.",
+            "examples": [
+              3
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "direction",
+          "place",
+          "departureAt",
+          "seatsTotal"
+        ],
+        "title": "PostTripRequest",
+        "examples": [
+          {
+            "departureAt": "2026-10-20T13:10:00Z",
+            "direction": "to_campus",
+            "place": {
+              "label": "Wolseley Ave & Arlington St",
+              "lat": 49.8794,
+              "lng": -97.1663
+            },
+            "seatsTotal": 3
+          }
+        ]
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "examples": [
+              "Not found"
+            ]
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status",
+            "examples": [
+              404
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail",
+            "examples": [
+              "Trip not found"
+            ]
+          },
+          "instance": {
+            "type": "string",
+            "title": "Instance",
+            "examples": [
+              "/api/trips/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11"
+            ]
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable error name for the frontend to check.",
+            "examples": [
+              "trip_not_found"
+            ]
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid",
+            "examples": [
+              "b1e2c3d4e5f6"
+            ]
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InvalidFieldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors",
+            "description": "Only on 422: the fields that were invalid."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code"
+        ],
+        "title": "Problem",
+        "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
+      },
+      "SearchResult": {
+        "properties": {
+          "trip": {
+            "$ref": "#/components/schemas/Trip",
+            "description": "The driver's end of the trip is null (private)."
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/Pickup"
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cost"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The rider's estimated share. Null if the price can't be computed right now; the trip is still shown."
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip",
+          "pickup",
+          "cost"
+        ],
+        "title": "SearchResult"
+      },
+      "Trip": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "driverId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Driverid"
+          },
+          "direction": {
+            "$ref": "#/components/schemas/Direction"
+          },
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the trip starts. The driver's own end (their `place`) is only returned to the trip's driver; for everyone else it's null."
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Place"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Where the trip ends. Same privacy rule as `origin`."
+          },
+          "departureAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Departureat"
+          },
+          "estimatedArrivalAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Estimatedarrivalat"
+          },
+          "durationSeconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Durationseconds",
+            "description": "Driving time from the computed route."
+          },
+          "distanceMeters": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Distancemeters",
+            "description": "Driving distance from the computed route."
+          },
+          "seatsTotal": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Seatstotal"
+          },
+          "seatsAvailable": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 0.0,
+            "title": "Seatsavailable"
+          },
+          "status": {
+            "$ref": "#/components/schemas/TripStatus"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "driverId",
+          "direction",
+          "origin",
+          "destination",
+          "departureAt",
+          "estimatedArrivalAt",
+          "durationSeconds",
+          "distanceMeters",
+          "seatsTotal",
+          "seatsAvailable",
+          "status"
+        ],
+        "title": "Trip",
+        "examples": [
+          {
+            "departureAt": "2026-10-20T13:10:00Z",
+            "destination": {
+              "label": "University of Manitoba, Fort Garry campus",
+              "lat": 49.8075,
+              "lng": -97.1366
+            },
+            "direction": "to_campus",
+            "distanceMeters": 9800,
+            "driverId": "0c8d6a1e-7b44-4f0e-8f61-6a2a9d3c5e77",
+            "durationSeconds": 1320,
+            "estimatedArrivalAt": "2026-10-20T13:32:00Z",
+            "id": "5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11",
+            "origin": {
+              "label": "Wolseley Ave & Arlington St",
+              "lat": 49.8794,
+              "lng": -97.1663
+            },
+            "seatsAvailable": 3,
+            "seatsTotal": 3,
+            "status": "scheduled"
+          }
+        ]
+      },
+      "TripStatus": {
+        "type": "string",
+        "enum": [
+          "scheduled",
+          "in_progress",
+          "completed",
+          "cancelled"
+        ],
+        "title": "TripStatus"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Access token from POST /api/accounts/auth/login (`Authorization: Bearer <token>`).",
+        "scheme": "bearer"
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/trips"
+    }
+  ]
+}

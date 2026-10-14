@@ -1,0 +1,194 @@
+# Deploys GetDrove to the live server (issue #109, ADR 0016).
+#
+# Runs on every push to main (a release or hotfix) and from the Actions tab
+# ("Run workflow"). Steps:
+#   1. build  — builds the six images and pushes them to GitHub Container Registry,
+#               tagged with the commit SHA
+#   2. deploy — copies the production Compose file to the server, writes its .env from
+#               GitHub Secrets, pulls the images and restarts what changed
+#   3. smoke  — checks the home page and every service's /health through the gateway
+# Roll back by running it by hand with "image_tag" set to an earlier deploy's commit SHA.
+# See docs/deployment/deployment.md.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Roll back: commit SHA of images already built (leave empty to build main)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+# One deploy at a time; a second one waits instead of cancelling a deploy halfway.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io/andrew-ih
+  IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
+  APP_DIR: /opt/getdrove
+  # The live site. Changes to the domain with HTTPS in #110.
+  SITE_URL: http://34.130.160.109
+
+jobs:
+  build:
+    name: Build ${{ matrix.image }}
+    if: github.ref == 'refs/heads/main' && inputs.image_tag == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { image: accounts, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: accounts }
+          - { image: trips, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: trips }
+          - { image: routing, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: routing }
+          - { image: payments, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: payments }
+          - { image: notifications, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: notifications }
+          - { image: web, context: web, dockerfile: web/Dockerfile, service: "" }
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push getdrove-${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          build-args: ${{ matrix.service && format('SERVICE={0}', matrix.service) || '' }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/getdrove-${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}
+
+  deploy:
+    name: Deploy to the live server
+    needs: build
+    # Runs after a successful build, or straight away when rolling back to existing images.
+    if: always() && github.ref == 'refs/heads/main' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: ${{ env.SITE_URL }}
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          cat >> ~/.ssh/config <<CONFIG
+          Host server
+            HostName $DEPLOY_HOST
+            User ${{ secrets.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+          CONFIG
+
+      - name: Write the server's .env from GitHub Secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          ACCOUNTS_DB_PASSWORD: ${{ secrets.ACCOUNTS_DB_PASSWORD }}
+          TRIPS_DB_PASSWORD: ${{ secrets.TRIPS_DB_PASSWORD }}
+          ROUTING_DB_PASSWORD: ${{ secrets.ROUTING_DB_PASSWORD }}
+          PAYMENTS_DB_PASSWORD: ${{ secrets.PAYMENTS_DB_PASSWORD }}
+          NOTIFICATIONS_DB_PASSWORD: ${{ secrets.NOTIFICATIONS_DB_PASSWORD }}
+          ACCOUNTS_JWT_PRIVATE_KEY: ${{ secrets.ACCOUNTS_JWT_PRIVATE_KEY }}
+        run: |
+          for name in POSTGRES_PASSWORD ACCOUNTS_DB_PASSWORD TRIPS_DB_PASSWORD ROUTING_DB_PASSWORD \
+                      PAYMENTS_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY; do
+            if [ -z "${!name}" ]; then echo "::error::GitHub secret $name is not set"; exit 1; fi
+          done
+          umask 077
+          {
+            echo "IMAGE_REGISTRY=$REGISTRY"
+            echo "IMAGE_TAG=$IMAGE_TAG"
+            echo "POSTGRES_PASSWORD=$POSTGRES_PASSWORD"
+            echo "ACCOUNTS_DB_PASSWORD=$ACCOUNTS_DB_PASSWORD"
+            echo "TRIPS_DB_PASSWORD=$TRIPS_DB_PASSWORD"
+            echo "ROUTING_DB_PASSWORD=$ROUTING_DB_PASSWORD"
+            echo "PAYMENTS_DB_PASSWORD=$PAYMENTS_DB_PASSWORD"
+            echo "NOTIFICATIONS_DB_PASSWORD=$NOTIFICATIONS_DB_PASSWORD"
+            # The PEM key on one line, with \n for each line break; Compose turns them back
+            # into line breaks inside double quotes.
+            printf 'ACCOUNTS_JWT_PRIVATE_KEY="%s"\n' "$(printf '%s' "$ACCOUNTS_JWT_PRIVATE_KEY" | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }')"
+          } > deploy.env
+
+      - name: Copy the Compose file, database setup script and .env
+        run: |
+          ssh server "mkdir -p $APP_DIR/postgres/init"
+          scp infra/docker-compose.prod.yml server:$APP_DIR/docker-compose.prod.yml
+          scp infra/postgres/init/20-create-service-schemas.sh server:$APP_DIR/postgres/init/
+          scp deploy.env server:$APP_DIR/.env
+          ssh server "chmod 600 $APP_DIR/.env"
+          rm deploy.env
+
+      - name: Pull the images and restart
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GHCR_TOKEN" | ssh server "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+          ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml pull --quiet"
+          ssh server "docker logout ghcr.io"
+          ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml up -d --remove-orphans --wait --wait-timeout 180"
+          ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml ps"
+          # Keep the disk from filling up with old images (a rollback pulls them again).
+          ssh server "docker image prune -af --filter until=168h" > /dev/null
+
+      - name: Show logs if the deploy failed
+        if: failure()
+        run: ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml logs --tail 50"
+
+  smoke:
+    name: Smoke test
+    needs: deploy
+    if: always() && needs.deploy.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Home page and every service's /health answer through the gateway
+        env:
+          BASE_URL: ${{ env.SITE_URL }}
+        run: |
+          check() {
+            for attempt in $(seq 1 20); do
+              if curl -fsS --max-time 5 "$BASE_URL$1" > /dev/null; then echo "ok   $1"; return 0; fi
+              sleep 3
+            done
+            echo "::error::$1 did not answer"; return 1
+          }
+          failed=0
+          for path in / /api/accounts/health /api/trips/health /api/routing/health \
+                      /api/payments/health /api/notifications/health /api/accounts/.well-known/jwks.json; do
+            check "$path" || failed=1
+          done
+          # Internal endpoints must never be reachable from outside.
+          status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/routing/internal/routes")
+          if [ "$status" != "404" ]; then echo "::error::/internal answered $status, expected 404"; failed=1; fi
+          exit $failed

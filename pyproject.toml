@@ -1,0 +1,127 @@
+# Root of the GetDrove uv workspace (ADR 0017).
+# Every package under libs/ and services/ is a workspace member and shares one uv.lock.
+# Tool settings here (Ruff, mypy, pytest, coverage) apply to the whole repo.
+
+[project]
+name = "getdrove"
+version = "0.0.0"
+description = "GetDrove workspace root (not a package)"
+requires-python = ">=3.13"
+# Depending on every member means a plain `uv sync` installs the whole workspace.
+dependencies = [
+    "common-web",
+    "common-security",
+    "events",
+    "accounts",
+    "trips",
+    "routing",
+    "payments",
+    "notifications",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.13",
+    "mypy>=1.18",
+    "pytest>=8.4",
+    "pytest-asyncio>=1.2",
+    "pytest-cov>=7.0",
+    "import-linter>=2.3",
+    "httpx>=0.28",
+    "asyncpg>=0.30",
+    "testcontainers[postgres,redis]>=4.10",
+]
+
+[tool.uv]
+package = false
+
+[tool.uv.workspace]
+members = ["libs/*", "services/*"]
+
+[tool.uv.sources]
+common-web = { workspace = true }
+common-security = { workspace = true }
+events = { workspace = true }
+accounts = { workspace = true }
+trips = { workspace = true }
+routing = { workspace = true }
+payments = { workspace = true }
+notifications = { workspace = true }
+
+# ---------- Ruff (formatter + linter) ----------
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+# Only Python files. Newer Ruff versions also format code blocks inside Markdown,
+# which would rewrite the examples in our docs.
+include = ["*.py", "*.pyi", "**/pyproject.toml"]
+extend-exclude = ["**/migrations/versions"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # import sorting
+    "N",        # naming
+    "UP",       # newer Python syntax
+    "B",        # likely bugs
+    "ASYNC",    # async mistakes
+    "S",        # security
+    "SIM",      # simplifications
+    "RUF",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"**/tests/**" = ["S101"]   # assert is how pytest works
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "common_web", "common_security", "events",
+    "accounts", "trips", "routing", "payments", "notifications",
+]
+
+# ---------- mypy ----------
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+plugins = ["pydantic.mypy"]
+explicit_package_bases = true
+mypy_path = [
+    "libs/common-web/src", "libs/common-security/src", "libs/events/src",
+    "services/accounts/src", "services/trips/src", "services/routing/src",
+    "services/payments/src", "services/notifications/src",
+]
+# Type-check the source of every package. Run with: uv run mypy
+files = [
+    "libs/common-web/src", "libs/common-security/src", "libs/events/src",
+    "services/accounts/src", "services/trips/src", "services/routing/src",
+    "services/payments/src", "services/notifications/src",
+]
+
+# redis-py's and testcontainers' type information is incomplete.
+[[tool.mypy.overrides]]
+module = ["redis.*", "testcontainers.*", "docker.*"]
+ignore_missing_imports = true
+
+[tool.pydantic-mypy]
+init_forbid_extra = true
+init_typed = true
+warn_required_dynamic_aliases = true
+
+# ---------- pytest ----------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+addopts = "--import-mode=importlib"
+testpaths = ["libs", "services"]
+
+# ---------- coverage ----------
+[tool.coverage.run]
+branch = true
+source = ["libs", "services"]
+omit = ["**/tests/**", "**/migrations/**"]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
