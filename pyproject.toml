@@ -121,6 +121,9 @@ testpaths = ["libs", "services"]
 branch = true
 source = ["libs", "services"]
 omit = ["**/tests/**", "**/migrations/**"]
+# SQLAlchemy's async engine runs database code in greenlets; without this, coverage
+# reports code that ran inside a database call as never run.
+concurrency = ["thread", "greenlet"]
 
 [tool.coverage.report]
 show_missing = true

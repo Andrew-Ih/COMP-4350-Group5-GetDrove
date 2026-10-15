@@ -31,3 +31,4 @@ An Architecture Decision Record (ADR) is a short document that records one signi
 | [0017](0017-python-fastapi-backend.md) | Python 3.13 + FastAPI for all backend services | Accepted (realtime amended by 0018, logging by 0019) |
 | [0018](0018-live-tracking-as-stretch-goal.md) | Live tracking as a stretch goal; polling instead of WebSockets | Accepted |
 | [0019](0019-standard-library-logging.md) | Python's standard logging instead of structlog | Accepted |
+| [0020](0020-password-hashing.md) | Argon2id (`argon2-cffi`) for password hashing | Proposed |
