@@ -41,7 +41,9 @@ class VerificationToken:
         "Used" is checked first, so a link that's both used and old says it was used.
         """
         if self.consumed_at is not None:
-            raise InvalidVerificationTokenError("This link has already been used.")
+            raise InvalidVerificationTokenError(
+                "This link has already been used or replaced by a newer one."
+            )
         if now >= self.expires_at:
             raise VerificationTokenExpiredError("This link has expired. Request a new one.")
         self.consumed_at = now

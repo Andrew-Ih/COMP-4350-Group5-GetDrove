@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
     install(app, service="accounts")
+    app.state.engine = engine
     app.state.sessions = sessions
 
     # Accounts signs tokens and checks its own tokens with the same key (no JWKS fetch).

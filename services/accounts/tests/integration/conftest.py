@@ -118,4 +118,4 @@ async def api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
     app = create_app()  # ACCOUNTS_DATABASE_URL points at the test database
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
-    await app.state.sessions.kw["bind"].dispose()
+    await app.state.engine.dispose()
