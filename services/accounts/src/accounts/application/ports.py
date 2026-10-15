@@ -71,9 +71,14 @@ class UnitOfWork(Protocol):
     committing (returning early or raising) rolls everything back.
     """
 
-    users: UserRepository
-    verification_tokens: VerificationTokenRepository
-    events: EventPublisher
+    @property
+    def users(self) -> UserRepository: ...
+
+    @property
+    def verification_tokens(self) -> VerificationTokenRepository: ...
+
+    @property
+    def events(self) -> EventPublisher: ...
 
     async def __aenter__(self) -> Self: ...
 

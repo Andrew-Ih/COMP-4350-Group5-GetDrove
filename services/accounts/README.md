@@ -15,6 +15,8 @@ uv run --package accounts uvicorn accounts.infrastructure.main:app --reload --po
 
 Then open http://localhost:8001/health and the API docs at http://localhost:8001/docs.
 
+Accounts needs PostgreSQL (`ACCOUNTS_DATABASE_URL`) and Redis (`ACCOUNTS_REDIS_URL`); the defaults point at the ones Docker Compose starts on localhost (`docker compose up postgres redis`). Without Redis, endpoints still work, but the outbox relay logs a warning every second and events wait in the outbox until Redis is back.
+
 ## Test and check
 
 ```bash
