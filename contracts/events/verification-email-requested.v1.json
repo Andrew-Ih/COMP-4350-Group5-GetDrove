@@ -1,0 +1,34 @@
+{
+  "description": "A student asked for a new verification link (POST /auth/resend-verification).\nNotifications sends the same email as for ``UserRegistered``; older links have already\nstopped working.\n\nNot published for unknown or already-verified emails. Published on the\n``events.accounts`` stream. Consumers: Notifications.",
+  "properties": {
+    "userId": {
+      "format": "uuid",
+      "title": "Userid",
+      "type": "string"
+    },
+    "email": {
+      "description": "Where to send the verification email.",
+      "title": "Email",
+      "type": "string"
+    },
+    "firstName": {
+      "description": "For the greeting in the email.",
+      "title": "Firstname",
+      "type": "string"
+    },
+    "verificationToken": {
+      "description": "Goes into the verification link. Valid for 24 hours; a later resend replaces it.",
+      "title": "Verificationtoken",
+      "type": "string"
+    }
+  },
+  "required": [
+    "userId",
+    "email",
+    "firstName",
+    "verificationToken"
+  ],
+  "title": "VerificationEmailRequested",
+  "type": "object",
+  "x-event-version": 1
+}

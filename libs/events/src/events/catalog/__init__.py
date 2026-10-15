@@ -8,9 +8,9 @@ Rules: payloads carry IDs and only the data consumers need; adding an optional f
 the version; renaming or removing a field means a new version.
 """
 
-from events.catalog.accounts import UserRegistered
+from events.catalog.accounts import UserRegistered, VerificationEmailRequested
 from events.envelope import EventPayload
 
-ALL_EVENTS: list[type[EventPayload]] = [UserRegistered]
+ALL_EVENTS: list[type[EventPayload]] = [UserRegistered, VerificationEmailRequested]
 
-__all__ = ["ALL_EVENTS", "UserRegistered"]
+__all__ = ["ALL_EVENTS", "UserRegistered", "VerificationEmailRequested"]
