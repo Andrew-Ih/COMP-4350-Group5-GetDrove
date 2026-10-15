@@ -56,6 +56,7 @@ out/
 next-env.d.ts
 *.tsbuildinfo
 web/coverage/
+web/public/maplibre/
 
 # Environment and secrets
 .env

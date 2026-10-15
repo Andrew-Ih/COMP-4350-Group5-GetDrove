@@ -1,5 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
+import { apiBaseUrl } from "@/shared/config/env";
+
 import { checkHealth } from "./health";
 
 function respond(status: number, body: unknown): typeof fetch {
@@ -10,7 +12,7 @@ describe("checkHealth", () => {
   it("calls the service's health endpoint through the gateway", async () => {
     const fetchImpl = respond(200, { status: "ok", service: "trips" });
     await checkHealth("trips", fetchImpl);
-    expect(fetchImpl).toHaveBeenCalledWith("/api/trips/health", { cache: "no-store" });
+    expect(fetchImpl).toHaveBeenCalledWith(`${apiBaseUrl}/trips/health`, { cache: "no-store" });
   });
 
   it("is up when the service answers ok", async () => {

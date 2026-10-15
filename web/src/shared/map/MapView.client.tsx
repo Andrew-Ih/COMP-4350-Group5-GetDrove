@@ -3,7 +3,7 @@
 import "maplibre-gl/dist/maplibre-gl.css";
 
 import { LocateFixed, Minus, Plus } from "lucide-react";
-import type { LineLayerSpecification, Map as MapLibreMap } from "maplibre-gl";
+import { type LineLayerSpecification, type Map as MapLibreMap, setWorkerUrl } from "maplibre-gl";
 import { type ReactNode, useCallback, useMemo, useRef } from "react";
 import Map, { Layer, Marker, type MapRef, Source } from "react-map-gl/maplibre";
 
@@ -12,6 +12,10 @@ import { cn } from "@/shared/lib/cn";
 import { mapColors } from "./colors";
 import { boundsOf, circlePolygon, type LngLat, WINNIPEG_VIEW } from "./geo";
 import type { MapMarker, MapRoute, MapViewProps } from "./types";
+
+// MapLibre draws in a background worker. The file is copied into public/ by
+// scripts/copy-maplibre-worker.mjs before `dev` and `build`.
+setWorkerUrl("/maplibre/maplibre-gl-worker.mjs");
 
 // Free vector tiles, no API key (ADR 0009). Recoloured below to match the mockups.
 const STYLE_URL = "https://tiles.openfreemap.org/styles/positron";
