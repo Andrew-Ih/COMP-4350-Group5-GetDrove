@@ -38,7 +38,7 @@ class SqlUserRepository:
         except IntegrityError as exc:
             # The unique index on email is what catches duplicates, even two sign-ups at
             # the same moment. Emails are stored lowercase, so it ignores case.
-            if "uq_users_email" in str(exc):
+            if _constraint_name(exc) == "uq_users_email":
                 raise EmailTakenError("An account with this email already exists") from exc
             raise
 
@@ -51,6 +51,16 @@ class SqlUserRepository:
             await self._session.execute(select(users).where(users.c.email == email.value))
         ).first()
         return _to_user(row) if row else None
+
+
+def _constraint_name(exc: IntegrityError) -> str | None:
+    """The name of the constraint Postgres says was violated.
+
+    Read from the error's field rather than its message, whose wording can change between
+    library versions. SQLAlchemy's asyncpg adapter wraps asyncpg's error, and the field is on
+    the original (``exc.orig.__cause__``), not on the wrapper.
+    """
+    return getattr(exc.orig.__cause__, "constraint_name", None) if exc.orig else None
 
 
 def _to_user(row: Row[tuple[object, ...]]) -> User:

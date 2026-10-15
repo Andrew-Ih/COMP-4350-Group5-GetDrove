@@ -85,7 +85,8 @@ async def session(database_url: str) -> AsyncIterator[AsyncSession]:
     """A session on empty accounts tables."""
     engine = create_async_engine(database_url)
     async with engine.begin() as conn:
-        await conn.execute(text("TRUNCATE accounts.users CASCADE"))
+        # CASCADE also empties the token tables; outbox has no link to users, so it's named.
+        await conn.execute(text("TRUNCATE accounts.users, accounts.outbox CASCADE"))
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
     await engine.dispose()
