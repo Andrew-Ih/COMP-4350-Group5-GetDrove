@@ -1,12 +1,17 @@
 """A student's email address: always a lowercase @myumanitoba.ca address."""
 
+import re
 from dataclasses import dataclass
 from typing import Self
 
 from accounts.domain.errors import EmailNotUofMError
-from common_web import InvalidField
+from common_web import InvalidField, InvalidInputError
 
 UOFM_DOMAIN = "myumanitoba.ca"
+
+# The part before the @: letters, digits and . _ % + -, with dots only between other
+# characters. Catches typos like "a b@" or ".@" before a verification email is sent.
+_LOCAL_PART = re.compile(r"[a-z0-9_%+-]+(\.[a-z0-9_%+-]+)*")
 
 
 @dataclass(frozen=True)
@@ -22,11 +27,16 @@ class Email:
     @classmethod
     def parse(cls, raw: str) -> Self:
         normalized = raw.strip().lower()
-        local, _, domain = normalized.rpartition("@")
-        if not local or "@" in local or domain != UOFM_DOMAIN:
+        local, at, domain = normalized.rpartition("@")
+        if not at or domain != UOFM_DOMAIN:
             raise EmailNotUofMError(
                 "Use your @myumanitoba.ca email.",
                 [InvalidField("email", "Must be a @myumanitoba.ca address")],
+            )
+        if not _LOCAL_PART.fullmatch(local):
+            raise InvalidInputError(
+                "Check your email address for typos.",
+                [InvalidField("email", "Enter a valid email address")],
             )
         return cls(normalized)
 
