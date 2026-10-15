@@ -97,3 +97,18 @@ async def test_unknown_users_are_none(session: AsyncSession) -> None:
 
     assert await repository.get(uuid4()) is None
     assert await repository.get_by_email(Email.parse("nobody@myumanitoba.ca")) is None
+
+
+async def test_saving_a_user_stores_their_changes(session: AsyncSession) -> None:
+    user = ada()
+    await SqlUserRepository(session).add(user)
+    await session.commit()
+
+    user.email_verified_at = datetime(2026, 10, 15, 9, 0, tzinfo=UTC)
+    user.is_admin = True
+    await SqlUserRepository(session).save(user)
+    await session.commit()
+
+    async with AsyncSession(session.bind) as fresh:
+        found = await SqlUserRepository(fresh).get(user.id)
+    assert found == user

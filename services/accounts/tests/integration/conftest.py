@@ -14,8 +14,11 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+
+from accounts.infrastructure.main import create_app
 
 ACCOUNTS_DIR = Path(__file__).resolve().parents[2]
 
@@ -67,6 +70,19 @@ def database_url() -> Iterator[str]:
                 os.environ["ACCOUNTS_DATABASE_URL"] = previous
 
 
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    """A throwaway Redis, for checking that events reach the stream."""
+    if not _docker_available():
+        pytest.skip("Docker isn't running; start Docker Desktop to run integration tests")
+    from testcontainers.community.redis import RedisContainer
+
+    with RedisContainer("redis:7.4-alpine") as container:
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(6379)
+        yield f"redis://{host}:{port}/0"
+
+
 def _alembic_config() -> Config:
     # No alembic.ini here on purpose: loading it reconfigures logging for the whole test run.
     config = Config()
@@ -90,3 +106,16 @@ async def session(database_url: str) -> AsyncIterator[AsyncSession]:
     async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
     await engine.dispose()
+
+
+@pytest.fixture
+async def api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+    """The real Accounts app on the test database, called over HTTP (no server needed).
+
+    Its startup (the outbox relay) doesn't run here, so events stay in the outbox where
+    tests can check them.
+    """
+    app = create_app()  # ACCOUNTS_DATABASE_URL points at the test database
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+        yield client
+    await app.state.engine.dispose()
