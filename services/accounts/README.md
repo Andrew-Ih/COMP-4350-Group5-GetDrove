@@ -70,5 +70,6 @@ The contract is [`contracts/openapi/accounts.json`](../../contracts/openapi/acco
 | Event | Published when | Consumers |
 |---|---|---|
 | [`UserRegistered`](../../contracts/events/user-registered.v1.json) | A student signs up ([#4](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/4)) | Notifications sends the verification email ([#93](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/93)) |
+| [`VerificationEmailRequested`](../../contracts/events/verification-email-requested.v1.json) | A student asks for a new link ([#5](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/5)); not for unknown or already-verified emails | Notifications sends the same email ([#93](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/93)) |
 
 Events are saved to the `outbox` table in the same transaction as the change, then sent to the `events.accounts` Redis stream.
