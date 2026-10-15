@@ -1,8 +1,8 @@
 """Accounts API (Sprint 1 contract, issue #108): sign up, verify, log in, refresh, log out,
 the current user, and the public keys other services use to check tokens.
 
-Handlers return 501 Not Implemented until the real code lands (#3-#6, #90); the JWKS
-endpoint is implemented (#91).
+Handlers return 501 Not Implemented until the real code lands (#4, #6, #90). Implemented:
+verify and resend verification (#5), and the JWKS endpoint (#91).
 Paths are relative to the gateway prefix /api/accounts, except the JWKS endpoint, which
 other services also call directly at http://accounts:8000/.well-known/jwks.json.
 
@@ -17,6 +17,7 @@ from typing import Annotated, Any, NoReturn
 
 from fastapi import APIRouter, Cookie, HTTPException, Request
 
+from accounts.adapters.api.dependencies import AppClock, Uow
 from accounts.adapters.api.schemas import (
     JwkSet,
     LoginRequest,
@@ -29,6 +30,7 @@ from accounts.adapters.api.schemas import (
     VerifyEmailRequest,
 )
 from accounts.adapters.security.signing_key import SigningKey
+from accounts.application.verification import ResendVerification, VerifyEmail
 from common_security.dependencies import AuthenticatedUser
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -90,8 +92,8 @@ async def signup(body: SignupRequest) -> SignupResponse:
         ),
     },
 )
-async def verify_email(body: VerifyEmailRequest) -> None:
-    _not_implemented()
+async def verify_email(body: VerifyEmailRequest, uow: Uow, clock: AppClock) -> None:
+    await VerifyEmail(uow, clock)(body.token)
 
 
 @auth_router.post(
@@ -103,8 +105,8 @@ async def verify_email(body: VerifyEmailRequest) -> None:
     "an account.",
     responses=INVALID,
 )
-async def resend_verification(body: ResendVerificationRequest) -> None:
-    _not_implemented()
+async def resend_verification(body: ResendVerificationRequest, uow: Uow, clock: AppClock) -> None:
+    await ResendVerification(uow, clock)(body.email)
 
 
 # ---------------------------------------------------------------- log in, refresh, log out

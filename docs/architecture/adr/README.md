@@ -32,3 +32,4 @@ An Architecture Decision Record (ADR) is a short document that records one signi
 | [0018](0018-live-tracking-as-stretch-goal.md) | Live tracking as a stretch goal; polling instead of WebSockets | Accepted |
 | [0019](0019-standard-library-logging.md) | Python's standard logging instead of structlog | Accepted |
 | [0020](0020-password-hashing.md) | Argon2id (`argon2-cffi`) for password hashing | Proposed |
+| [0021](0021-verification-email-requested-event.md) | A separate `VerificationEmailRequested` event for resends | Proposed |

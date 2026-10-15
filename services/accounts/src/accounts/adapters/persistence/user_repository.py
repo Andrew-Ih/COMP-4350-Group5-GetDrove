@@ -3,7 +3,7 @@ back."""
 
 from uuid import UUID
 
-from sqlalchemy import Row, insert, select
+from sqlalchemy import Row, insert, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -51,6 +51,20 @@ class SqlUserRepository:
             await self._session.execute(select(users).where(users.c.email == email.value))
         ).first()
         return _to_user(row) if row else None
+
+    async def save(self, user: User) -> None:
+        # The email never changes after sign-up, so it isn't updated here.
+        await self._session.execute(
+            update(users)
+            .where(users.c.id == user.id)
+            .values(
+                password_hash=user.password_hash,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                email_verified_at=user.email_verified_at,
+                is_admin=user.is_admin,
+            )
+        )
 
 
 def _constraint_name(exc: IntegrityError) -> str | None:
