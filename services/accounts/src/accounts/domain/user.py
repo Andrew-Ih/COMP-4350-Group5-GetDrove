@@ -6,6 +6,7 @@ from typing import Self
 from uuid import UUID, uuid4
 
 from accounts.domain.email import Email
+from common_web import InvalidField, InvalidInputError
 
 
 @dataclass
@@ -20,8 +21,17 @@ class User:
 
     @classmethod
     def register(cls, email: Email, password_hash: str, first_name: str, last_name: str) -> Self:
-        """A new account: unverified, not an admin."""
-        return cls(uuid4(), email, password_hash, first_name, last_name)
+        """A new account: unverified, not an admin. Names are trimmed; a name that's only
+        spaces is 422 invalid_input, naming each blank field."""
+        first, last = first_name.strip(), last_name.strip()
+        blank = [
+            InvalidField(field, "Can't be blank")
+            for field, value in (("firstName", first), ("lastName", last))
+            if not value
+        ]
+        if blank:
+            raise InvalidInputError("Enter your first and last name.", blank)
+        return cls(uuid4(), email, password_hash, first, last)
 
     @property
     def email_verified(self) -> bool:
