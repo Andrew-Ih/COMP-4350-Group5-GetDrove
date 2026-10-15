@@ -4,12 +4,21 @@ Adapters implement these, and tests use in-memory fakes.
 """
 
 from datetime import datetime
-from typing import Protocol
+from typing import Protocol, Self
 from uuid import UUID
 
 from accounts.domain.email import Email
 from accounts.domain.user import User
 from accounts.domain.verification import VerificationToken
+from events import EventPublisher
+
+
+class Clock(Protocol):
+    """The current time. Tests use a fixed clock to check expiry without waiting."""
+
+    def now(self) -> datetime:
+        """The current time, timezone-aware, in UTC."""
+        ...
 
 
 class UserRepository(Protocol):
@@ -52,3 +61,22 @@ class VerificationTokenRepository(Protocol):
         """Marks all of the user's unused tokens as used, so older links stop working
         when a new one is sent."""
         ...
+
+
+class UnitOfWork(Protocol):
+    """One use case's database work: the repositories and the event publisher share one
+    transaction, so changes and the events about them are saved together or not at all.
+
+    Use it as ``async with uow: ... await uow.commit()``. Leaving the block without
+    committing (returning early or raising) rolls everything back.
+    """
+
+    users: UserRepository
+    verification_tokens: VerificationTokenRepository
+    events: EventPublisher
+
+    async def __aenter__(self) -> Self: ...
+
+    async def __aexit__(self, *exc_info: object) -> None: ...
+
+    async def commit(self) -> None: ...
