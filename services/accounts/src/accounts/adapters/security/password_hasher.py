@@ -13,6 +13,8 @@ class Argon2PasswordHasher:
 
     def __init__(self, hasher: Argon2 | None = None) -> None:
         self._hasher = hasher or Argon2()
+        # Made once, so verify_dummy costs the same as a real check and no more.
+        self._dummy_hash = self._hasher.hash("not a real password, for timing only")
 
     def hash(self, password: str) -> str:
         return self._hasher.hash(password)
@@ -23,3 +25,6 @@ class Argon2PasswordHasher:
             return self._hasher.verify(password_hash, password)
         except (VerificationError, InvalidHashError):
             return False
+
+    def verify_dummy(self, password: str) -> None:
+        self.verify(self._dummy_hash, password)

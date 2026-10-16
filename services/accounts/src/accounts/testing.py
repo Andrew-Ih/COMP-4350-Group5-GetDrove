@@ -9,7 +9,7 @@ Like ``common_security.testing``: for tests only, never used by the running serv
 
 import hashlib
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
@@ -38,11 +38,26 @@ class FakeClock:
 class FakePasswordHasher:
     """Fast and predictable, and like a real hash it never contains the password."""
 
+    def __init__(self) -> None:
+        self.dummy_checks = 0
+
     def hash(self, password: str) -> str:
         return "fake$" + hashlib.sha256(password.encode()).hexdigest()
 
     def verify(self, password_hash: str, password: str) -> bool:
         return password_hash == self.hash(password)
+
+    def verify_dummy(self, password: str) -> None:
+        self.dummy_checks += 1
+
+
+class FakeAccessTokenIssuer:
+    """Readable stand-in tokens: ``access:<user id>:<issued at>``."""
+
+    lifetime = timedelta(minutes=15)
+
+    def issue(self, user: User, now: datetime) -> str:
+        return f"access:{user.id}:{now.isoformat()}"
 
 
 class FakeUsers:

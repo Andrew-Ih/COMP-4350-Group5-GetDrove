@@ -35,6 +35,11 @@ class PasswordHasher(Protocol):
         damaged hash; never raises for those."""
         ...
 
+    def verify_dummy(self, password: str) -> None:
+        """Takes as long as ``verify`` but checks nothing. Login calls it when there's no
+        account, so response times don't reveal which emails are registered."""
+        ...
+
 
 class AccessTokenIssuer(Protocol):
     """Makes the short-lived access token other services check (ADR 0006)."""

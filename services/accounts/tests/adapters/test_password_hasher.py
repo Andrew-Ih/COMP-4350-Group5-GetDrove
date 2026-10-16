@@ -1,5 +1,8 @@
 """Argon2PasswordHasher (#4, ADR 0020)."""
 
+import time
+from collections.abc import Callable
+
 from accounts.adapters.security.password_hasher import Argon2PasswordHasher
 
 PASSWORD = "correct horse battery"  # noqa: S105 (a test password)
@@ -34,3 +37,21 @@ def test_a_wrong_password_doesnt_verify() -> None:
 def test_a_damaged_hash_doesnt_verify_or_crash() -> None:
     assert hasher.verify("not-a-hash", PASSWORD) is False
     assert hasher.verify("", PASSWORD) is False
+
+
+def test_a_dummy_check_takes_about_as_long_as_a_real_one() -> None:
+    """Login runs it for unknown emails, so timing doesn't reveal who has an account."""
+    real_hash = hasher.hash(PASSWORD)
+
+    def seconds(check: Callable[[], object]) -> float:
+        started = time.perf_counter()
+        for _ in range(5):
+            check()
+        return time.perf_counter() - started
+
+    real = seconds(lambda: hasher.verify(real_hash, "wrong password"))
+    dummy = seconds(lambda: hasher.verify_dummy("wrong password"))
+
+    # Loose bounds so a busy CI machine doesn't make this flaky; skipping the hash entirely
+    # would be hundreds of times faster.
+    assert 0.3 < dummy / real < 3
