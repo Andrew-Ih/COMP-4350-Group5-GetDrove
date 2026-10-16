@@ -5,6 +5,7 @@ import type { components as Routing } from "@/shared/api/generated/routing";
 
 import { maya, myTrips, searchResultsFor } from "./data";
 import { driveHandlers } from "./drive";
+import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
 
 type Problem = Accounts["schemas"]["Problem"];
 
@@ -27,12 +28,16 @@ function problem(status: number, code: string, detail: string, instance: string,
  *   - any other token                                     → verified
  *   - a search for a time ending in :05                   → no trips
  *   - a search for a time ending in :55                   → 503 routing_unavailable
+ *
+ * Logging in is remembered for the browser tab, so a reload stays logged in until you
+ * log out (session.ts).
  */
 
 // Routes of the trips from the latest search, for the map.
 const routes = new Map<string, Routing["schemas"]["RouteFeature"]>();
 export const handlers = [
   ...driveHandlers, // posting a trip (#96): see drive.ts
+  ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
     const body = (await request.json()) as Accounts["schemas"]["SignupRequest"];
     await delay(); // realistic in the browser, none in tests
@@ -81,12 +86,8 @@ export const handlers = [
     if (body.email.toLowerCase() === "unverified@myumanitoba.ca") {
       return problem(403, "email_not_verified", "Verify your email before logging in", instance);
     }
-    const token: Accounts["schemas"]["TokenResponse"] = {
-      accessToken: "mock-access-token",
-      tokenType: "Bearer",
-      expiresIn: 900,
-    };
-    return HttpResponse.json(token);
+    mockSessionState.logIn(); // so refreshing after a reload keeps you logged in (see session.ts)
+    return HttpResponse.json(MOCK_TOKEN);
   }),
 
   http.get("*/api/accounts/me", () => HttpResponse.json(maya)),
