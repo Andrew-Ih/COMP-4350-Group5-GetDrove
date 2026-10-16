@@ -42,21 +42,8 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
     }
 
 
-@pytest.mark.parametrize(
-    ("method", "path", "kwargs"),
-    [
-        # signup (#4), verify and resend (#5), login and /me (#6) are implemented: see
-        # tests/integration/
-        ("POST", "/auth/refresh", {}),
-        ("POST", "/auth/logout", {}),
-    ],
-)
-async def test_valid_requests_reach_the_not_yet_implemented_handler(
-    client: AsyncClient, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    response = await client.request(method, path, **kwargs)
-
-    assert response.status_code == 501
+# Every endpoint is implemented now (#4, #5, #6, #90); their behaviour is tested over HTTP
+# against a real database in tests/integration/.
 
 
 @pytest.mark.parametrize(
