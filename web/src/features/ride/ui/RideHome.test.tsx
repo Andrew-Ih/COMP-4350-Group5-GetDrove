@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LngLat } from "@/shared/map";
 import { mockFetch, renderWithProviders } from "@/shared/testing/render";
 
-import { fromQueryString } from "../model/search";
+import { defaultWhen, fromQueryString, toSearchTime } from "../model/search";
 import { RideHome } from "./RideHome";
 
 const push = vi.fn();
@@ -121,6 +121,27 @@ describe("RideHome", () => {
     await userEvent.click(screen.getByRole("button", { name: /Find rides/ }));
     const url = push.mock.calls[0]?.[0] as string;
     expect(fromQueryString(new URLSearchParams(url.split("?")[1]))?.direction).toBe("from_campus");
+  });
+
+  it("starts from a previous search when coming back from the results", async () => {
+    const date = defaultWhen("from_campus").date;
+    renderWithProviders(
+      <RideHome initial={{ lat: 49.8768, lng: -97.1438, direction: "from_campus", time: toSearchTime(date, "16:45")! }} />,
+    );
+
+    expect(screen.getByRole("radio", { name: "From campus" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByText("Osborne Village")).toBeInTheDocument();
+    expect(screen.getByLabelText("Date")).toHaveValue(date);
+    expect(screen.getByLabelText("Leave after")).toHaveValue("16:45");
+
+    await userEvent.click(screen.getByRole("button", { name: /Find rides/ }));
+    const url = push.mock.calls[0]?.[0] as string;
+    expect(fromQueryString(new URLSearchParams(url.split("?")[1]))).toEqual({
+      lat: 49.8768,
+      lng: -97.1438,
+      direction: "from_campus",
+      time: toSearchTime(date, "16:45"),
+    });
   });
 
   it("refuses a time in the past", async () => {

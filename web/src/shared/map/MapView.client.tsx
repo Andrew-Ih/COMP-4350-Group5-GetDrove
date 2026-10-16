@@ -50,12 +50,14 @@ export default function MapView({
   area,
   fitPadding = 60,
   initialView: startView,
+  fitTo,
   focus,
   onPick,
   onLocate,
   className,
 }: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
+  const loaded = useRef(false);
 
   const allPoints = useMemo<LngLat[]>(
     () => [...routes.flatMap((r) => r.coordinates), ...markers.map((m) => m.lngLat), ...(area ? [area.center] : [])],
@@ -66,10 +68,26 @@ export default function MapView({
     const map = mapRef.current?.getMap();
     if (!map) return;
     applyTheme(map);
-    if (!startView && allPoints.length > 1) {
-      map.fitBounds(boundsOf(allPoints), { padding: fitPadding, duration: 0 });
+    loaded.current = true;
+    const points = fitTo?.points ?? allPoints;
+    if (!startView && points.length > 1) {
+      map.fitBounds(boundsOf(points), { padding: fitPadding, duration: 0 });
     }
-  }, [allPoints, fitPadding, startView]);
+  }, [allPoints, fitPadding, fitTo, startView]);
+
+  // Zoom to fit again only when fitTo's key changes (e.g. new search results), not when a
+  // trip is selected or a route arrives, so the map holds still while the rider compares.
+  const fitKey = fitTo?.key;
+  const fitPoints = useRef(fitTo?.points);
+  useEffect(() => {
+    fitPoints.current = fitTo?.points; // the latest points, read by the effect below
+  });
+  useEffect(() => {
+    const points = fitPoints.current;
+    if (loaded.current && fitKey !== undefined && points && points.length > 1) {
+      mapRef.current?.fitBounds(boundsOf(points), { padding: fitPadding, duration: 600 });
+    }
+  }, [fitKey, fitPadding]);
 
   useEffect(() => {
     if (focus) {

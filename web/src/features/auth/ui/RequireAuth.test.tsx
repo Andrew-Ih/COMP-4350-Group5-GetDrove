@@ -14,6 +14,7 @@ vi.mock("next/navigation", () => ({
 afterEach(() => {
   setAccessToken(undefined);
   replace.mockReset();
+  window.history.replaceState(null, "", "/");
 });
 
 describe("RequireAuth", () => {
@@ -22,6 +23,13 @@ describe("RequireAuth", () => {
 
     expect(screen.queryByText("secret")).not.toBeInTheDocument();
     expect(replace).toHaveBeenCalledWith("/login?next=%2Fride");
+  });
+
+  it("comes back with the same query, e.g. a search", () => {
+    window.history.replaceState(null, "", "/ride?direction=to_campus&lat=49.87");
+    render(<RequireAuth>secret</RequireAuth>);
+
+    expect(replace).toHaveBeenCalledWith(`/login?next=${encodeURIComponent("/ride?direction=to_campus&lat=49.87")}`);
   });
 
   it("shows the page to a logged-in student", () => {

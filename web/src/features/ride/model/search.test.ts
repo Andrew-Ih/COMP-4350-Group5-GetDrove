@@ -7,6 +7,7 @@ import {
   defaultWhen,
   distanceMeters,
   fromQueryString,
+  fromSearchTime,
   isInServiceArea,
   toQueryString,
   toSearchTime,
@@ -57,6 +58,13 @@ describe("toSearchTime", () => {
   it("is undefined while a field is empty", () => {
     expect(toSearchTime("", "08:30")).toBeUndefined();
     expect(toSearchTime("2026-10-16", "")).toBeUndefined();
+  });
+});
+
+describe("fromSearchTime", () => {
+  it("turns a search's time back into the date and time inputs", () => {
+    const time = toSearchTime("2026-10-16", "08:30")!;
+    expect(fromSearchTime(time)).toEqual({ date: "2026-10-16", time: "08:30" });
   });
 });
 

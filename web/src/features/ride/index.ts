@@ -11,3 +11,4 @@ export {
   toSearchTime,
 } from "./model/search";
 export { RideHome } from "./ui/RideHome";
+export { TripResults } from "./ui/TripResults";

@@ -15,7 +15,9 @@ import {
   areaName,
   defaultWhen,
   type Direction,
+  fromSearchTime,
   isInServiceArea,
+  type SearchQuery,
   today,
   toQueryString,
   toSearchTime,
@@ -38,15 +40,16 @@ function greeting(now: Date = new Date()): string {
 /**
  * The rider home (#98): choose an area on the map, a direction and a time, then search.
  * Collects exactly what GET /api/trips/search needs: lat, lng, direction and time.
+ * `initial` is a previous search (from the results page's "Change search"), to start from.
  */
-export function RideHome() {
+export function RideHome({ initial }: { initial?: SearchQuery } = {}) {
   const router = useRouter();
   const me = useCurrentUser();
 
-  const [point, setPoint] = useState<LngLat>();
+  const [point, setPoint] = useState<LngLat | undefined>(() => (initial ? [initial.lng, initial.lat] : undefined));
   const [focus, setFocus] = useState<LngLat>();
-  const [direction, setDirection] = useState<Direction>("to_campus");
-  const [when, setWhen] = useState(() => defaultWhen("to_campus"));
+  const [direction, setDirection] = useState<Direction>(initial?.direction ?? "to_campus");
+  const [when, setWhen] = useState(() => (initial ? fromSearchTime(initial.time) : defaultWhen("to_campus")));
   const [error, setError] = useState<string>();
 
   const choose = useCallback((picked: LngLat, moveMap: boolean) => {
@@ -130,7 +133,7 @@ export function RideHome() {
       <MapLayout
         map={
           <MapView
-            initialView={WINNIPEG_VIEW}
+            initialView={initial ? { longitude: initial.lng, latitude: initial.lat, zoom: 13.5 } : WINNIPEG_VIEW}
             markers={markers}
             area={point ? { center: point, radiusMeters: AREA_RADIUS_METERS } : undefined}
             focus={focus}

@@ -1,8 +1,9 @@
 import { delay, http, HttpResponse } from "msw";
 
 import type { components as Accounts } from "@/shared/api/generated/accounts";
+import type { components as Routing } from "@/shared/api/generated/routing";
 
-import { maya, myTrips, searchResults } from "./data";
+import { maya, myTrips, searchResultsFor } from "./data";
 import { driveHandlers } from "./drive";
 
 type Problem = Accounts["schemas"]["Problem"];
@@ -24,7 +25,12 @@ function problem(status: number, code: string, detail: string, instance: string,
  *   - /verify?token=expired                               → 410 token_expired
  *   - /verify?token=used                                  → 400 invalid_token
  *   - any other token                                     → verified
+ *   - a search for a time ending in :05                   → no trips
+ *   - a search for a time ending in :55                   → 503 routing_unavailable
  */
+
+// Routes of the trips from the latest search, for the map.
+const routes = new Map<string, Routing["schemas"]["RouteFeature"]>();
 export const handlers = [
   ...driveHandlers, // posting a trip (#96): see drive.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
@@ -85,9 +91,36 @@ export const handlers = [
 
   http.get("*/api/accounts/me", () => HttpResponse.json(maya)),
 
-  http.get("*/api/trips/search", async () => {
+  http.get("*/api/trips/search", async ({ request }) => {
+    const params = new URL(request.url).searchParams;
+    const query = {
+      lat: Number(params.get("lat")),
+      lng: Number(params.get("lng")),
+      direction: params.get("direction") === "from_campus" ? ("from_campus" as const) : ("to_campus" as const),
+      time: params.get("time") ?? "",
+    };
     await delay(); // realistic in the browser, none in tests
-    return HttpResponse.json(searchResults);
+    const instance = "/api/trips/search";
+    const time = new Date(query.time);
+    if (!params.get("lat") || !params.get("lng") || Number.isNaN(time.getTime())) {
+      return problem(422, "invalid_input", "Invalid input", instance);
+    }
+    if (time.getUTCMinutes() === 55) {
+      return problem(503, "routing_unavailable", "Matching is unavailable right now", instance);
+    }
+    if (time.getUTCMinutes() === 5) {
+      return HttpResponse.json([]);
+    }
+    const found = searchResultsFor(query);
+    for (const [id, route] of found.routes) routes.set(id, route);
+    return HttpResponse.json(found.results);
+  }),
+
+  http.get("*/api/routing/trips/:tripId/geometry", ({ params }) => {
+    const route = routes.get(String(params.tripId));
+    return route
+      ? HttpResponse.json(route)
+      : problem(404, "route_not_found", "No route for this trip", `/api/routing/trips/${String(params.tripId)}/geometry`);
   }),
 
   http.get("*/api/trips/mine", () => HttpResponse.json(myTrips)),

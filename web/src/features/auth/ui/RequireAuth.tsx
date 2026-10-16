@@ -24,7 +24,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!loggedIn) {
-      router.replace(`/login?next=${encodeURIComponent(pathname)}`);
+      // Keep the query too, e.g. a search on /ride/results, so the student comes back to it.
+      router.replace(`/login?next=${encodeURIComponent(`${pathname}${window.location.search}`)}`);
     }
   }, [loggedIn, router, pathname]);
 
