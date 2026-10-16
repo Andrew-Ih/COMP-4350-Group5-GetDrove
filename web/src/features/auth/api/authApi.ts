@@ -1,5 +1,6 @@
 import { accountsApi, unwrap } from "@/shared/api";
 
+import type { LoginValues } from "../model/login";
 import type { SignupValues } from "../model/signup";
 
 /** POST /auth/signup: creates the account and sends the verification email. */
@@ -15,4 +16,9 @@ export function verifyEmail(token: string) {
 /** POST /auth/resend-verification: always succeeds, whether or not the account exists. */
 export function resendVerification(email: string) {
   return unwrap(accountsApi.POST("/auth/resend-verification", { body: { email } }));
+}
+
+/** POST /auth/login: returns an access token and sets the refresh-token cookie. */
+export function login(values: LoginValues) {
+  return unwrap(accountsApi.POST("/auth/login", { body: values }));
 }
