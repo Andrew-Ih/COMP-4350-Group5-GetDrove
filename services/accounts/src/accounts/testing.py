@@ -114,6 +114,14 @@ class FakeRefreshTokens:
         found = [token for token in self.rows.values() if token.token_hash == token_hash]
         return replace(found[0]) if found else None
 
+    async def save(self, token: RefreshToken) -> None:
+        self.rows[token.id] = replace(token)
+
+    async def revoke_all_for_user(self, user_id: UUID, now: datetime) -> None:
+        for token in self.rows.values():
+            if token.user_id == user_id and token.revoked_at is None:
+                token.revoked_at = now
+
 
 class FakeEvents:
     def __init__(self) -> None:

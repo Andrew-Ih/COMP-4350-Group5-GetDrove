@@ -1,6 +1,9 @@
 """The PostgreSQL ``RefreshTokenRepository``: tokens in accounts.refresh_tokens."""
 
-from sqlalchemy import Row, insert, select
+from datetime import datetime
+from uuid import UUID
+
+from sqlalchemy import Row, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from accounts.adapters.persistence.tables import refresh_tokens
@@ -35,6 +38,20 @@ class SqlRefreshTokenRepository:
             )
         ).first()
         return _to_token(row) if row else None
+
+    async def save(self, token: RefreshToken) -> None:
+        await self._session.execute(
+            update(refresh_tokens)
+            .where(refresh_tokens.c.id == token.id)
+            .values(revoked_at=token.revoked_at, replaced_by_id=token.replaced_by_id)
+        )
+
+    async def revoke_all_for_user(self, user_id: UUID, now: datetime) -> None:
+        await self._session.execute(
+            update(refresh_tokens)
+            .where(refresh_tokens.c.user_id == user_id, refresh_tokens.c.revoked_at.is_(None))
+            .values(revoked_at=now)
+        )
 
 
 def _to_token(row: Row[tuple[object, ...]]) -> RefreshToken:

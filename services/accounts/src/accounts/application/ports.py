@@ -109,6 +109,15 @@ class RefreshTokenRepository(Protocol):
         same token can't be swapped twice at once."""
         ...
 
+    async def save(self, token: RefreshToken) -> None:
+        """Saves changes to a token: that it was revoked, and what replaced it."""
+        ...
+
+    async def revoke_all_for_user(self, user_id: UUID, now: datetime) -> None:
+        """Revokes every one of the user's tokens still in use: ends all their sessions,
+        e.g. when a stolen token is being reused."""
+        ...
+
 
 class UnitOfWork(Protocol):
     """One use case's database work: the repositories and the event publisher share one
