@@ -47,3 +47,10 @@ class EmailNotVerifiedError(ForbiddenError):
 
     code = "email_not_verified"
     title = "Email not verified"
+
+
+class InvalidRefreshTokenError(UnauthorizedError):
+    """The refresh cookie is missing, unknown, expired or already used: log in again (401)."""
+
+    code = "invalid_refresh_token"
+    title = "Session expired"
