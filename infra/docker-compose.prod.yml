@@ -170,7 +170,9 @@ services:
       NOTIFICATIONS_SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:?set in .env}
       # A sender verified in Brevo, e.g. "GetDrove <team@example.com>".
       NOTIFICATIONS_EMAIL_FROM: ${NOTIFICATIONS_EMAIL_FROM:?set in .env}
-      # Links in emails (e.g. /verify?token=...) open the live site.
+      # Links in emails (e.g. /verify?token=...) open the live site. SITE_URL is the site's
+      # one address, set at the top of deploy.yml; each service reads it through its own
+      # NOTIFICATIONS_* style setting, like the database passwords above.
       NOTIFICATIONS_WEB_BASE_URL: ${SITE_URL:?set in .env}
     labels:
       - traefik.enable=true

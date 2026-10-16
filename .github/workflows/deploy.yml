@@ -129,6 +129,8 @@ jobs:
                       NOTIFICATIONS_SMTP_USERNAME NOTIFICATIONS_SMTP_PASSWORD NOTIFICATIONS_EMAIL_FROM; do
             if [ -z "${!name}" ]; then echo "::error::GitHub secret $name is not set"; exit 1; fi
           done
+          # Not a secret: the live site's address, set at the top of this file.
+          if [ -z "$SITE_URL" ]; then echo "::error::SITE_URL is not set at the top of deploy.yml"; exit 1; fi
           umask 077
           {
             echo "IMAGE_REGISTRY=$REGISTRY"
