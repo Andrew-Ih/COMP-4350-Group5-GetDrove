@@ -3,7 +3,7 @@
 Adapters implement these, and tests use in-memory fakes.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol, Self
 from uuid import UUID
 
@@ -33,6 +33,19 @@ class PasswordHasher(Protocol):
     def verify(self, password_hash: str, password: str) -> bool:
         """Whether ``password`` matches ``password_hash``. False for a wrong password or a
         damaged hash; never raises for those."""
+        ...
+
+
+class AccessTokenIssuer(Protocol):
+    """Makes the short-lived access token other services check (ADR 0006)."""
+
+    @property
+    def lifetime(self) -> timedelta:
+        """How long a token is valid (15 minutes); sent to the client as ``expiresIn``."""
+        ...
+
+    def issue(self, user: User, now: datetime) -> str:
+        """A signed token for ``user``, valid from ``now`` for ``lifetime``."""
         ...
 
 
