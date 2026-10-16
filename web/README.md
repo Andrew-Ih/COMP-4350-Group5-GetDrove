@@ -155,11 +155,12 @@ Put local overrides in `web/.env.local` (gitignored); `.env.example` lists them.
 |---|---|
 | `/signup` | Sign up with first name, last name, UofM email and a password of 10+ characters; then "Check your email" with a resend button |
 | `/login` | Log in, then go to `/ride`, or to `?next=/path` (only paths on this site). Wrong email or password gets one message; an unverified email gets a "send a new link" button. The access token is kept in memory only |
-| `/ride` | Rider home (logged in only): choose your area by tapping the map or "use my location", to or from campus, and arrive-by / leave-after time; **Find rides** opens `/ride/results` with exactly the search contract's `lat`, `lng`, `direction` and `time` |
+| `/ride` | Rider home (logged in only): choose your area by tapping the map or "use my location", to or from campus, and arrive-by / leave-after time; **Find rides** opens `/ride/results` with exactly the search contract's `lat`, `lng`, `direction` and `time`. `/ride?lat&lng&direction&time` starts from that search ("Change search" on the results) |
+| `/ride/results?lat&lng&direction&time` | Search results (logged in only): each trip's departure, arrival, seats left, walk to the pickup point and the rider's share (or "Price unavailable"), sortable by soonest, cheapest or shortest walk. The map shows every trip's route (the selected one green, the rest grey) and pickup point; it fits them once per search and holds still while you choose trips or sort. Empty, "matching unavailable" (with Try again), session-ended and incomplete-link states |
 | `/verify?token=…` | The page the verification email links to: verified, expired (with a form for a new link), or not valid |
 
-With `npm run dev:mock`, `/verify?token=expired` and `/verify?token=used` show the error states, and logging in with password `wrong` or as `unverified@myumanitoba.ca` shows the login errors.
+With `npm run dev:mock`, `/verify?token=expired` and `/verify?token=used` show the error states, logging in with password `wrong` or as `unverified@myumanitoba.ca` shows the login errors, and searching for a time ending in `:05` or `:55` shows "no trips" or "matching unavailable".
 
 ## Testing components
 
-`src/shared/testing/render.tsx` has two helpers: `renderWithProviders(<Component />)` renders with a fresh TanStack Query client, and `mockFetch(...)` gives each API call a fake response in order. See `src/features/auth/ui/SignupForm.test.tsx` for an example. Tests use absolute API URLs (`NEXT_PUBLIC_API_BASE_URL` is set in `vitest.config.mts`).
+`src/shared/testing/render.tsx` has two helpers: `renderWithProviders(<Component />)` renders with a fresh TanStack Query client, `mockFetch(...)` gives each API call a fake response in order, and `mockApi({...})` answers by path, for screens that make several calls at once. See `src/features/auth/ui/SignupForm.test.tsx` for an example. Tests use absolute API URLs (`NEXT_PUBLIC_API_BASE_URL` is set in `vitest.config.mts`).
