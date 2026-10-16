@@ -25,5 +25,13 @@ export type MapViewProps = {
   area?: { center: LngLat; radiusMeters: number };
   /** Space in pixels kept around everything when the map zooms to fit it. */
   fitPadding?: number;
+  /** Where the map starts, instead of zooming to fit what it shows. */
+  initialView?: { longitude: number; latitude: number; zoom: number };
+  /** Moves the map to this point whenever it changes (e.g. after "use my location"). */
+  focus?: LngLat;
+  /** Called with the point the user tapped or clicked. Makes the map show a pointer. */
+  onPick?: (point: LngLat) => void;
+  /** Replaces what the locate button does (by default it only moves the map). */
+  onLocate?: () => void;
   className?: string;
 };

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getAccessToken, setAccessToken } from "@/shared/api";
 import { mockFetch, problem, renderWithProviders } from "@/shared/testing/render";
 
+import { AFTER_LOGIN } from "../model/login";
 import { LoginForm } from "./LoginForm";
 
 const push = vi.fn();
@@ -42,7 +43,7 @@ describe("LoginForm", () => {
 
     await logIn();
 
-    await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/"));
+    await vi.waitFor(() => expect(push).toHaveBeenCalledWith(AFTER_LOGIN));
   });
 
   it("shows one message for a wrong email or password", async () => {

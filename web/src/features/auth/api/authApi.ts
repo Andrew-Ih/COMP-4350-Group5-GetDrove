@@ -22,3 +22,8 @@ export function resendVerification(email: string) {
 export function login(values: LoginValues) {
   return unwrap(accountsApi.POST("/auth/login", { body: values }));
 }
+
+/** GET /me: the logged-in student. Needs the access token. */
+export function getMe() {
+  return unwrap(accountsApi.GET("/me"));
+}

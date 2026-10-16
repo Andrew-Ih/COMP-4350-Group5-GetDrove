@@ -154,7 +154,8 @@ Put local overrides in `web/.env.local` (gitignored); `.env.example` lists them.
 | Page | What it does |
 |---|---|
 | `/signup` | Sign up with first name, last name, UofM email and a password of 10+ characters; then "Check your email" with a resend button |
-| `/login` | Log in; `?next=/path` returns to that page afterwards (only paths on this site). Wrong email or password gets one message; an unverified email gets a "send a new link" button. The access token is kept in memory only |
+| `/login` | Log in, then go to `/ride`, or to `?next=/path` (only paths on this site). Wrong email or password gets one message; an unverified email gets a "send a new link" button. The access token is kept in memory only |
+| `/ride` | Rider home (logged in only): choose your area by tapping the map or "use my location", to or from campus, and arrive-by / leave-after time; **Find rides** opens `/ride/results` with exactly the search contract's `lat`, `lng`, `direction` and `time` |
 | `/verify?token=…` | The page the verification email links to: verified, expired (with a form for a new link), or not valid |
 
 With `npm run dev:mock`, `/verify?token=expired` and `/verify?token=used` show the error states, and logging in with password `wrong` or as `unverified@myumanitoba.ca` shows the login errors.
