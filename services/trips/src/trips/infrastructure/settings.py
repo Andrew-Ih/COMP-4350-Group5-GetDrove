@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="TRIPS_", env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://trips:trips@localhost:5432/getdrove"
+    routing_url: str = "http://localhost:8001"
 
 
 def get_settings() -> Settings:

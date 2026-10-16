@@ -8,12 +8,22 @@ Paths here are relative to the gateway prefix /api/trips.
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
-from trips.adapters.api.schemas import PostTripRequest, Problem, SearchResult, Trip
-from trips.domain.values import Direction
+from common_web.errors import DomainError, InvalidInputError
+from trips.adapters.api.schemas import (
+    Place,
+    PostTripRequest,
+    Problem,
+    SearchResult,
+    Trip,
+)
+from trips.adapters.persistence.repository import SQLAlchemyTripRepository
+from trips.adapters.routing import HTTPRoutingService, RoutingUnavailableError
+from trips.application.post_trip import DepartureInPastError, PostTrip
+from trips.domain.values import Direction, Location
 
 router = APIRouter(tags=["trips"])
 
@@ -33,6 +43,17 @@ def _not_implemented() -> NoReturn:
     raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
 
 
+class RoutingUnavailableAPIError(DomainError):
+    status = 503
+    code = "routing_unavailable"
+    title = "Routing unavailable"
+
+
+class DepartureInPastAPIError(InvalidInputError):
+    code = "departure_in_past"
+    title = "Departure time is in the past"
+
+
 @router.post(
     "/",
     status_code=201,
@@ -48,8 +69,64 @@ def _not_implemented() -> NoReturn:
         503: _problem("The route couldn't be computed right now", "routing_unavailable"),
     },
 )
-async def post_trip(body: PostTripRequest, user: AuthenticatedUser) -> Trip:
-    _not_implemented()
+async def post_trip(
+    body: PostTripRequest,
+    user: AuthenticatedUser,
+    request: Request,
+) -> Trip:
+    session_factory = request.app.state.session_factory
+    routing_client = request.app.state.routing_client
+
+    routing = HTTPRoutingService(routing_client)
+
+    async with session_factory() as session:
+        repository = SQLAlchemyTripRepository(session)
+        use_case = PostTrip(repository, routing)
+
+        try:
+            async with session.begin():
+                trip = await use_case.execute(
+                    driver_id=user.id,
+                    direction=body.direction,
+                    place=Location(
+                        label=body.place.label,
+                        lat=body.place.lat,
+                        lng=body.place.lng,
+                    ),
+                    departure_at=body.departure_at,
+                    seats_total=body.seats_total,
+                )
+
+        except DepartureInPastError as exc:
+            raise DepartureInPastAPIError(str(exc)) from exc
+
+        except RoutingUnavailableError as exc:
+            raise RoutingUnavailableAPIError(
+                "Could not calculate a driving route. Please try again."
+            ) from exc
+
+    return Trip(
+        id=trip.id,
+        driver_id=trip.driver_id,
+        direction=trip.direction,
+        origin=Place(
+            label=trip.origin.label,
+            lat=trip.origin.lat,
+            lng=trip.origin.lng,
+        ),
+        destination=Place(
+            label=trip.destination.label,
+            lat=trip.destination.lat,
+            lng=trip.destination.lng,
+        ),
+        departure_at=trip.departure_at,
+        estimated_arrival_at=trip.estimated_arrival_at,
+        duration_seconds=trip.duration_seconds,
+        distance_meters=trip.distance_meters,
+        seats_total=trip.seats_total,
+        seats_available=trip.seats_available,
+        status=trip.status,
+    )
 
 
 @router.get(

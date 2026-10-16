@@ -1,4 +1,3 @@
-
 """Interfaces used by Trips application use cases."""
 
 from dataclasses import dataclass

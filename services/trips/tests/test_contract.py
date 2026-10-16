@@ -46,7 +46,6 @@ def test_example_request_is_valid() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
-        ("POST", "/", {"json": VALID_TRIP}),
         ("GET", "/mine", {}),
         ("GET", "/search", {"params": SEARCH}),
         ("GET", "/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11", {}),
