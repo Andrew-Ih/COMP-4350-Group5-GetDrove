@@ -6,6 +6,8 @@ Alembic autogenerates migrations from ``metadata``.
 
 from sqlalchemy import MetaData
 
+from events.consumer import consumer_tables
+
 SCHEMA = "notifications"
 
 metadata = MetaData(
@@ -18,3 +20,7 @@ metadata = MetaData(
         "pk": "pk_%(table_name)s",
     },
 )
+
+# Which events have been handled (so a repeat delivery is skipped, even after a restart)
+# and which kept failing (parked after 5 tries). From libs/events.
+consumer = consumer_tables(metadata)
