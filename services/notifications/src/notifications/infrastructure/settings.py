@@ -1,5 +1,6 @@
 """Configuration from environment variables (prefix ``NOTIFICATIONS_``), with local-dev defaults."""
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +16,8 @@ class Settings(BaseSettings):
     smtp_host: str = "localhost"
     smtp_port: int = 1025
     smtp_username: str | None = None
-    smtp_password: str | None = None
+    # SecretStr: printing or logging the settings shows ********** instead of the key.
+    smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
     email_from: str = "GetDrove <no-reply@getdrove.local>"
 

@@ -46,7 +46,7 @@ The production stack is the local one with these differences:
 | Images | Built on your machine | Pulled from GitHub Container Registry, tagged with the commit |
 | Passwords and keys | Local defaults | From `.env`, which comes from GitHub Secrets; missing values stop the deploy |
 | Reachable from outside | Gateway, database, Redis, Mailpit, Traefik dashboard | **Only the gateway on port 80** |
-| Mailpit | Yes | No (production email, Brevo, comes with the verification email story) |
+| Email | Caught by Mailpit (http://localhost:8025) | Sent for real through Brevo's SMTP relay ([ADR 0010](../architecture/adr/0010-email.md)) |
 | Accounts | Temporary signing key | `ACCOUNTS_ENVIRONMENT=production`: refuses to start without the real key |
 | Limits | None | Memory limit per container, logs rotated at 3 × 10 MB |
 
@@ -60,8 +60,10 @@ All secrets live in **GitHub → Settings → Secrets and variables → Actions*
 | `POSTGRES_PASSWORD` | Database admin password |
 | `ACCOUNTS_DB_PASSWORD`, `TRIPS_DB_PASSWORD`, `ROUTING_DB_PASSWORD`, `PAYMENTS_DB_PASSWORD`, `NOTIFICATIONS_DB_PASSWORD` | One database password per service |
 | `ACCOUNTS_JWT_PRIVATE_KEY` | Accounts' private key for signing access tokens (PEM, RSA 2048) |
+| `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD` | Brevo's SMTP login and SMTP key (see [Email](#email-brevo)) |
+| `NOTIFICATIONS_EMAIL_FROM` | The From address, a sender verified in Brevo, e.g. `GetDrove <team@example.com>` |
 
-The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed.
+The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed. Links in emails use `SITE_URL` from the top of `deploy.yml`, which isn't a secret.
 
 **Creating them.** With the [GitHub CLI](https://cli.github.com/) logged in to the repository, each value goes straight into GitHub without being shown or saved on your computer:
 
@@ -70,13 +72,27 @@ for name in POSTGRES_PASSWORD ACCOUNTS_DB_PASSWORD TRIPS_DB_PASSWORD ROUTING_DB_
   openssl rand -hex 24 | gh secret set "$name"
 done
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | gh secret set ACCOUNTS_JWT_PRIVATE_KEY
+gh secret set NOTIFICATIONS_SMTP_USERNAME    # paste Brevo's SMTP login
+gh secret set NOTIFICATIONS_SMTP_PASSWORD    # paste the Brevo SMTP key
+gh secret set NOTIFICATIONS_EMAIL_FROM       # e.g. GetDrove <team@example.com>
 gh secret list
 ```
+
+### Email (Brevo)
+
+Production email goes through [Brevo](https://www.brevo.com/)'s SMTP relay (free plan: 300 emails a day). Setting it up once:
+
+1. Create a Brevo account.
+2. **Senders, Domains & Dedicated IPs → Senders → Add a sender**, with an address the team controls. Brevo emails it a confirmation link; until it's confirmed, Brevo refuses to send. Once we have a domain (#110), verify the domain instead and send from it.
+3. **SMTP & API → SMTP**: copy the **Login** and generate an **SMTP key**. Put them in the two secrets above, and the confirmed sender in `NOTIFICATIONS_EMAIL_FROM`.
+
+The server name (`smtp-relay.brevo.com`), port 587 and STARTTLS are set in `docker-compose.prod.yml`, since they aren't secret.
 
 **Changing them later:**
 
 - **Database passwords** only take effect when the database is first created (the init script runs once, on an empty data volume). Changing one later means changing it inside Postgres too (`ALTER ROLE trips PASSWORD '...'`), then updating the secret and redeploying. Avoid it unless a password leaks.
 - **The signing key** can be replaced at any time: set the new secret and redeploy. Everyone is logged out, because tokens signed with the old key stop working.
+- **The Brevo SMTP key** can be replaced at any time: generate a new one in Brevo, set the secret, redeploy, then delete the old key in Brevo.
 
 ## 4. Did the deploy work?
 
@@ -91,6 +107,7 @@ gh secret list
 | Accounts exits with an error about `ACCOUNTS_JWT_PRIVATE_KEY` | The secret isn't a valid PEM private key; create it again (section 3) |
 
 - **If the smoke test fails,** the containers are running but the site doesn't answer from outside: check the VM's HTTP firewall setting and the Traefik logs.
+- **If sign-up works but no email arrives,** check the Notifications logs (`logs notifications`, below). `Authentication failed` means the Brevo login or key is wrong; a refusal about the sender means `NOTIFICATIONS_EMAIL_FROM` isn't a confirmed sender in Brevo. Brevo's **Transactional → Logs** page shows what it received and whether it was delivered. Failed emails are retried, then kept in the `notifications.failed_events` table after 5 tries. Also check the student's junk folder.
 
 On the server, from `/opt/getdrove`:
 

@@ -120,9 +120,13 @@ jobs:
           PAYMENTS_DB_PASSWORD: ${{ secrets.PAYMENTS_DB_PASSWORD }}
           NOTIFICATIONS_DB_PASSWORD: ${{ secrets.NOTIFICATIONS_DB_PASSWORD }}
           ACCOUNTS_JWT_PRIVATE_KEY: ${{ secrets.ACCOUNTS_JWT_PRIVATE_KEY }}
+          NOTIFICATIONS_SMTP_USERNAME: ${{ secrets.NOTIFICATIONS_SMTP_USERNAME }}
+          NOTIFICATIONS_SMTP_PASSWORD: ${{ secrets.NOTIFICATIONS_SMTP_PASSWORD }}
+          NOTIFICATIONS_EMAIL_FROM: ${{ secrets.NOTIFICATIONS_EMAIL_FROM }}
         run: |
           for name in POSTGRES_PASSWORD ACCOUNTS_DB_PASSWORD TRIPS_DB_PASSWORD ROUTING_DB_PASSWORD \
-                      PAYMENTS_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY; do
+                      PAYMENTS_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY \
+                      NOTIFICATIONS_SMTP_USERNAME NOTIFICATIONS_SMTP_PASSWORD NOTIFICATIONS_EMAIL_FROM; do
             if [ -z "${!name}" ]; then echo "::error::GitHub secret $name is not set"; exit 1; fi
           done
           umask 077
@@ -138,6 +142,13 @@ jobs:
             # The PEM key on one line, with \n for each line break; Compose turns them back
             # into line breaks inside double quotes.
             printf 'ACCOUNTS_JWT_PRIVATE_KEY="%s"\n' "$(printf '%s' "$ACCOUNTS_JWT_PRIVATE_KEY" | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }')"
+            # Brevo (#220). Single quotes: Compose keeps the value exactly, with no $ or \
+            # handling, and the From address has spaces and < >.
+            printf "NOTIFICATIONS_SMTP_USERNAME='%s'\n" "$NOTIFICATIONS_SMTP_USERNAME"
+            printf "NOTIFICATIONS_SMTP_PASSWORD='%s'\n" "$NOTIFICATIONS_SMTP_PASSWORD"
+            printf "NOTIFICATIONS_EMAIL_FROM='%s'\n" "$NOTIFICATIONS_EMAIL_FROM"
+            # Links in emails open the live site.
+            echo "SITE_URL=$SITE_URL"
           } > deploy.env
 
       - name: Copy the Compose file, database setup script and .env
