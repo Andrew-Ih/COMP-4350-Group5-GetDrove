@@ -8,9 +8,12 @@ test also checks them. Without Docker these tests are skipped with a message.
 
 import asyncio
 import os
+import time
 from collections.abc import AsyncIterator, Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -38,6 +41,41 @@ async def _create_user_and_schema(admin_url: str) -> None:
         await conn.execute(text("CREATE SCHEMA notifications AUTHORIZATION notifications"))
         await conn.execute(text("ALTER ROLE notifications SET search_path = notifications, public"))
     await engine.dispose()
+
+
+@dataclass(frozen=True)
+class Mailpit:
+    smtp_host: str
+    smtp_port: int
+    api: str  # base URL of Mailpit's HTTP API, to read what was "sent"
+
+
+@pytest.fixture(scope="session")
+def mailpit() -> Iterator[Mailpit]:
+    """A throwaway Mailpit (the same image as Docker Compose): catches email over SMTP and
+    shows it through an HTTP API."""
+    if not _docker_available():
+        pytest.skip("Docker isn't running; start Docker Desktop to run integration tests")
+    from testcontainers.core.container import DockerContainer
+
+    with DockerContainer("axllent/mailpit:v1.27").with_exposed_ports(1025, 8025) as container:
+        host = container.get_container_host_ip()
+        api = f"http://{host}:{container.get_exposed_port(8025)}/api/v1"
+        for _ in range(100):  # wait until Mailpit answers
+            try:
+                if httpx.get(f"{api}/info", timeout=1).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                pass
+            time.sleep(0.1)
+        yield Mailpit(host, int(container.get_exposed_port(1025)), api)
+
+
+@pytest.fixture
+def empty_mailpit(mailpit: Mailpit) -> Mailpit:
+    """Mailpit with no messages in it."""
+    httpx.delete(f"{mailpit.api}/messages", timeout=5).raise_for_status()
+    return mailpit
 
 
 def _alembic_config() -> Config:
