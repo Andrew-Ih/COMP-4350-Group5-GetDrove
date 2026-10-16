@@ -7,6 +7,7 @@ import type { paths as NotificationsPaths } from "./generated/notifications";
 import type { paths as PaymentsPaths } from "./generated/payments";
 import type { paths as RoutingPaths } from "./generated/routing";
 import type { paths as TripsPaths } from "./generated/trips";
+import { getAccessToken } from "./session";
 
 /**
  * Typed clients for each service, generated from contracts/openapi. Paths, request bodies
@@ -17,9 +18,19 @@ import type { paths as TripsPaths } from "./generated/trips";
  * Use them from client components (they call relative URLs) and from a feature's `api/`
  * folder, not directly from pages. Endpoints under /internal are for services only.
  */
-// Looks up fetch on every request instead of keeping the one that existed at startup,
-// so the mock API (MSW), which replaces fetch in tests, intercepts these clients too.
-const fetch = (request: Request) => globalThis.fetch(request);
+/**
+ * Every API call goes through here:
+ * - adds `Authorization: Bearer <token>` once the user has logged in
+ * - looks up fetch on every request instead of keeping the one that existed at startup,
+ *   so the mock API (MSW), which replaces fetch in tests, intercepts these clients too
+ */
+const fetch = (request: Request) => {
+  const token = getAccessToken();
+  if (token && !request.headers.has("Authorization")) {
+    request.headers.set("Authorization", `Bearer ${token}`);
+  }
+  return globalThis.fetch(request);
+};
 
 export const accountsApi = createClient<AccountsPaths>({ baseUrl: `${apiBaseUrl}/accounts`, fetch });
 export const tripsApi = createClient<TripsPaths>({ baseUrl: `${apiBaseUrl}/trips`, fetch });
