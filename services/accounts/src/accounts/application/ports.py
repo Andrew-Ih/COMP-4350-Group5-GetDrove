@@ -8,6 +8,7 @@ from typing import Protocol, Self
 from uuid import UUID
 
 from accounts.domain.email import Email
+from accounts.domain.refresh_token import RefreshToken
 from accounts.domain.user import User
 from accounts.domain.verification import VerificationToken
 from events import EventPublisher
@@ -77,6 +78,20 @@ class VerificationTokenRepository(Protocol):
         ...
 
 
+class RefreshTokenRepository(Protocol):
+    """Refresh ("stay logged in") tokens. Only hashes are stored. Implementations never
+    commit."""
+
+    async def add(self, token: RefreshToken) -> None:
+        """Saves a new token."""
+        ...
+
+    async def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+        """The token with this hash, or None. Locked until the transaction ends, so the
+        same token can't be swapped twice at once."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """One use case's database work: the repositories and the event publisher share one
     transaction, so changes and the events about them are saved together or not at all.
@@ -90,6 +105,9 @@ class UnitOfWork(Protocol):
 
     @property
     def verification_tokens(self) -> VerificationTokenRepository: ...
+
+    @property
+    def refresh_tokens(self) -> RefreshTokenRepository: ...
 
     @property
     def events(self) -> EventPublisher: ...

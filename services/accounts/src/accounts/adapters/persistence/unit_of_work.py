@@ -4,6 +4,7 @@ from typing import Self
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from accounts.adapters.persistence.refresh_token_repository import SqlRefreshTokenRepository
 from accounts.adapters.persistence.tables import outbox
 from accounts.adapters.persistence.user_repository import SqlUserRepository
 from accounts.adapters.persistence.verification_token_repository import (
@@ -19,6 +20,7 @@ class SqlUnitOfWork:
 
     users: SqlUserRepository
     verification_tokens: SqlVerificationTokenRepository
+    refresh_tokens: SqlRefreshTokenRepository
     events: OutboxPublisher
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
@@ -28,6 +30,7 @@ class SqlUnitOfWork:
         self._session = self._sessions()
         self.users = SqlUserRepository(self._session)
         self.verification_tokens = SqlVerificationTokenRepository(self._session)
+        self.refresh_tokens = SqlRefreshTokenRepository(self._session)
         # The request ID travels with the event, so one action can be traced across services.
         self.events = OutboxPublisher(
             self._session, outbox, producer="accounts", correlation_id=current_request_id()
