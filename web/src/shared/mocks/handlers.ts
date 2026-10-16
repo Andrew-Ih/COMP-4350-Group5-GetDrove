@@ -21,6 +21,9 @@ function problem(status: number, code: string, detail: string, instance: string,
  *   - signup with taken@myumanitoba.ca                    → 409 email_taken
  *   - login with password "wrong"                         → 401 invalid_credentials
  *   - login with unverified@myumanitoba.ca                → 403 email_not_verified
+ *   - /verify?token=expired                               → 410 token_expired
+ *   - /verify?token=used                                  → 400 invalid_token
+ *   - any other token                                     → verified
  */
 export const handlers = [
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
@@ -41,6 +44,24 @@ export const handlers = [
       emailVerified: false,
     };
     return HttpResponse.json(created, { status: 201 });
+  }),
+
+  http.post("*/api/accounts/auth/verify", async ({ request }) => {
+    const { token } = (await request.json()) as Accounts["schemas"]["VerifyEmailRequest"];
+    await delay();
+    const instance = "/api/accounts/auth/verify";
+    if (token === "expired") {
+      return problem(410, "token_expired", "This link has expired", instance);
+    }
+    if (token === "used") {
+      return problem(400, "invalid_token", "This link is not valid", instance);
+    }
+    return new HttpResponse(null, { status: 204 });
+  }),
+
+  http.post("*/api/accounts/auth/resend-verification", async () => {
+    await delay();
+    return HttpResponse.json(null, { status: 202 });
   }),
 
   http.post("*/api/accounts/auth/login", async ({ request }) => {

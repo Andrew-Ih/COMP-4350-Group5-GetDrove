@@ -100,6 +100,8 @@ Styling uses **Tailwind CSS**. The design tokens from the mockups (colours, font
 />
 ```
 
+MapLibre runs its drawing work in a background worker, a file copied into `public/maplibre/` by `npm run maplibre:worker` (run automatically before `dev` and `build`, and gitignored). If the map stays blank with "Worker failed to load", run it by hand.
+
 Coordinates are `[longitude, latitude]` (GeoJSON order, the reverse of how they're usually said). `CAMPUS` is University Centre. The map loads in the browser only; give its container a height.
 
 ## Building against the mock API
@@ -141,9 +143,21 @@ Put local overrides in `web/.env.local` (gitignored); `.env.example` lists them.
 | Styling | Tailwind CSS |
 | Data fetching and caching | TanStack Query (`QueryClientProvider` in `src/app/providers.tsx`) |
 | Bottom sheets | vaul |
-| Maps | MapLibre GL + react-map-gl |
+| Maps | MapLibre GL 6 + react-map-gl |
 | Icons | lucide-react |
 | Mock API | MSW |
+| Forms and validation | React Hook Form + Zod (`zodResolver`); rules mirror the contract's limits |
 | Tests | Vitest + Testing Library |
 
-Forms will use React Hook Form + Zod (from the plan); they're added with the first form, the sign-up page (#7).
+## Pages so far
+
+| Page | What it does |
+|---|---|
+| `/signup` | Sign up with first name, last name, UofM email and a password of 10+ characters; then "Check your email" with a resend button |
+| `/verify?token=…` | The page the verification email links to: verified, expired (with a form for a new link), or not valid |
+
+With `npm run dev:mock`, `/verify?token=expired` and `/verify?token=used` show the error states.
+
+## Testing components
+
+`src/shared/testing/render.tsx` has two helpers: `renderWithProviders(<Component />)` renders with a fresh TanStack Query client, and `mockFetch(...)` gives each API call a fake response in order. See `src/features/auth/ui/SignupForm.test.tsx` for an example. Tests use absolute API URLs (`NEXT_PUBLIC_API_BASE_URL` is set in `vitest.config.mts`).
