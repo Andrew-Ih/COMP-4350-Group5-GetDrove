@@ -21,6 +21,20 @@ class Clock(Protocol):
         ...
 
 
+class PasswordHasher(Protocol):
+    """Turns passwords into one-way hashes and checks them (Argon2id, ADR 0020)."""
+
+    def hash(self, password: str) -> str:
+        """A new hash with its own random salt; the same password hashes differently each
+        time."""
+        ...
+
+    def verify(self, password_hash: str, password: str) -> bool:
+        """Whether ``password`` matches ``password_hash``. False for a wrong password or a
+        damaged hash; never raises for those."""
+        ...
+
+
 class UserRepository(Protocol):
     """Saves and finds accounts. Implementations never commit; the use case does."""
 
