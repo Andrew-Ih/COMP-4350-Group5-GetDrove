@@ -12,6 +12,12 @@ class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
 
 
+class TripEvents(Protocol):
+    async def trip_posted(self, trip_id: UUID) -> None:
+        """Record TripPosted in the same transaction as the Trip."""
+        ...
+
+
 @dataclass(frozen=True)
 class RouteEstimate:
     distance_meters: int

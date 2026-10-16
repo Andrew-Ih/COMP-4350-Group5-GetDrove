@@ -18,6 +18,8 @@ from sqlalchemy import (
     func,
 )
 
+from events.outbox import outbox_table
+
 SCHEMA = "trips"
 
 metadata = MetaData(
@@ -30,6 +32,8 @@ metadata = MetaData(
         "pk": "pk_%(table_name)s",
     },
 )
+
+outbox = outbox_table(metadata)
 
 trips = Table(
     "trips",

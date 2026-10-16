@@ -24,6 +24,14 @@ class FakeRepository:
         self.saved.append(trip)
 
 
+class FakeEvents:
+    def __init__(self) -> None:
+        self.posted: list[UUID] = []
+
+    async def trip_posted(self, trip_id: UUID) -> None:
+        self.posted.append(trip_id)
+
+
 class FakeRouting:
     def __init__(self) -> None:
         self.calls: list[tuple[UUID, Location, Location]] = []
@@ -48,7 +56,8 @@ class FakeRouting:
 async def test_post_trip(direction: Direction) -> None:
     repository = FakeRepository()
     routing = FakeRouting()
-    use_case = PostTrip(repository, routing, clock=lambda: NOW)
+    events = FakeEvents()
+    use_case = PostTrip(repository, routing, events, clock=lambda: NOW)
 
     place = Location("Pembina Highway", 49.82, -97.15)
     departure = NOW + timedelta(hours=2)
@@ -62,6 +71,7 @@ async def test_post_trip(direction: Direction) -> None:
     )
 
     assert repository.saved == [trip]
+    assert events.posted == [trip.id]
     assert trip.seats_available == 3
     assert trip.distance_meters == 6000
     assert trip.duration_seconds == 900
@@ -78,19 +88,22 @@ async def test_post_trip(direction: Direction) -> None:
         assert destination == place
 
 
-async def test_reject_past_departure() -> None:
+@pytest.mark.parametrize("departure", [NOW - timedelta(hours=1), NOW, NOW.replace(tzinfo=None)])
+async def test_reject_past_departure(departure: datetime) -> None:
     repository = FakeRepository()
     routing = FakeRouting()
-    use_case = PostTrip(repository, routing, clock=lambda: NOW)
+    events = FakeEvents()
+    use_case = PostTrip(repository, routing, events, clock=lambda: NOW)
 
     with pytest.raises(DepartureInPastError):
         await use_case.execute(
             driver_id=uuid4(),
             direction=Direction.TO_CAMPUS,
             place=Location("Pembina Highway", 49.82, -97.15),
-            departure_at=NOW - timedelta(hours=1),
+            departure_at=departure,
             seats_total=3,
         )
 
     assert repository.saved == []
+    assert events.posted == []
     assert routing.calls == []

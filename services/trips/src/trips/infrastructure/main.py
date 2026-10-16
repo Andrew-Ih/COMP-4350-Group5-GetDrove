@@ -1,10 +1,12 @@
 """Creates the FastAPI app for the trips service."""
 
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
@@ -12,7 +14,9 @@ from sqlalchemy.ext.asyncio import (
 
 from common_security.dependencies import install_security
 from common_web.app import install
+from events.outbox import OutboxRelay
 from trips.adapters.api import health, trips_router
+from trips.adapters.persistence.tables import outbox
 from trips.infrastructure.settings import get_settings
 
 
@@ -29,16 +33,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         expire_on_commit=False,
     )
 
+    redis = Redis.from_url(settings.redis_url)
+    relay = OutboxRelay(
+        session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
+    )
+
     async with httpx.AsyncClient(
         base_url=settings.routing_url,
         timeout=5.0,
     ) as routing_client:
         app.state.routing_client = routing_client
+        stop = asyncio.Event()
+        relay_task = asyncio.create_task(relay.run(stop))
 
         try:
             yield
         finally:
-            await engine.dispose()
+            stop.set()
+            try:
+                await relay_task
+            finally:
+                await redis.aclose()
+                await engine.dispose()
 
 
 def create_app() -> FastAPI:

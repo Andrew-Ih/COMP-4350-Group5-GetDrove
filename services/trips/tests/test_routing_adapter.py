@@ -1,5 +1,6 @@
 """Tests for the Routing HTTP adapter."""
 
+from collections.abc import Callable
 from uuid import uuid4
 
 import httpx
@@ -12,7 +13,8 @@ from trips.adapters.routing import (
 from trips.domain.values import Location
 
 
-async def test_compute_route() -> None:
+@pytest.mark.parametrize("distance,duration", [(6000, 900), (0, 0)])
+async def test_compute_route(distance: int, duration: int) -> None:
     trip_id = uuid4()
 
     def handler(request: httpx.Request) -> httpx.Response:
@@ -23,8 +25,8 @@ async def test_compute_route() -> None:
             200,
             json={
                 "tripId": str(trip_id),
-                "distanceMeters": 6000,
-                "durationSeconds": 900,
+                "distanceMeters": distance,
+                "durationSeconds": duration,
             },
         )
 
@@ -42,8 +44,8 @@ async def test_compute_route() -> None:
             destination=Location("Campus", 49.8075, -97.1366),
         )
 
-    assert result.distance_meters == 6000
-    assert result.duration_seconds == 900
+    assert result.distance_meters == distance
+    assert result.duration_seconds == duration
 
 
 async def test_routing_unavailable() -> None:
@@ -60,6 +62,20 @@ async def test_routing_unavailable() -> None:
 
         with pytest.raises(RoutingUnavailableError):
             await adapter.compute_route(
+                trip_id=uuid4(),
+                origin=Location("Home", 49.82, -97.15),
+                destination=Location("Campus", 49.8075, -97.1366),
+            )
+
+
+async def test_invalid_routing_response(
+    routing_failure: Callable[[httpx.Request], httpx.Response],
+) -> None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(routing_failure), base_url="http://routing:8000"
+    ) as client:
+        with pytest.raises(RoutingUnavailableError):
+            await HTTPRoutingService(client).compute_route(
                 trip_id=uuid4(),
                 origin=Location("Home", 49.82, -97.15),
                 destination=Location("Campus", 49.8075, -97.1366),

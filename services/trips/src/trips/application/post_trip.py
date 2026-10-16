@@ -4,7 +4,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from trips.application.ports import RoutingService, TripRepository
+from trips.application.ports import RoutingService, TripEvents, TripRepository
 from trips.domain.entities import Trip
 from trips.domain.values import CAMPUS, Direction, Location
 
@@ -18,10 +18,12 @@ class PostTrip:
         self,
         repository: TripRepository,
         routing: RoutingService,
+        events: TripEvents,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository
         self.routing = routing
+        self.events = events
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def execute(
@@ -66,5 +68,6 @@ class PostTrip:
         )
 
         await self.repository.add(trip)
+        await self.events.trip_posted(trip.id)
 
         return trip

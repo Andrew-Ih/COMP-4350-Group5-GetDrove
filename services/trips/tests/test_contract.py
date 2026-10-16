@@ -88,11 +88,14 @@ async def test_trip_id_must_be_a_uuid(client: AsyncClient) -> None:
     assert response.status_code == 422
 
 
-async def test_requests_without_a_valid_token_are_rejected() -> None:
+@pytest.mark.parametrize("method,path", [("GET", "/mine"), ("POST", "/")])
+async def test_requests_without_a_valid_token_are_rejected(method: str, path: str) -> None:
     transport = ASGITransport(app=create_app())
     async with AsyncClient(transport=transport, base_url="http://test") as anonymous:
-        missing = await anonymous.get("/mine")
-        invalid = await anonymous.get("/mine", headers={"Authorization": "Bearer not-a-jwt"})
+        missing = await anonymous.request(method, path, json=VALID_TRIP)
+        invalid = await anonymous.request(
+            method, path, json=VALID_TRIP, headers={"Authorization": "Bearer not-a-jwt"}
+        )
 
     assert missing.status_code == 401
     assert missing.json()["code"] == "unauthorized"

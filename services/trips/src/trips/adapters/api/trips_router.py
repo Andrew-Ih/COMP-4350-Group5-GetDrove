@@ -1,7 +1,6 @@
 """Trips API (Sprint 1): post a trip, my trips, trip detail and search.
 
-These routes are the contract (issue #108): paths, inputs, outputs and errors are final,
-but the handlers return 501 Not Implemented until the real code lands (#94, #95, #97).
+POST is implemented by issue #94. Read handlers remain contract stubs (#95, #97).
 Paths here are relative to the gateway prefix /api/trips.
 """
 
@@ -12,7 +11,9 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
+from common_web import current_request_id
 from common_web.errors import DomainError, InvalidInputError
+from events.outbox import OutboxPublisher
 from trips.adapters.api.schemas import (
     Place,
     PostTripRequest,
@@ -20,7 +21,9 @@ from trips.adapters.api.schemas import (
     SearchResult,
     Trip,
 )
+from trips.adapters.events import OutboxTripEvents
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
+from trips.adapters.persistence.tables import outbox
 from trips.adapters.routing import HTTPRoutingService, RoutingUnavailableError
 from trips.application.post_trip import DepartureInPastError, PostTrip
 from trips.domain.values import Direction, Location
@@ -81,7 +84,10 @@ async def post_trip(
 
     async with session_factory() as session:
         repository = SQLAlchemyTripRepository(session)
-        use_case = PostTrip(repository, routing)
+        events = OutboxTripEvents(
+            OutboxPublisher(session, outbox, producer="trips", correlation_id=current_request_id())
+        )
+        use_case = PostTrip(repository, routing, events)
 
         try:
             async with session.begin():
