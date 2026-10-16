@@ -1,9 +1,9 @@
 import { delay, http, HttpResponse } from "msw";
 
 import type { components as Accounts } from "@/shared/api/generated/accounts";
-import type { components as Trips } from "@/shared/api/generated/trips";
 
 import { maya, myTrips, searchResults } from "./data";
+import { driveHandlers } from "./drive";
 
 type Problem = Accounts["schemas"]["Problem"];
 
@@ -26,6 +26,7 @@ function problem(status: number, code: string, detail: string, instance: string,
  *   - any other token                                     → verified
  */
 export const handlers = [
+  ...driveHandlers, // posting a trip (#96): see drive.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
     const body = (await request.json()) as Accounts["schemas"]["SignupRequest"];
     await delay(); // realistic in the browser, none in tests
@@ -90,18 +91,4 @@ export const handlers = [
   }),
 
   http.get("*/api/trips/mine", () => HttpResponse.json(myTrips)),
-
-  http.post("*/api/trips/", async ({ request }) => {
-    const body = (await request.json()) as Trips["schemas"]["PostTripRequest"];
-    await delay(); // realistic in the browser, none in tests
-    const created: Trips["schemas"]["Trip"] = {
-      ...myTrips[0]!,
-      id: crypto.randomUUID(),
-      direction: body.direction,
-      departureAt: body.departureAt,
-      seatsTotal: body.seatsTotal,
-      seatsAvailable: body.seatsTotal,
-    };
-    return HttpResponse.json(created, { status: 201 });
-  }),
 ];
