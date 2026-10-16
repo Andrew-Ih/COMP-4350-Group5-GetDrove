@@ -9,12 +9,13 @@ Like ``common_security.testing``: for tests only, never used by the running serv
 
 import hashlib
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
 from accounts.domain.email import Email
 from accounts.domain.errors import EmailTakenError
+from accounts.domain.refresh_token import RefreshToken
 from accounts.domain.user import User
 from accounts.domain.verification import VerificationToken
 from events import EventPayload
@@ -37,11 +38,26 @@ class FakeClock:
 class FakePasswordHasher:
     """Fast and predictable, and like a real hash it never contains the password."""
 
+    def __init__(self) -> None:
+        self.dummy_checks = 0
+
     def hash(self, password: str) -> str:
         return "fake$" + hashlib.sha256(password.encode()).hexdigest()
 
     def verify(self, password_hash: str, password: str) -> bool:
         return password_hash == self.hash(password)
+
+    def verify_dummy(self, password: str) -> None:
+        self.dummy_checks += 1
+
+
+class FakeAccessTokenIssuer:
+    """Readable stand-in tokens: ``access:<user id>:<issued at>``."""
+
+    lifetime = timedelta(minutes=15)
+
+    def issue(self, user: User, now: datetime) -> str:
+        return f"access:{user.id}:{now.isoformat()}"
 
 
 class FakeUsers:
@@ -87,6 +103,18 @@ class FakeVerificationTokens:
                 token.consumed_at = now
 
 
+class FakeRefreshTokens:
+    def __init__(self) -> None:
+        self.rows: dict[UUID, RefreshToken] = {}
+
+    async def add(self, token: RefreshToken) -> None:
+        self.rows[token.id] = replace(token)
+
+    async def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+        found = [token for token in self.rows.values() if token.token_hash == token_hash]
+        return replace(found[0]) if found else None
+
+
 class FakeEvents:
     def __init__(self) -> None:
         self.published: list[EventPayload] = []
@@ -102,6 +130,7 @@ class FakeUnitOfWork:
     def __init__(self) -> None:
         self.users = FakeUsers()
         self.verification_tokens = FakeVerificationTokens()
+        self.refresh_tokens = FakeRefreshTokens()
         self.events = FakeEvents()
         self.committed = False
 
