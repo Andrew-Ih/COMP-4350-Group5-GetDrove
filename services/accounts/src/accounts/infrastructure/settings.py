@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="ACCOUNTS_", env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+asyncpg://accounts:accounts@localhost:5432/getdrove"
+    # Where the outbox relay sends events (the events.accounts stream).
+    redis_url: str = "redis://localhost:6379/0"
     # "production" on the live server; anything else is local development.
     environment: str = "development"
     # PEM-encoded RSA private key for signing access tokens. Required in production

@@ -46,5 +46,6 @@ You can also browse each service's contract in Swagger UI: `http://localhost/api
 | Post trip, my trips, trip detail, search | Trips | Frontend | Written |
 | Signup, verify, resend, login, refresh, logout, `GET /me`, JWKS | Accounts | Frontend, all services (JWKS) | Written |
 | `UserRegistered` event (`libs/events/src/events/catalog/`) | Accounts | Notifications | Written |
+| `VerificationEmailRequested` event (`libs/events/src/events/catalog/`) | Accounts | Notifications | Written |
 | Compute route, find matches, route geometry | Routing | Trips, frontend (geometry) | Written |
 | Price quote (internal) | Payments | Trips | Written |

@@ -45,9 +45,8 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
+        # verify and resend are implemented (#5): see tests/integration/test_verification_api.py
         ("POST", "/auth/signup", {"json": SIGNUP}),
-        ("POST", "/auth/verify", {"json": {"token": "abc"}}),
-        ("POST", "/auth/resend-verification", {"json": {"email": SIGNUP["email"]}}),
         ("POST", "/auth/login", {"json": {"email": SIGNUP["email"], "password": "x"}}),
         ("POST", "/auth/refresh", {}),
         ("POST", "/auth/logout", {}),

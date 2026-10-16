@@ -2,7 +2,7 @@ export { AppHeader } from "./AppHeader";
 export { Avatar, type AvatarProps } from "./Avatar";
 export { Badge, type BadgeProps } from "./Badge";
 export { BottomSheet, type BottomSheetProps } from "./BottomSheet";
-export { Button, type ButtonProps } from "./Button";
+export { Button, type ButtonProps, buttonStyles } from "./Button";
 export { Card, type CardProps } from "./Card";
 export { Eyebrow } from "./Eyebrow";
 export { Logo } from "./Logo";
