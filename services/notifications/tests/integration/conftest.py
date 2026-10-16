@@ -43,6 +43,19 @@ async def _create_user_and_schema(admin_url: str) -> None:
     await engine.dispose()
 
 
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    """A throwaway Redis, where the events arrive."""
+    if not _docker_available():
+        pytest.skip("Docker isn't running; start Docker Desktop to run integration tests")
+    from testcontainers.community.redis import RedisContainer
+
+    with RedisContainer("redis:7.4-alpine") as container:
+        host = container.get_container_host_ip()
+        port = container.get_exposed_port(6379)
+        yield f"redis://{host}:{port}/0"
+
+
 @dataclass(frozen=True)
 class Mailpit:
     smtp_host: str

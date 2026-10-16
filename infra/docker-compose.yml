@@ -193,6 +193,8 @@ services:
       NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
       NOTIFICATIONS_SMTP_HOST: mailpit
       NOTIFICATIONS_SMTP_PORT: "1025"
+      # Links in emails open the web app through the gateway.
+      NOTIFICATIONS_WEB_BASE_URL: http://localhost
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
