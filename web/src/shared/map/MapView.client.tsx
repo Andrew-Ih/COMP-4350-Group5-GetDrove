@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { LocateFixed, Minus, Plus } from "lucide-react";
 import { type LineLayerSpecification, type Map as MapLibreMap, setWorkerUrl } from "maplibre-gl";
-import { type ReactNode, useCallback, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import Map, { Layer, Marker, type MapRef, Source } from "react-map-gl/maplibre";
 
 import { cn } from "@/shared/lib/cn";
@@ -44,7 +44,17 @@ function applyTheme(map: MapLibreMap) {
   }
 }
 
-export default function MapView({ routes = [], markers = [], area, fitPadding = 60, className }: MapViewProps) {
+export default function MapView({
+  routes = [],
+  markers = [],
+  area,
+  fitPadding = 60,
+  initialView: startView,
+  focus,
+  onPick,
+  onLocate,
+  className,
+}: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
 
   const allPoints = useMemo<LngLat[]>(
@@ -56,10 +66,16 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
     const map = mapRef.current?.getMap();
     if (!map) return;
     applyTheme(map);
-    if (allPoints.length > 1) {
+    if (!startView && allPoints.length > 1) {
       map.fitBounds(boundsOf(allPoints), { padding: fitPadding, duration: 0 });
     }
-  }, [allPoints, fitPadding]);
+  }, [allPoints, fitPadding, startView]);
+
+  useEffect(() => {
+    if (focus) {
+      mapRef.current?.flyTo({ center: focus, zoom: Math.max(mapRef.current.getZoom(), 13.5) });
+    }
+  }, [focus]);
 
   const locate = () => {
     navigator.geolocation?.getCurrentPosition((pos) => {
@@ -68,7 +84,8 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
   };
 
   const initialView =
-    allPoints.length === 1 ? { longitude: allPoints[0]![0], latitude: allPoints[0]![1], zoom: 14 } : WINNIPEG_VIEW;
+    startView ??
+    (allPoints.length === 1 ? { longitude: allPoints[0]![0], latitude: allPoints[0]![1], zoom: 14 } : WINNIPEG_VIEW);
 
   return (
     <div className={cn("relative size-full bg-map-land", className)}>
@@ -77,6 +94,8 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
         initialViewState={initialView}
         mapStyle={STYLE_URL}
         onLoad={onLoad}
+        onClick={onPick ? (event) => onPick([event.lngLat.lng, event.lngLat.lat]) : undefined}
+        cursor={onPick ? "pointer" : undefined}
         attributionControl={{ compact: true }}
         style={{ width: "100%", height: "100%" }}
       >
@@ -134,7 +153,7 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
           </MapButton>
         </div>
         <div className="overflow-hidden rounded-md bg-surface shadow-card">
-          <MapButton label="Show my location" onClick={locate}>
+          <MapButton label="Show my location" onClick={onLocate ?? locate}>
             <LocateFixed className="size-5" />
           </MapButton>
         </div>
