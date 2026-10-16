@@ -9,12 +9,15 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from trips.adapters.persistence.tables import SCHEMA, metadata
+from trips.infrastructure.settings import get_settings
+
+
 def include_name(name, type_, parent_names):
     if type_ == "schema":
         return name == SCHEMA
 
     return True
-from trips.infrastructure.settings import get_settings
+
 
 config = context.config
 if config.config_file_name is not None:
