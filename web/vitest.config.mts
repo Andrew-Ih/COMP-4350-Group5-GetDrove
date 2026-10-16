@@ -10,5 +10,7 @@ export default defineConfig({
     // A simulated browser, so component tests can render and click.
     environment: "jsdom",
     setupFiles: ["./vitest.setup.ts"],
+    // Absolute API URLs in tests: Node's fetch can't resolve "/api/..." without a page.
+    env: { NEXT_PUBLIC_API_BASE_URL: "http://localhost/api" },
   },
 });

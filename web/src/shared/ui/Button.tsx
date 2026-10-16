@@ -23,15 +23,34 @@ const sizes = {
   lg: "h-14 px-6 text-lg gap-2",
 } as const;
 
-export type ButtonProps = ComponentProps<"button"> & {
+type ButtonStyle = {
   variant?: keyof typeof variants;
   size?: keyof typeof sizes;
   fullWidth?: boolean;
-  /** Shows a spinner and disables the button while an action runs. */
-  loading?: boolean;
-  /** Icon shown before the text. */
-  icon?: ReactNode;
 };
+
+/**
+ * The button classes on their own, for links that should look like buttons:
+ *
+ *   <Link href="/login" className={buttonStyles({ fullWidth: true })}>Log in</Link>
+ */
+export function buttonStyles({ variant = "primary", size = "lg", fullWidth = false }: ButtonStyle = {}) {
+  return cn(
+    "inline-flex items-center justify-center rounded-md font-bold transition-colors",
+    "disabled:cursor-not-allowed disabled:border-transparent disabled:bg-line disabled:text-subtle",
+    variants[variant],
+    sizes[size],
+    fullWidth && "w-full",
+  );
+}
+
+export type ButtonProps = ComponentProps<"button"> &
+  ButtonStyle & {
+    /** Shows a spinner and disables the button while an action runs. */
+    loading?: boolean;
+    /** Icon shown before the text. */
+    icon?: ReactNode;
+  };
 
 export function Button({
   variant = "primary",
@@ -50,14 +69,7 @@ export function Button({
       type={type}
       disabled={disabled || loading}
       aria-busy={loading || undefined}
-      className={cn(
-        "inline-flex items-center justify-center rounded-md font-bold transition-colors",
-        "disabled:cursor-not-allowed disabled:border-transparent disabled:bg-line disabled:text-subtle",
-        variants[variant],
-        sizes[size],
-        fullWidth && "w-full",
-        className,
-      )}
+      className={cn(buttonStyles({ variant, size, fullWidth }), className)}
       {...props}
     >
       {loading ? <Spinner /> : icon}
