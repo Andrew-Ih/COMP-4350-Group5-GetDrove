@@ -2,11 +2,13 @@
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Self
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
 from accounts.domain.email import Email
 from common_web import InvalidField, InvalidInputError
+
+Role = Literal["user", "admin"]  # the only roles the contract allows
 
 
 @dataclass
@@ -38,6 +40,6 @@ class User:
         return self.email_verified_at is not None
 
     @property
-    def roles(self) -> list[str]:
+    def roles(self) -> list[Role]:
         """The contract's roles: ["user"], or ["user", "admin"]."""
         return ["user", "admin"] if self.is_admin else ["user"]

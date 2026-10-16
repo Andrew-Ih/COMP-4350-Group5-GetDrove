@@ -45,11 +45,10 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
-        # signup (#4), verify and resend (#5) are implemented: see tests/integration/
-        ("POST", "/auth/login", {"json": {"email": SIGNUP["email"], "password": "x"}}),
+        # signup (#4), verify and resend (#5), login and /me (#6) are implemented: see
+        # tests/integration/
         ("POST", "/auth/refresh", {}),
         ("POST", "/auth/logout", {}),
-        ("GET", "/me", {}),
     ],
 )
 async def test_valid_requests_reach_the_not_yet_implemented_handler(
