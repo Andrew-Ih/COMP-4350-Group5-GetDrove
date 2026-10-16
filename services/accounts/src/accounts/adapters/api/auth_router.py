@@ -1,8 +1,8 @@
 """Accounts API (Sprint 1 contract, issue #108): sign up, verify, log in, refresh, log out,
 the current user, and the public keys other services use to check tokens.
 
-Handlers return 501 Not Implemented until the real code lands (#4, #6, #90). Implemented:
-verify and resend verification (#5), and the JWKS endpoint (#91).
+Handlers return 501 Not Implemented until the real code lands (#6, #90). Implemented:
+sign up (#4), verify and resend verification (#5), and the JWKS endpoint (#91).
 Paths are relative to the gateway prefix /api/accounts, except the JWKS endpoint, which
 other services also call directly at http://accounts:8000/.well-known/jwks.json.
 
@@ -17,7 +17,7 @@ from typing import Annotated, Any, NoReturn
 
 from fastapi import APIRouter, Cookie, HTTPException, Request
 
-from accounts.adapters.api.dependencies import AppClock, Uow
+from accounts.adapters.api.dependencies import AppClock, Hasher, Uow
 from accounts.adapters.api.schemas import (
     JwkSet,
     LoginRequest,
@@ -30,6 +30,7 @@ from accounts.adapters.api.schemas import (
     VerifyEmailRequest,
 )
 from accounts.adapters.security.signing_key import SigningKey
+from accounts.application.signup import SignUp
 from accounts.application.verification import ResendVerification, VerifyEmail
 from common_security.dependencies import AuthenticatedUser
 
@@ -74,8 +75,11 @@ def _not_implemented() -> NoReturn:
         409: _problem("An account with this email already exists", "email_taken"),
     },
 )
-async def signup(body: SignupRequest) -> SignupResponse:
-    _not_implemented()
+async def signup(body: SignupRequest, uow: Uow, hasher: Hasher, clock: AppClock) -> SignupResponse:
+    user = await SignUp(uow, hasher, clock)(
+        body.email, body.password, body.first_name, body.last_name
+    )
+    return SignupResponse(id=user.id, email=user.email.value, email_verified=False)
 
 
 @auth_router.post(
