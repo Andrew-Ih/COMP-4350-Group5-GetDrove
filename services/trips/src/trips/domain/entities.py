@@ -60,6 +60,7 @@ class Trip:
         duration_seconds: int,
         distance_meters: int,
         seats_total: int,
+        trip_id: UUID | None = None,
     ) -> Self:
         """Create a new scheduled trip."""
 
@@ -78,7 +79,7 @@ class Trip:
         estimated_arrival_at = departure_at + timedelta(seconds=duration_seconds)
 
         return cls(
-            id=uuid4(),
+            id=trip_id if trip_id is not None else uuid4(),
             driver_id=driver_id,
             direction=direction,
             origin=origin,

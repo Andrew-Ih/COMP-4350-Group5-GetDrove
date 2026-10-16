@@ -1,0 +1,70 @@
+"""Application use case for posting a one-off trip."""
+
+from collections.abc import Callable
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from trips.application.ports import RoutingService, TripRepository
+from trips.domain.entities import Trip
+from trips.domain.values import CAMPUS, Direction, Location
+
+
+class DepartureInPastError(ValueError):
+    """The requested departure time is not in the future."""
+
+
+class PostTrip:
+    def __init__(
+        self,
+        repository: TripRepository,
+        routing: RoutingService,
+        clock: Callable[[], datetime] | None = None,
+    ) -> None:
+        self.repository = repository
+        self.routing = routing
+        self.clock = clock or (lambda: datetime.now(UTC))
+
+    async def execute(
+        self,
+        driver_id: UUID,
+        direction: Direction,
+        place: Location,
+        departure_at: datetime,
+        seats_total: int,
+    ) -> Trip:
+        if (
+            departure_at.tzinfo is None
+            or departure_at.utcoffset() is None
+            or departure_at <= self.clock()
+        ):
+            raise DepartureInPastError("Departure time must be in the future")
+
+        trip_id = uuid4()
+
+        if direction == Direction.TO_CAMPUS:
+            origin, destination = place, CAMPUS
+        elif direction == Direction.FROM_CAMPUS:
+            origin, destination = CAMPUS, place
+        else:
+            raise ValueError("Invalid direction")
+
+        route = await self.routing.compute_route(
+            trip_id=trip_id,
+            origin=origin,
+            destination=destination,
+        )
+
+        trip = Trip.create(
+            driver_id=driver_id,
+            direction=direction,
+            place=place,
+            departure_at=departure_at,
+            duration_seconds=route.duration_seconds,
+            distance_meters=route.distance_meters,
+            seats_total=seats_total,
+            trip_id=trip_id,
+        )
+
+        await self.repository.add(trip)
+
+        return trip

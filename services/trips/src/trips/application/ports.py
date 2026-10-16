@@ -1,7 +1,28 @@
-"""Ports: the interfaces (``typing.Protocol``) that use cases need from the outside world.
 
-Adapters implement these, and tests use in-memory fakes. Example:
+"""Interfaces used by Trips application use cases."""
 
-    class TripRepository(Protocol):
-        async def add(self, trip: Trip) -> None: ...
-"""
+from dataclasses import dataclass
+from typing import Protocol
+from uuid import UUID
+
+from trips.domain.entities import Trip
+from trips.domain.values import Location
+
+
+class TripRepository(Protocol):
+    async def add(self, trip: Trip) -> None: ...
+
+
+@dataclass(frozen=True)
+class RouteEstimate:
+    distance_meters: int
+    duration_seconds: int
+
+
+class RoutingService(Protocol):
+    async def compute_route(
+        self,
+        trip_id: UUID,
+        origin: Location,
+        destination: Location,
+    ) -> RouteEstimate: ...
