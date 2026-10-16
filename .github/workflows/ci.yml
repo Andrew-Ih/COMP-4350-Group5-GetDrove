@@ -26,6 +26,24 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
+    env:
+      TRIPS_DATABASE_URL: postgresql+asyncpg://trips:trips@localhost:5432/getdrove
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: trips
+          POSTGRES_PASSWORD: trips
+          POSTGRES_DB: getdrove
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trips -d getdrove"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
@@ -57,6 +75,13 @@ jobs:
             (cd "$service" && uv run lint-imports)
             echo "::endgroup::"
           done
+
+      - name: Prepare Trips test database
+        run: |
+          PGPASSWORD=trips psql -h localhost -U trips -d getdrove \
+            -c "CREATE SCHEMA IF NOT EXISTS trips AUTHORIZATION trips;"
+          cd services/trips
+          uv run alembic upgrade head
 
       - name: Tests with coverage
         run: >
