@@ -1,8 +1,8 @@
 """Accounts API (Sprint 1 contract, issue #108): sign up, verify, log in, refresh, log out,
 the current user, and the public keys other services use to check tokens.
 
-Handlers return 501 Not Implemented until the real code lands (#6, #90). Implemented:
-sign up (#4), verify and resend verification (#5), and the JWKS endpoint (#91).
+Handlers return 501 Not Implemented until the real code lands (#90). Implemented: sign up
+(#4), verify and resend verification (#5), log in and /me (#6), and the JWKS endpoint (#91).
 Paths are relative to the gateway prefix /api/accounts, except the JWKS endpoint, which
 other services also call directly at http://accounts:8000/.well-known/jwks.json.
 
@@ -15,9 +15,9 @@ Tokens:
 
 from typing import Annotated, Any, NoReturn
 
-from fastapi import APIRouter, Cookie, HTTPException, Request
+from fastapi import APIRouter, Cookie, HTTPException, Request, Response
 
-from accounts.adapters.api.dependencies import AppClock, Hasher, Uow
+from accounts.adapters.api.dependencies import AccessTokens, AppClock, Hasher, Uow
 from accounts.adapters.api.schemas import (
     JwkSet,
     LoginRequest,
@@ -30,8 +30,10 @@ from accounts.adapters.api.schemas import (
     VerifyEmailRequest,
 )
 from accounts.adapters.security.signing_key import SigningKey
+from accounts.application.login import GetMe, LogIn
 from accounts.application.signup import SignUp
 from accounts.application.verification import ResendVerification, VerifyEmail
+from accounts.domain.refresh_token import REFRESH_TOKEN_LIFETIME
 from common_security.dependencies import AuthenticatedUser
 
 auth_router = APIRouter(prefix="/auth", tags=["auth"])
@@ -56,6 +58,26 @@ INVALID: Responses = {422: _problem("Invalid input; `errors` lists the fields", 
 
 def _not_implemented() -> NoReturn:
     raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
+
+
+REFRESH_COOKIE = "refresh_token"
+# The browser reaches Accounts through the gateway at /api/accounts, so this limits the
+# cookie to the refresh and logout endpoints; no other request ever carries it.
+REFRESH_COOKIE_PATH = "/api/accounts/auth"
+
+
+def _set_refresh_cookie(response: Response, token: str) -> None:
+    """HttpOnly (JavaScript can't read it), Secure (HTTPS only; browsers allow localhost),
+    SameSite=Strict (never sent from other sites), for as long as the token lasts."""
+    response.set_cookie(
+        REFRESH_COOKIE,
+        token,
+        max_age=int(REFRESH_TOKEN_LIFETIME.total_seconds()),
+        path=REFRESH_COOKIE_PATH,
+        secure=True,
+        httponly=True,
+        samesite="strict",
+    )
 
 
 # ---------------------------------------------------------------- sign up and verify
@@ -129,8 +151,17 @@ async def resend_verification(body: ResendVerificationRequest, uow: Uow, clock: 
         ),
     },
 )
-async def login(body: LoginRequest) -> TokenResponse:
-    _not_implemented()
+async def login(
+    body: LoginRequest,
+    response: Response,
+    uow: Uow,
+    hasher: Hasher,
+    tokens: AccessTokens,
+    clock: AppClock,
+) -> TokenResponse:
+    result = await LogIn(uow, hasher, tokens, clock)(body.email, body.password)
+    _set_refresh_cookie(response, result.refresh_token)  # never in the body
+    return TokenResponse(access_token=result.access_token, expires_in=result.expires_in)
 
 
 @auth_router.post(
@@ -165,8 +196,16 @@ async def logout(refresh_token: RefreshCookie = None) -> None:
     summary="The logged-in user",
     responses={401: _problem("Missing or invalid access token", "unauthorized")},
 )
-async def me(user: AuthenticatedUser) -> User:
-    _not_implemented()
+async def me(user: AuthenticatedUser, uow: Uow) -> User:
+    account = await GetMe(uow)(user.id)
+    return User(
+        id=account.id,
+        email=account.email.value,
+        first_name=account.first_name,
+        last_name=account.last_name,
+        email_verified=account.email_verified,
+        roles=account.roles,
+    )
 
 
 # ---------------------------------------------------------------- public keys
