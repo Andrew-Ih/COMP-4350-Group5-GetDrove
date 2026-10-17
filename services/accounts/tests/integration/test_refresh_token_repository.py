@@ -1,6 +1,6 @@
 """SqlRefreshTokenRepository against a real PostgreSQL (#6)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, text
@@ -78,3 +78,43 @@ async def test_a_token_being_used_is_locked(session: AsyncSession) -> None:
         with pytest.raises(DBAPIError, match="lock timeout"):
             await SqlRefreshTokenRepository(second).get_by_hash(token.token_hash)
     await session.rollback()
+
+
+async def test_a_rotation_is_saved(session: AsyncSession) -> None:
+    user = await saved_user(session)
+    repository = SqlRefreshTokenRepository(session)
+    old, _ = RefreshToken.issue(user.id, NOW)
+    await repository.add(old)
+
+    new, _ = old.rotate(NOW)
+    await repository.add(new)  # first, so the old row can point at it
+    await repository.save(old)
+    await session.commit()
+
+    async with AsyncSession(session.bind) as fresh:
+        found = await SqlRefreshTokenRepository(fresh).get_by_hash(old.token_hash)
+    assert found is not None
+    assert (found.revoked_at, found.replaced_by_id) == (NOW, new.id)
+
+
+async def test_revoking_all_ends_only_that_users_active_sessions(session: AsyncSession) -> None:
+    ada = await saved_user(session)
+    grace = User.register(Email.parse("grace@myumanitoba.ca"), "hash", "Grace", "Hopper")
+    await SqlUserRepository(session).add(grace)
+    repository = SqlRefreshTokenRepository(session)
+    phone, _ = RefreshToken.issue(ada.id, NOW)
+    laptop, _ = RefreshToken.issue(ada.id, NOW)
+    old, _ = RefreshToken.issue(ada.id, NOW)
+    old.revoke(NOW - timedelta(days=1))
+    graces, _ = RefreshToken.issue(grace.id, NOW)
+    for token in (phone, laptop, old, graces):
+        await repository.add(token)
+
+    later = NOW + timedelta(minutes=1)
+    await repository.revoke_all_for_user(ada.id, later)
+
+    found = {t.id: await repository.get_by_hash(t.token_hash) for t in (phone, laptop, old, graces)}
+    assert found[phone.id] is not None and found[phone.id].revoked_at == later
+    assert found[laptop.id] is not None and found[laptop.id].revoked_at == later
+    assert found[old.id] is not None and found[old.id].revoked_at == NOW - timedelta(days=1)
+    assert found[graces.id] is not None and found[graces.id].revoked_at is None

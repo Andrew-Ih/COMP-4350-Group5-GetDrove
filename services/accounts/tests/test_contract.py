@@ -42,21 +42,8 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
     }
 
 
-@pytest.mark.parametrize(
-    ("method", "path", "kwargs"),
-    [
-        # signup (#4), verify and resend (#5), login and /me (#6) are implemented: see
-        # tests/integration/
-        ("POST", "/auth/refresh", {}),
-        ("POST", "/auth/logout", {}),
-    ],
-)
-async def test_valid_requests_reach_the_not_yet_implemented_handler(
-    client: AsyncClient, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    response = await client.request(method, path, **kwargs)
-
-    assert response.status_code == 501
+# Every endpoint is implemented now (#4, #5, #6, #90); their behaviour is tested over HTTP
+# against a real database in tests/integration/.
 
 
 @pytest.mark.parametrize(
@@ -72,3 +59,19 @@ async def test_invalid_signups_are_rejected(client: AsyncClient, change: dict[st
     response = await client.post("/auth/signup", json={**SIGNUP, **change})
 
     assert response.status_code == 422
+
+
+def test_every_error_response_has_its_own_example() -> None:
+    """#230: errors used to share one example from the Problem schema, so the docs showed
+    the same body for every error. Each one now shows its own status and code."""
+    for path, operations in create_app().openapi()["paths"].items():
+        for method, operation in operations.items():
+            for status, response in operation["responses"].items():
+                if not status.isdigit() or int(status) < 400:
+                    continue
+                content = response["content"]["application/json"]
+                where = f"{method.upper()} {path} {status}"
+                assert content["schema"] == {"$ref": "#/components/schemas/Problem"}, where
+                example = content["example"]
+                assert example["status"] == int(status), where
+                assert f"`{example['code']}" in response["description"], where

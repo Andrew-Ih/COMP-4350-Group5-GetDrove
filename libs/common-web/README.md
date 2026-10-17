@@ -55,6 +55,8 @@ raise NoSeatsLeftError("No seats left on this trip")
 
 FastAPI's own errors (unknown route, wrong method, invalid request body) come out in the same format.
 
+**Documenting errors.** In a router, describe each error response as `"What went wrong (code `some_code`)"` with the service's `Problem` model, e.g. `401: {"model": Problem, "description": "Missing or invalid access token (code `unauthorized`)"}`. `install()` then gives every error response in the OpenAPI spec its own example, built from its status and that code, so the docs don't show one example for every error. FastAPI's automatic 422 is documented as a `Problem` too, since that's what the service actually returns.
+
 ## Request IDs
 
 - Each request uses the incoming `X-Request-ID` header if it looks like an ID, or gets a new one.

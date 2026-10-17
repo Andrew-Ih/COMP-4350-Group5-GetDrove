@@ -35,3 +35,27 @@ export function mockFetch(...responses: FakeResponse[]) {
 export function problem(status: number, code: string, detail: string, extra: object = {}) {
   return { type: "about:blank", title: detail, status, detail, instance: "/test", code, ...extra };
 }
+
+/**
+ * Replaces fetch for one test, answering by path instead of in order: for screens that
+ * make several calls at once. Keys are matched against the end of the URL's path; a
+ * function gets the request URL. Unmatched calls get a 500.
+ *
+ *   const fetchSpy = mockApi({
+ *     "/accounts/me": { status: 200, body: maya },
+ *     "/trips/search": (url) => ({ status: 200, body: url.searchParams.has("lat") ? results : [] }),
+ *   });
+ */
+export function mockApi(routes: Record<string, FakeResponse | ((url: URL) => FakeResponse)>) {
+  return vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const match = Object.entries(routes).find(([path]) => url.pathname.endsWith(path));
+    const answer = match ? match[1] : { status: 500, body: problem(500, "unexpected_error", `No fake response for ${url.pathname}`) };
+    const next = typeof answer === "function" ? answer(url) : answer;
+    const hasBody = next.body !== undefined && next.status !== 204;
+    return new Response(hasBody ? JSON.stringify(next.body) : null, {
+      status: next.status,
+      headers: { "Content-Type": next.status >= 400 ? "application/problem+json" : "application/json" },
+    });
+  });
+}

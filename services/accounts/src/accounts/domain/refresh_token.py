@@ -34,3 +34,17 @@ class RefreshToken:
     def is_active(self, now: datetime) -> bool:
         """Not revoked and not expired."""
         return self.revoked_at is None and now < self.expires_at
+
+    def rotate(self, now: datetime) -> tuple["RefreshToken", str]:
+        """Swaps this token for a new one (each refresh). This one stops working and
+        records its replacement, so if it's ever presented again, that's a copy being
+        reused. Returns the new token and the token for the new cookie."""
+        new, cookie_token = RefreshToken.issue(self.user_id, now)
+        self.revoked_at = now
+        self.replaced_by_id = new.id
+        return new, cookie_token
+
+    def revoke(self, now: datetime) -> None:
+        """Stops this token working (logout). Already revoked: keeps the first time."""
+        if self.revoked_at is None:
+            self.revoked_at = now

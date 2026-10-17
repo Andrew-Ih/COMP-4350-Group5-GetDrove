@@ -72,6 +72,13 @@ export function toSearchTime(date: string, time: string): string | undefined {
   return Number.isNaN(local.getTime()) ? undefined : local.toISOString();
 }
 
+/** The other way round: an ISO time back into the date and time inputs, in the rider's time zone. */
+export function fromSearchTime(iso: string): { date: string; time: string } {
+  const local = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return { date: toDateInput(local), time: `${pad(local.getHours())}:${pad(local.getMinutes())}` };
+}
+
 export type SearchQuery = { lat: number; lng: number; direction: Direction; time: string };
 
 /** The query string for GET /api/trips/search and the results page. */

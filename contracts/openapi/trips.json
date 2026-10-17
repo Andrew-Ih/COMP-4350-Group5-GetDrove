@@ -61,6 +61,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -71,6 +80,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
                 }
               }
             }
@@ -81,6 +105,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "The route couldn't be computed right now",
+                  "instance": "/",
+                  "code": "routing_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -143,6 +176,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/mine",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -153,6 +195,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/mine",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
                 }
               }
             }
@@ -242,6 +299,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/search",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -252,6 +318,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/search",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
                 }
               }
             }
@@ -262,6 +343,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Matching is unavailable right now",
+                  "instance": "/search",
+                  "code": "routing_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -311,6 +401,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/{trip_id}",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -321,6 +420,21 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/{trip_id}",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
                 }
               }
             }
@@ -331,6 +445,15 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No trip with this ID",
+                  "instance": "/{trip_id}",
+                  "code": "trip_not_found",
+                  "requestId": "b1e2c3d4e5f6"
                 }
               }
             }
@@ -558,39 +681,24 @@
           },
           "title": {
             "type": "string",
-            "title": "Title",
-            "examples": [
-              "Not found"
-            ]
+            "title": "Title"
           },
           "status": {
             "type": "integer",
-            "title": "Status",
-            "examples": [
-              404
-            ]
+            "title": "Status"
           },
           "detail": {
             "type": "string",
-            "title": "Detail",
-            "examples": [
-              "Trip not found"
-            ]
+            "title": "Detail"
           },
           "instance": {
             "type": "string",
-            "title": "Instance",
-            "examples": [
-              "/api/trips/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11"
-            ]
+            "title": "Instance"
           },
           "code": {
             "type": "string",
             "title": "Code",
-            "description": "Stable error name for the frontend to check.",
-            "examples": [
-              "trip_not_found"
-            ]
+            "description": "Stable error name for the frontend to check."
           },
           "requestId": {
             "anyOf": [
@@ -601,10 +709,7 @@
                 "type": "null"
               }
             ],
-            "title": "Requestid",
-            "examples": [
-              "b1e2c3d4e5f6"
-            ]
+            "title": "Requestid"
           },
           "errors": {
             "anyOf": [
