@@ -6,15 +6,8 @@ import httpx
 from pydantic import BaseModel, Field
 
 from trips.application.ports import RouteEstimate
+from trips.domain.errors import RoutingInvalidLocationError, RoutingUnavailableError
 from trips.domain.values import Location
-
-
-class RoutingUnavailableError(Exception):
-    """Routing could not compute a route."""
-
-
-class RoutingInvalidLocationError(Exception):
-    """Routing rejected the supplied location."""
 
 
 class _RouteResponse(BaseModel):
@@ -56,14 +49,12 @@ class HTTPRoutingService:
                 response.raise_for_status()
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code == 422:
-                    raise RoutingInvalidLocationError(
-                        "No driving route could be found from this place"
-                    ) from exc
+                    raise RoutingInvalidLocationError() from exc
                 raise
             data = _RouteResponse.model_validate(response.json())
 
             if data.trip_id != str(trip_id):
-                raise RoutingUnavailableError("Routing returned a different trip ID")
+                raise RoutingUnavailableError()
 
             return RouteEstimate(
                 distance_meters=data.distance_meters,
@@ -71,4 +62,4 @@ class HTTPRoutingService:
             )
 
         except (httpx.HTTPError, ValueError, KeyError, TypeError) as exc:
-            raise RoutingUnavailableError("Failed to compute driving route") from exc
+            raise RoutingUnavailableError() from exc

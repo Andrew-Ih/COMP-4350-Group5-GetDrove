@@ -1,12 +1,17 @@
 """The Trips API contract (#108): routes exist, validate their input, and are documented."""
 
+from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
+from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
+from trips.adapters.api.dependencies import get_post_trip
 from trips.adapters.api.schemas import PostTripRequest
+from trips.domain.values import Direction, Location
 from trips.infrastructure.main import create_app
 
 VALID_TRIP = {
@@ -20,12 +25,20 @@ SEARCH = {"lat": 49.88, "lng": -97.14, "direction": "to_campus", "time": "2026-1
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    """A client logged in as a test user (common_security.testing)."""
+    """A test client that can validate requests without starting PostgreSQL."""
     auth = TestAuth()
     app = create_app()
     auth.install(app)
+
+    def fake_post_trip() -> object:
+        return object()
+
+    app.dependency_overrides[get_post_trip] = fake_post_trip
+
     return AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth.headers(),
     )
 
 
@@ -113,3 +126,58 @@ async def test_expired_token_is_rejected() -> None:
 
     assert response.status_code == 401
     assert response.json()["code"] == "token_expired"
+
+
+async def test_post_trip_uses_injected_service() -> None:
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+
+    from trips.adapters.api.dependencies import get_post_trip
+
+    class FakePostTripService:
+        def __init__(self) -> None:
+            self.called = False
+
+        async def execute(self, **kwargs: Any) -> Any:
+            self.called = True
+
+            assert kwargs["direction"] == Direction.TO_CAMPUS
+            assert isinstance(kwargs["place"], Location)
+            assert kwargs["seats_total"] == 3
+
+            departure = datetime.now(UTC) + timedelta(days=2)
+            place = kwargs["place"]
+
+            return SimpleNamespace(
+                id=uuid4(),
+                driver_id=kwargs["driver_id"],
+                direction=kwargs["direction"],
+                origin=place,
+                destination=place,
+                departure_at=departure,
+                estimated_arrival_at=departure + timedelta(minutes=20),
+                duration_seconds=1200,
+                distance_meters=5000,
+                seats_total=3,
+                seats_available=3,
+                status="scheduled",
+            )
+
+    fake_service = FakePostTripService()
+    app.dependency_overrides[get_post_trip] = lambda: fake_service
+
+    valid_trip = {
+        **VALID_TRIP,
+        "departureAt": (datetime.now(UTC) + timedelta(days=2)).isoformat(),
+    }
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth.headers(),
+    ) as client:
+        response = await client.post("/", json=valid_trip)
+
+    assert response.status_code == 201, response.text
+    assert fake_service.called

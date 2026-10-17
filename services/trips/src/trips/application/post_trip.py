@@ -6,11 +6,8 @@ from uuid import UUID, uuid4
 
 from trips.application.ports import RoutingService, TripEvents, TripRepository
 from trips.domain.entities import Trip
+from trips.domain.errors import DepartureInPastError
 from trips.domain.values import Direction, Location, trip_ends
-
-
-class DepartureInPastError(ValueError):
-    """The requested departure time is not in the future."""
 
 
 class PostTrip:
@@ -39,7 +36,7 @@ class PostTrip:
             or departure_at.utcoffset() is None
             or departure_at <= self.clock()
         ):
-            raise DepartureInPastError("Departure time must be in the future")
+            raise DepartureInPastError()
 
         trip_id = uuid4()
 

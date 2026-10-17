@@ -7,13 +7,11 @@ Paths here are relative to the gateway prefix /api/trips.
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
-from common_web import current_request_id
-from common_web.errors import DomainError, InvalidField, InvalidInputError
-from events.outbox import OutboxPublisher
+from trips.adapters.api.dependencies import PostTripService
 from trips.adapters.api.schemas import (
     Place,
     PostTripRequest,
@@ -21,15 +19,6 @@ from trips.adapters.api.schemas import (
     SearchResult,
     Trip,
 )
-from trips.adapters.events import OutboxTripEvents
-from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import outbox
-from trips.adapters.routing import (
-    HTTPRoutingService,
-    RoutingInvalidLocationError,
-    RoutingUnavailableError,
-)
-from trips.application.post_trip import DepartureInPastError, PostTrip
 from trips.domain.values import Direction, Location
 
 router = APIRouter(tags=["trips"])
@@ -43,22 +32,15 @@ def _problem(description: str, example_code: str) -> dict[str, Any]:
 Responses = dict[int | str, dict[str, Any]]
 
 UNAUTHORIZED: Responses = {401: _problem("Missing or invalid access token", "unauthorized")}
+
 INVALID: Responses = {422: _problem("Invalid input; `errors` lists the fields", "invalid_input")}
 
 
 def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
-
-
-class RoutingUnavailableAPIError(DomainError):
-    status = 503
-    code = "routing_unavailable"
-    title = "Routing unavailable"
-
-
-class DepartureInPastAPIError(InvalidInputError):
-    code = "departure_in_past"
-    title = "Departure time is in the past"
+    raise HTTPException(
+        status_code=501,
+        detail="Not implemented yet: this is a contract (#108).",
+    )
 
 
 @router.post(
@@ -74,66 +56,28 @@ class DepartureInPastAPIError(InvalidInputError):
             "or a departure in the past",
             "invalid_input / departure_in_past",
         ),
-        503: _problem("The route couldn't be computed right now", "routing_unavailable"),
+        503: _problem(
+            "The route couldn't be computed right now",
+            "routing_unavailable",
+        ),
     },
 )
 async def post_trip(
     body: PostTripRequest,
     user: AuthenticatedUser,
-    request: Request,
+    service: PostTripService,
 ) -> Trip:
-    session_factory = request.app.state.session_factory
-    routing_client = request.app.state.routing_client
-
-    routing = HTTPRoutingService(routing_client)
-
-    async with session_factory() as session:
-        repository = SQLAlchemyTripRepository(session)
-        events = OutboxTripEvents(
-            OutboxPublisher(session, outbox, producer="trips", correlation_id=current_request_id())
-        )
-        use_case = PostTrip(repository, routing, events)
-
-        try:
-            async with session.begin():
-                trip = await use_case.execute(
-                    driver_id=user.id,
-                    direction=body.direction,
-                    place=Location(
-                        label=body.place.label,
-                        lat=body.place.lat,
-                        lng=body.place.lng,
-                    ),
-                    departure_at=body.departure_at,
-                    seats_total=body.seats_total,
-                )
-
-        except DepartureInPastError as exc:
-            raise DepartureInPastAPIError(
-                str(exc),
-                errors=[
-                    InvalidField(
-                        field="departureAt",
-                        message="Must be in the future",
-                    )
-                ],
-            ) from exc
-
-        except RoutingInvalidLocationError as exc:
-            raise InvalidInputError(
-                "We couldn't find a driving route from this place.",
-                errors=[
-                    InvalidField(
-                        field="place",
-                        message="We couldn't find a driving route from this place.",
-                    )
-                ],
-            ) from exc
-
-        except RoutingUnavailableError as exc:
-            raise RoutingUnavailableAPIError(
-                "Could not calculate a driving route. Please try again."
-            ) from exc
+    trip = await service.execute(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+    )
 
     return Trip(
         id=trip.id,
@@ -167,7 +111,8 @@ async def post_trip(
     responses={**UNAUTHORIZED, **INVALID},
 )
 async def my_trips(
-    user: AuthenticatedUser, role: Annotated[Literal["driver", "rider"], Query()] = "driver"
+    user: AuthenticatedUser,
+    role: Annotated[Literal["driver", "rider"], Query()] = "driver",
 ) -> list[Trip]:
     _not_implemented()
 
@@ -184,7 +129,10 @@ async def my_trips(
     responses={
         **UNAUTHORIZED,
         **INVALID,
-        503: _problem("Matching is unavailable right now", "routing_unavailable"),
+        503: _problem(
+            "Matching is unavailable right now",
+            "routing_unavailable",
+        ),
     },
 )
 async def search_trips(
@@ -211,5 +159,8 @@ async def search_trips(
         404: _problem("No trip with this ID", "trip_not_found"),
     },
 )
-async def get_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
+async def get_trip(
+    trip_id: UUID,
+    user: AuthenticatedUser,
+) -> Trip:
     _not_implemented()
