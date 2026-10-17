@@ -37,8 +37,7 @@ The first build takes a few minutes. After that, code changes rebuild in seconds
 | Mailpit | http://localhost:8025 | Every email the app sends lands here |
 | PostgreSQL + PostGIS | `localhost:5432`, database `getdrove` | One user and schema per service (below) |
 | Redis | `localhost:6379` | Event streams; append-only file turned on |
-
-OSRM (the routing engine) joins once the OSRM spike (#23) prepares the Winnipeg map data.
+| OSRM (routing engine) | `localhost:5050` (car), `localhost:5051` (foot) | Only with `--profile osrm`, after preparing the map data once: see [osrm/README.md](osrm/README.md) |
 
 ## How the pieces fit
 

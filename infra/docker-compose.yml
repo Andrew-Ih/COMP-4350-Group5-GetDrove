@@ -6,6 +6,8 @@
 # Swagger UI per service:   http://localhost/api/<service>/docs
 # Traefik dashboard:        http://localhost:8080
 # Mailpit (caught emails):  http://localhost:8025
+# OSRM (routing engine):    --profile osrm, after preparing the map data once
+#                           (bash infra/osrm/prepare.sh; see infra/osrm/README.md)
 #
 # Every value below has a local default, so no .env file is needed. To override one,
 # set it in a .env file in the repo root (gitignored). Never put real secrets here.
@@ -93,8 +95,37 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  # OSRM (routing engine) is added by the OSRM spike (#23), once the Winnipeg map data
-  # can be prepared. Until then Routing uses a stub adapter.
+  # OSRM, the routing engine (#23, ADR 0008): one instance per profile, serving the
+  # Winnipeg graphs built by infra/osrm/prepare.sh. Behind the "osrm" profile so that
+  # `docker compose up` still works before the map data exists:
+  #   docker compose --profile osrm up -d
+  osrm-car:
+    image: &osrm-image ghcr.io/project-osrm/osrm-backend:v5.27.1
+    profiles: [osrm]
+    restart: unless-stopped
+    command: ["osrm-routed", "--algorithm", "mld", "/data/winnipeg.osrm"]
+    volumes:
+      - ./osrm/data/car:/data:ro
+    ports:
+      - "${OSRM_CAR_PORT:-5050}:5000" # for the Routing service running outside Docker
+    healthcheck: &osrm-healthcheck
+      # The image has no curl; bash can still check that the port answers.
+      test: ["CMD", "bash", "-c", ":> /dev/tcp/127.0.0.1/5000"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  osrm-foot:
+    image: *osrm-image
+    profiles: [osrm]
+    restart: unless-stopped
+    command: ["osrm-routed", "--algorithm", "mld", "/data/winnipeg.osrm"]
+    volumes:
+      - ./osrm/data/foot:/data:ro
+    ports:
+      - "${OSRM_FOOT_PORT:-5051}:5000"
+    healthcheck: *osrm-healthcheck
 
   # ---------------------------------------------------------------- services
   #
@@ -153,6 +184,9 @@ services:
     environment:
       ROUTING_DATABASE_URL: postgresql+asyncpg://routing:${ROUTING_DB_PASSWORD:-routing}@postgres:5432/getdrove
       ROUTING_REDIS_URL: redis://redis:6379/0
+      # OSRM (--profile osrm). Without it, routes can't be computed and Routing answers 503.
+      ROUTING_OSRM_CAR_URL: http://osrm-car:5000
+      ROUTING_OSRM_FOOT_URL: http://osrm-foot:5000
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
