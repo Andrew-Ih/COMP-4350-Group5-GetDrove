@@ -17,22 +17,21 @@ from events.catalog import UserRegistered, VerificationEmailRequested
 from events.consumer import StreamConsumer
 from notifications.application.send_verification_email import SendVerificationEmail
 
+# The events that ask for a verification email. Both have the same fields.
+VERIFICATION_EMAIL_EVENTS: dict[str, type[UserRegistered] | type[VerificationEmailRequested]] = {
+    UserRegistered.event_type: UserRegistered,
+    VerificationEmailRequested.event_type: VerificationEmailRequested,
+}
+
 
 def register_handlers(consumer: StreamConsumer, send_email: SendVerificationEmail) -> None:
-    @consumer.on(UserRegistered)
-    async def user_registered(event: EventEnvelope, session: AsyncSession) -> None:
-        data = event.payload_as(UserRegistered)
+    async def send_verification_email(event: EventEnvelope, session: AsyncSession) -> None:
+        data = event.payload_as(VERIFICATION_EMAIL_EVENTS[event.type])
         await send_email(
             email=data.email,
             first_name=data.first_name,
             verification_token=data.verification_token,
         )
 
-    @consumer.on(VerificationEmailRequested)
-    async def verification_email_requested(event: EventEnvelope, session: AsyncSession) -> None:
-        data = event.payload_as(VerificationEmailRequested)
-        await send_email(
-            email=data.email,
-            first_name=data.first_name,
-            verification_token=data.verification_token,
-        )
+    for payload in VERIFICATION_EMAIL_EVENTS.values():
+        consumer.on(payload)(send_verification_email)

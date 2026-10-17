@@ -5,6 +5,7 @@ To run it locally, see the service README.
 
 import asyncio
 import contextlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,27 @@ from notifications.adapters.events.handlers import register_handlers
 from notifications.adapters.persistence.tables import consumer as consumer_tables
 from notifications.application.send_verification_email import SendVerificationEmail
 from notifications.infrastructure.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
+# How long the consumer waits on Redis for new events before checking again.
+CONSUMER_BLOCK_MS = 5_000
+# Redis reads must outlast that wait. With no read timeout of its own, redis-py waits
+# exactly as long as the block, and when nothing arrives the two race: it often gives up
+# just before Redis answers "nothing new", logging a TimeoutError every few seconds.
+REDIS_READ_TIMEOUT_SECONDS = 10
+
+
+def redis_client(url: str) -> Redis:
+    return Redis.from_url(url, socket_timeout=REDIS_READ_TIMEOUT_SECONDS)
+
+
+def _log_if_consumer_stopped(task: "asyncio.Task[None]") -> None:
+    """The consumer should run until shutdown. If it stops with an error (for example,
+    Redis was unreachable while it set up its consumer group), say so loudly: otherwise
+    the service looks healthy but never sends an email."""
+    if not task.cancelled() and task.exception() is not None:
+        logger.error("Event consumer stopped; no emails will be sent", exc_info=task.exception())
 
 
 def create_app() -> FastAPI:
@@ -45,17 +67,19 @@ def create_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Reads Accounts' events for as long as the service runs.
-        redis = Redis.from_url(settings.redis_url)
+        redis = redis_client(settings.redis_url)
         consumer = StreamConsumer(
             redis=redis,
             session_factory=sessions,
             group="notifications",
             streams=[stream_name("accounts")],
             tables=consumer_tables,
+            block_ms=CONSUMER_BLOCK_MS,
         )
         register_handlers(consumer, send_email)
         stop = asyncio.Event()
         consumer_task = asyncio.create_task(consumer.run(stop))
+        consumer_task.add_done_callback(_log_if_consumer_stopped)
         try:
             yield
         finally:
