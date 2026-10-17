@@ -1,6 +1,6 @@
 # ADR 0021: A separate event for resending the verification email
 
-- **Status:** Proposed
+- **Status:** Accepted (approved in [#211](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/pull/211))
 - **Date:** 2026-10-15
 
 ## Context
