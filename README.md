@@ -53,6 +53,10 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 - [API contracts](contracts/README.md)
 - [Monorepo structure](docs/architecture/monorepo.md)
 
+**Testing**
+
+- [Testing strategy](docs/testing/testing-strategy.md)
+
 **Deployment**
 
 - [Server setup](docs/deployment/server-setup.md)
