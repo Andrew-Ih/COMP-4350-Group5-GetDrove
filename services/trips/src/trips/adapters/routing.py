@@ -12,6 +12,7 @@ from trips.domain.values import Location
 class RoutingUnavailableError(Exception):
     """Routing could not compute a route."""
 
+
 class RoutingInvalidLocationError(Exception):
     """Routing rejected the supplied location."""
 
