@@ -1,7 +1,6 @@
 """Trips API (Sprint 1): post a trip, my trips, trip detail and search.
 
-These routes are the contract (issue #108): paths, inputs, outputs and errors are final,
-but the handlers return 501 Not Implemented until the real code lands (#94, #95, #97).
+POST is implemented by issue #94. Read handlers remain contract stubs (#95, #97).
 Paths here are relative to the gateway prefix /api/trips.
 """
 
@@ -12,8 +11,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
-from trips.adapters.api.schemas import PostTripRequest, Problem, SearchResult, Trip
-from trips.domain.values import Direction
+from trips.adapters.api.dependencies import PostTripService
+from trips.adapters.api.schemas import (
+    Place,
+    PostTripRequest,
+    Problem,
+    SearchResult,
+    Trip,
+)
+from trips.domain.values import Direction, Location
 
 router = APIRouter(tags=["trips"])
 
@@ -26,11 +32,15 @@ def _problem(description: str, example_code: str) -> dict[str, Any]:
 Responses = dict[int | str, dict[str, Any]]
 
 UNAUTHORIZED: Responses = {401: _problem("Missing or invalid access token", "unauthorized")}
+
 INVALID: Responses = {422: _problem("Invalid input; `errors` lists the fields", "invalid_input")}
 
 
 def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
+    raise HTTPException(
+        status_code=501,
+        detail="Not implemented yet: this is a contract (#108).",
+    )
 
 
 @router.post(
@@ -42,14 +52,55 @@ def _not_implemented() -> NoReturn:
     responses={
         **UNAUTHORIZED,
         422: _problem(
-            "Invalid input, including seats outside 1-6 or a departure in the past",
+            "Invalid input, including seats outside 1-6, an unroutable place, "
+            "or a departure in the past",
             "invalid_input / departure_in_past",
         ),
-        503: _problem("The route couldn't be computed right now", "routing_unavailable"),
+        503: _problem(
+            "The route couldn't be computed right now",
+            "routing_unavailable",
+        ),
     },
 )
-async def post_trip(body: PostTripRequest, user: AuthenticatedUser) -> Trip:
-    _not_implemented()
+async def post_trip(
+    body: PostTripRequest,
+    user: AuthenticatedUser,
+    service: PostTripService,
+) -> Trip:
+    trip = await service.execute(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+    )
+
+    return Trip(
+        id=trip.id,
+        driver_id=trip.driver_id,
+        direction=trip.direction,
+        origin=Place(
+            label=trip.origin.label,
+            lat=trip.origin.lat,
+            lng=trip.origin.lng,
+        ),
+        destination=Place(
+            label=trip.destination.label,
+            lat=trip.destination.lat,
+            lng=trip.destination.lng,
+        ),
+        departure_at=trip.departure_at,
+        estimated_arrival_at=trip.estimated_arrival_at,
+        duration_seconds=trip.duration_seconds,
+        distance_meters=trip.distance_meters,
+        seats_total=trip.seats_total,
+        seats_available=trip.seats_available,
+        status=trip.status,
+    )
 
 
 @router.get(
@@ -60,7 +111,8 @@ async def post_trip(body: PostTripRequest, user: AuthenticatedUser) -> Trip:
     responses={**UNAUTHORIZED, **INVALID},
 )
 async def my_trips(
-    user: AuthenticatedUser, role: Annotated[Literal["driver", "rider"], Query()] = "driver"
+    user: AuthenticatedUser,
+    role: Annotated[Literal["driver", "rider"], Query()] = "driver",
 ) -> list[Trip]:
     _not_implemented()
 
@@ -77,7 +129,10 @@ async def my_trips(
     responses={
         **UNAUTHORIZED,
         **INVALID,
-        503: _problem("Matching is unavailable right now", "routing_unavailable"),
+        503: _problem(
+            "Matching is unavailable right now",
+            "routing_unavailable",
+        ),
     },
 )
 async def search_trips(
@@ -104,5 +159,8 @@ async def search_trips(
         404: _problem("No trip with this ID", "trip_not_found"),
     },
 )
-async def get_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
+async def get_trip(
+    trip_id: UUID,
+    user: AuthenticatedUser,
+) -> Trip:
     _not_implemented()

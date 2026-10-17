@@ -406,7 +406,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Invalid input, including seats outside 1-6 or a departure in the past (code `invalid_input / departure_in_past`) */
+            /** @description Invalid input, including seats outside 1-6, an unroutable place, or a departure in the past (code `invalid_input / departure_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;

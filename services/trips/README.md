@@ -51,4 +51,55 @@ _To be filled in as endpoints are added: link to the OpenAPI spec in `contracts/
 
 ## Events
 
-_Published and consumed events, linking to `contracts/events/`._
+`TripPosted` is recorded transactionally and relayed to `events.trips`; see below.
+
+## Posting one-off trips (#94)
+
+`POST /` (gateway: `POST /api/trips/`) requires authentication and keeps the
+existing API contract. Routing responses must contain the requested `tripId` and
+non-negative integer metrics that fit PostgreSQL INTEGER columns. Malformed
+responses, timeouts, and HTTP failures return `503 routing_unavailable`.
+The local Routing URL defaults to `http://localhost:8003`, matching Routing's
+documented development port; Docker supplies `TRIPS_ROUTING_URL` separately.
+
+A successful request commits the Trip and a `TripPosted` outbox record in one
+PostgreSQL transaction. Failures roll both back. The application depends on a
+framework-free `TripEvents` port; the adapter uses the existing events library.
+The lifespan runs its outbox relay against `TRIPS_REDIS_URL` (default
+`redis://localhost:6379/0`). Redis outages leave events pending for retry and do
+not undo committed trips.
+
+`TripPosted` version 1 is published on `events.trips` with payload
+`{"tripId": "<UUID>"}` and the standard event envelope/correlation ID. It contains
+no home coordinates, address labels, or driver identity. Consumers must handle
+redelivery idempotently. The producer payload is defined in `adapters/events.py`;
+agree any additional fields with consumers before extending this contract.
+
+### Database tests
+
+Use a dedicated PostgreSQL test database with a `trips` schema owned by its test
+user. Set `TRIPS_DATABASE_URL`, then run `uv run alembic upgrade head` from this
+folder before running tests from the repository root. Tests commit to verify
+visibility through another connection and clean up their own Trip/outbox rows.
+Routing is mocked; these tests do not exercise a live Routing server or Redis.
+
+### Cross-service consistency: team decision required
+
+The PostgreSQL transaction cannot roll back a route already stored by Routing.
+A database/outbox failure after Routing succeeds can leave an orphan route. A
+Routing timeout is ambiguous: the remote write may finish after the client stops
+waiting. Retrying the public POST creates a new Trip ID and can create duplicates
+if the original PostgreSQL commit succeeded but its response was lost.
+
+Recommended follow-up: agree a stable request idempotency key and a durable
+compensation/reconciliation workflow with the Routing team. Failed route writes
+need retryable cleanup (including retention of private route geometry); a single
+best-effort delete is insufficient when cleanup itself fails. Routing's existing
+same-Trip-ID replacement contract helps internal retries, but does not make the
+public POST idempotent. The outbox makes Trip/event persistence atomic, not the
+Routing write. No compensation API, automatic public-POST retry, pending-Trip
+workflow, or Routing service change is introduced here.
+
+The checked-in Routing compute handler is still a 501 contract stub (#23-#26).
+A deployed Routing implementation is required for a live successful POST; the
+Trips adapter maps its HTTP failures to the existing 503 response.

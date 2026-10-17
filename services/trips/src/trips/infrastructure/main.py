@@ -1,24 +1,78 @@
-"""Creates the FastAPI app for the trips service.
+"""Creates the FastAPI app for the trips service."""
 
-To run it locally, see the service README.
-"""
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
+from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import (
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from common_security.dependencies import install_security
 from common_web.app import install
+from events.outbox import OutboxRelay
 from trips.adapters.api import health, trips_router
+from trips.adapters.persistence.tables import outbox
+from trips.infrastructure.settings import get_settings
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Initialize and close infrastructure resources."""
+
+    settings = get_settings()
+
+    engine = create_async_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+    )
+
+    app.state.session_factory = async_sessionmaker(
+        engine,
+        expire_on_commit=False,
+    )
+
+    redis = Redis.from_url(settings.redis_url)
+    relay = OutboxRelay(
+        session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
+    )
+
+    async with httpx.AsyncClient(
+        base_url=settings.routing_url,
+        timeout=5.0,
+    ) as routing_client:
+        app.state.routing_client = routing_client
+        stop = asyncio.Event()
+        relay_task = asyncio.create_task(relay.run(stop))
+
+        try:
+            yield
+        finally:
+            stop.set()
+            try:
+                await relay_task
+            finally:
+                await redis.aclose()
+                await engine.dispose()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="GetDrove trips service",
         version="0.1.0",
+        lifespan=lifespan,
     )
+
     install(app, service="trips")
     install_security(app)
+
     app.include_router(health.router)
     app.include_router(trips_router.router)
+
     return app
 
 

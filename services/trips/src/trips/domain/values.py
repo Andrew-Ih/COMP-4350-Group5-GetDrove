@@ -27,3 +27,15 @@ class Location:
 
 # The campus end of every trip.
 CAMPUS = Location(label="University of Manitoba, Fort Garry campus", lat=49.8075, lng=-97.1366)
+
+
+def trip_ends(
+    direction: Direction,
+    place: Location,
+) -> tuple[Location, Location]:
+    """Determine a trip's origin and destination."""
+    if direction == Direction.TO_CAMPUS:
+        return place, CAMPUS
+    if direction == Direction.FROM_CAMPUS:
+        return CAMPUS, place
+    raise ValueError("Invalid trip direction")
