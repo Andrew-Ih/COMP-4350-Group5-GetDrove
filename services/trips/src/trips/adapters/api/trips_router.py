@@ -12,7 +12,7 @@ from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
 from common_web import current_request_id
-from common_web.errors import DomainError, InvalidInputError
+from common_web.errors import DomainError, InvalidField, InvalidInputError
 from events.outbox import OutboxPublisher
 from trips.adapters.api.schemas import (
     Place,
@@ -24,7 +24,11 @@ from trips.adapters.api.schemas import (
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox
-from trips.adapters.routing import HTTPRoutingService, RoutingUnavailableError
+from trips.adapters.routing import (
+    HTTPRoutingService,
+    RoutingInvalidLocationError,
+    RoutingUnavailableError,
+)
 from trips.application.post_trip import DepartureInPastError, PostTrip
 from trips.domain.values import Direction, Location
 
@@ -66,7 +70,8 @@ class DepartureInPastAPIError(InvalidInputError):
     responses={
         **UNAUTHORIZED,
         422: _problem(
-            "Invalid input, including seats outside 1-6 or a departure in the past",
+            "Invalid input, including seats outside 1-6, an unroutable place, "
+            "or a departure in the past",
             "invalid_input / departure_in_past",
         ),
         503: _problem("The route couldn't be computed right now", "routing_unavailable"),
@@ -104,7 +109,26 @@ async def post_trip(
                 )
 
         except DepartureInPastError as exc:
-            raise DepartureInPastAPIError(str(exc)) from exc
+            raise DepartureInPastAPIError(
+                str(exc),
+                errors=[
+                    InvalidField(
+                        field="departureAt",
+                        message="Must be in the future",
+                    )
+                ],
+            ) from exc
+
+        except RoutingInvalidLocationError as exc:
+            raise InvalidInputError(
+                "We couldn't find a driving route from this place.",
+                errors=[
+                    InvalidField(
+                        field="place",
+                        message="We couldn't find a driving route from this place.",
+                    )
+                ],
+            ) from exc
 
         except RoutingUnavailableError as exc:
             raise RoutingUnavailableAPIError(

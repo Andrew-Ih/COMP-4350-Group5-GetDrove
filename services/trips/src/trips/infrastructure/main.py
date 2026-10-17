@@ -26,7 +26,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
 
-    engine = create_async_engine(settings.database_url)
+    engine = create_async_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+    )
 
     app.state.session_factory = async_sessionmaker(
         engine,

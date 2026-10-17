@@ -274,3 +274,56 @@ async def test_lifespan_retries_pending_event_and_stops_relay(
 
     assert attempts == 2
     redis.aclose.assert_awaited_once()
+
+
+async def test_invalid_routing_location_returns_422_and_saves_nothing(
+    api: API,
+) -> None:
+    """An unroutable location should return 422 without saving anything."""
+
+    def invalid_location(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            422,
+            json={"code": "invalid_input"},
+        )
+
+    response = await post(api, invalid_location, payload())
+
+    assert response.status_code == 422, response.text
+
+    body = response.json()
+    assert body["code"] == "invalid_input"
+    assert body["errors"] == [
+        {
+            "field": "place",
+            "message": "We couldn't find a driving route from this place.",
+        }
+    ]
+
+    assert await saved(api) == []
+    assert await saved_events(api) == []
+
+
+async def test_past_departure_identifies_invalid_field(api: API) -> None:
+    """A past departure should identify departureAt in the error response."""
+
+    body = {
+        **payload(),
+        "departureAt": (datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+    }
+
+    response = await post(api, route, body)
+
+    assert response.status_code == 422, response.text
+
+    result = response.json()
+    assert result["code"] == "departure_in_past"
+    assert result["errors"] == [
+        {
+            "field": "departureAt",
+            "message": "Must be in the future",
+        }
+    ]
+
+    assert await saved(api) == []
+    assert await saved_events(api) == []

@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 from trips.application.ports import RoutingService, TripEvents, TripRepository
 from trips.domain.entities import Trip
-from trips.domain.values import CAMPUS, Direction, Location
+from trips.domain.values import Direction, Location, trip_ends
 
 
 class DepartureInPastError(ValueError):
@@ -43,12 +43,7 @@ class PostTrip:
 
         trip_id = uuid4()
 
-        if direction == Direction.TO_CAMPUS:
-            origin, destination = place, CAMPUS
-        elif direction == Direction.FROM_CAMPUS:
-            origin, destination = CAMPUS, place
-        else:
-            raise ValueError("Invalid direction")
+        origin, destination = trip_ends(direction, place)
 
         route = await self.routing.compute_route(
             trip_id=trip_id,

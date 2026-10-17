@@ -12,6 +12,9 @@ from trips.domain.values import Location
 class RoutingUnavailableError(Exception):
     """Routing could not compute a route."""
 
+class RoutingInvalidLocationError(Exception):
+    """Routing rejected the supplied location."""
+
 
 class _RouteResponse(BaseModel):
     trip_id: str = Field(alias="tripId", strict=True)
@@ -48,7 +51,14 @@ class HTTPRoutingService:
                 "/internal/routes",
                 json=payload,
             )
-            response.raise_for_status()
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code == 422:
+                    raise RoutingInvalidLocationError(
+                        "No driving route could be found from this place"
+                    ) from exc
+                raise
             data = _RouteResponse.model_validate(response.json())
 
             if data.trip_id != str(trip_id):

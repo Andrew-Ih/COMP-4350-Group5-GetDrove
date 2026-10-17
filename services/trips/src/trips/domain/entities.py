@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Self
 from uuid import UUID, uuid4
 
-from trips.domain.values import CAMPUS, Direction, Location, TripStatus
+from trips.domain.values import Direction, Location, TripStatus, trip_ends
 
 
 @dataclass
@@ -64,14 +64,7 @@ class Trip:
     ) -> Self:
         """Create a new scheduled trip."""
 
-        if direction == Direction.TO_CAMPUS:
-            origin = place
-            destination = CAMPUS
-        elif direction == Direction.FROM_CAMPUS:
-            origin = CAMPUS
-            destination = place
-        else:
-            raise ValueError("Invalid trip direction")
+        origin, destination = trip_ends(direction, place)
 
         if departure_at.tzinfo is None or departure_at.utcoffset() is None:
             raise ValueError("Departure time must include a timezone")
