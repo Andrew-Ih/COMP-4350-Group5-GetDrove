@@ -179,11 +179,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
         /** HealthOut */
         HealthOut: {
             /**
@@ -274,36 +269,20 @@ export interface components {
              * @default about:blank
              */
             type: string;
-            /**
-             * Title
-             * @example Conflict
-             */
+            /** Title */
             title: string;
-            /**
-             * Status
-             * @example 409
-             */
+            /** Status */
             status: number;
-            /**
-             * Detail
-             * @example An account with this email already exists
-             */
+            /** Detail */
             detail: string;
-            /**
-             * Instance
-             * @example /api/accounts/auth/signup
-             */
+            /** Instance */
             instance: string;
             /**
              * Code
              * @description Stable error name for the frontend to check.
-             * @example email_taken
              */
             code: string;
-            /**
-             * Requestid
-             * @example b1e2c3d4e5f6
-             */
+            /** Requestid */
             requestId?: string | null;
             /**
              * Errors
@@ -419,19 +398,6 @@ export interface components {
              */
             roles: ("user" | "admin")[];
         };
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
-        };
         /** VerifyEmailRequest */
         VerifyEmailRequest: {
             /**
@@ -497,6 +463,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Conflict",
+                     *       "status": 409,
+                     *       "detail": "An account with this email already exists",
+                     *       "instance": "/auth/signup",
+                     *       "code": "email_taken",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -506,6 +483,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/auth/signup",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "password",
+                     *           "message": "String should have at least 10 characters"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -537,6 +531,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Bad Request",
+                     *       "status": 400,
+                     *       "detail": "Unknown or already-used token",
+                     *       "instance": "/auth/verify",
+                     *       "code": "invalid_token",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -546,6 +551,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Gone",
+                     *       "status": 410,
+                     *       "detail": "The link has expired; request a new one with /auth/resend-verification",
+                     *       "instance": "/auth/verify",
+                     *       "code": "token_expired",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -555,6 +571,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/auth/verify",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "password",
+                     *           "message": "String should have at least 10 characters"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -588,6 +621,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/auth/resend-verification",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "password",
+                     *           "message": "String should have at least 10 characters"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -621,6 +671,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Wrong email or password (one message for both)",
+                     *       "instance": "/auth/login",
+                     *       "code": "invalid_credentials",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -630,6 +691,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Forbidden",
+                     *       "status": 403,
+                     *       "detail": "The email hasn't been verified yet; the user can resend the email",
+                     *       "instance": "/auth/login",
+                     *       "code": "email_not_verified",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -639,6 +711,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/auth/login",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "password",
+                     *           "message": "String should have at least 10 characters"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -671,16 +760,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing, expired or already-used refresh token",
+                     *       "instance": "/auth/refresh",
+                     *       "code": "invalid_refresh_token",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Invalid input; `errors` lists the fields (code `invalid_input`) */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/auth/refresh",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "password",
+                     *           "message": "String should have at least 10 characters"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -704,13 +821,30 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Invalid input; `errors` lists the fields (code `invalid_input`) */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/auth/logout",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "password",
+                     *           "message": "String should have at least 10 characters"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
                 };
             };
         };
@@ -739,6 +873,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/me",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
