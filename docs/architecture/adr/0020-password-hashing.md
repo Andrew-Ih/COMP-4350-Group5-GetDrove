@@ -1,6 +1,6 @@
 # ADR 0020: Argon2id for password hashing
 
-- **Status:** Proposed
+- **Status:** Accepted (approved in [#210](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/pull/210))
 - **Date:** 2026-10-14
 
 ## Context
