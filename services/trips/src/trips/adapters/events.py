@@ -1,17 +1,9 @@
-"""Privacy-preserving TripPosted events, persisted with the Trip transaction."""
+"""Trip events persisted with the Trip transaction."""
 
-from typing import ClassVar
 from uuid import UUID
 
-from events.envelope import EventPayload
+from events.catalog import TripPosted
 from events.outbox import OutboxPublisher
-
-
-class TripPosted(EventPayload):
-    """Published on events.trips; private locations never leave Trips in this event."""
-
-    event_type: ClassVar[str] = "TripPosted"
-    trip_id: UUID
 
 
 class OutboxTripEvents:

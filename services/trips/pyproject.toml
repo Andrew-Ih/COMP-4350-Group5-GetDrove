@@ -49,4 +49,4 @@ type = "forbidden"
 source_modules = ["trips.domain", "trips.application"]
 # import-linter only accepts external packages this service actually imports somewhere.
 # Add httpx, redis and stripe here when the service starts using them.
-forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings"]
+forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "redis"]
