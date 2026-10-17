@@ -200,7 +200,6 @@ export interface components {
             /**
              * Code
              * @description Stable error name.
-             * @example routing_engine_unavailable
              */
             code: string;
             /** Requestid */
@@ -319,6 +318,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/internal/routes",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -328,6 +344,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The routing engine (OSRM) is unavailable or too slow",
+                     *       "instance": "/internal/routes",
+                     *       "code": "routing_engine_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -361,6 +388,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/internal/matches",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -370,6 +414,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The routing engine (OSRM) is unavailable or too slow",
+                     *       "instance": "/internal/matches",
+                     *       "code": "routing_engine_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -401,6 +456,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/trips/{trip_id}/geometry",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -410,6 +476,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Not Found",
+                     *       "status": 404,
+                     *       "detail": "No route for this trip",
+                     *       "instance": "/trips/{trip_id}/geometry",
+                     *       "code": "route_not_found",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -419,6 +496,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/trips/{trip_id}/geometry",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
