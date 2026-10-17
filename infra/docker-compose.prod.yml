@@ -8,7 +8,7 @@
 #   - ready-built images from GitHub Container Registry, tagged with the commit (IMAGE_TAG)
 #   - passwords and keys come from .env on the server; there are no defaults
 #   - only Traefik is reachable from the internet (port 80); no database, Redis or
-#     dashboard ports, and no Mailpit
+#     dashboard ports, and no Mailpit: real emails go out through Brevo
 #   - memory limits, log rotation, and Accounts runs in production mode
 # See docs/deployment/deployment.md.
 
@@ -162,7 +162,18 @@ services:
       NOTIFICATIONS_DATABASE_URL: postgresql+asyncpg://notifications:${NOTIFICATIONS_DB_PASSWORD}@postgres:5432/getdrove
       NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
-      # Production email (Brevo over SMTP, ADR 0010) is added with the verification email story.
+      # Email goes through Brevo's SMTP relay (ADR 0010, #220), encrypted with STARTTLS.
+      NOTIFICATIONS_SMTP_HOST: smtp-relay.brevo.com
+      NOTIFICATIONS_SMTP_PORT: "587"
+      NOTIFICATIONS_SMTP_STARTTLS: "true"
+      NOTIFICATIONS_SMTP_USERNAME: ${NOTIFICATIONS_SMTP_USERNAME:?set in .env}
+      NOTIFICATIONS_SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:?set in .env}
+      # A sender verified in Brevo, e.g. "GetDrove <team@example.com>".
+      NOTIFICATIONS_EMAIL_FROM: ${NOTIFICATIONS_EMAIL_FROM:?set in .env}
+      # Links in emails (e.g. /verify?token=...) open the live site. SITE_URL is the site's
+      # one address, set at the top of deploy.yml; each service reads it through its own
+      # NOTIFICATIONS_* style setting, like the database passwords above.
+      NOTIFICATIONS_WEB_BASE_URL: ${SITE_URL:?set in .env}
     labels:
       - traefik.enable=true
       - traefik.http.routers.notifications.rule=PathPrefix(`/api/notifications`) && !PathPrefix(`/api/notifications/internal`)
