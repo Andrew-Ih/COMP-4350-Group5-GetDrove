@@ -247,6 +247,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
 
     assert response.status_code == 200, response.text
     body = response.json()
+    print(body)
     assert len(body) == 1
     assert body[0]["id"] == str(expected_trip.id)
     assert body[0]["driver_id"] == str(expected_trip.driver_id)
