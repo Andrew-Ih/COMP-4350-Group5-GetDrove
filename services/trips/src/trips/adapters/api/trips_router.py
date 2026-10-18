@@ -119,7 +119,7 @@ async def my_trips(
         _not_implemented()
      else:
         trips = await service.execute(driver_id=user.id)
-        
+
         return [
             Trip(
                 id=trip.id,
@@ -144,7 +144,7 @@ async def my_trips(
                 status=trip.status,
             )
             for trip in trips
-        ]
+         ]
 
 @router.get(
     "/search",

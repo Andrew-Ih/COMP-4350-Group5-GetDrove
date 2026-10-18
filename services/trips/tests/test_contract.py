@@ -13,6 +13,7 @@ from trips.adapters.api.dependencies import get_post_trip
 from trips.adapters.api.schemas import PostTripRequest
 from trips.domain.values import Direction, Location
 from trips.infrastructure.main import create_app
+from trips.adapters.api.dependencies import get_upcoming_trips
 
 VALID_TRIP = {
     "direction": "to_campus",
@@ -59,7 +60,7 @@ def test_example_request_is_valid() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
-        ("GET", "/mine", {}),
+        
         ("GET", "/search", {"params": SEARCH}),
         ("GET", "/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11", {}),
     ],
@@ -197,3 +198,83 @@ def test_every_error_response_has_its_own_example() -> None:
                 example = content["example"]
                 assert example["status"] == int(status), where
                 assert f"`{example['code']}" in response["description"], where
+
+
+
+@pytest.mark.asyncio
+async def test_my_trips_returns_upcoming_trips() -> None:
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+
+    driver_id = uuid4()
+    departure = datetime.now(UTC) + timedelta(days=2)
+    place = Location(
+        label="Pembina Highway",
+        lat=49.82,
+        lng=-97.15,
+    )
+
+    expected_trip = SimpleNamespace(
+        id=uuid4(),
+        driver_id=driver_id,
+        direction=Direction.TO_CAMPUS,
+        origin=place,
+        destination=place,
+        departure_at=departure,
+        estimated_arrival_at=departure + timedelta(minutes=20),
+        duration_seconds=1200,
+        distance_meters=5000,
+        seats_total=3,
+        seats_available=3,
+        status="scheduled",
+    )
+
+    class FakeUpcomingTripsService:
+        async def execute(self, *, driver_id):
+            return [expected_trip]
+
+    app.dependency_overrides[get_upcoming_trips] = (
+        lambda: FakeUpcomingTripsService()
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth.headers(),
+    ) as client:
+        response = await client.get("/mine?role=driver")
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["id"] == str(expected_trip.id)
+    assert body[0]["driver_id"] == str(expected_trip.driver_id)
+    assert body[0]["origin"]["label"] == "Pembina Highway"
+    assert body[0]["destination"]["label"] == "Pembina Highway"
+    assert body[0]["status"] == "scheduled"
+
+
+@pytest.mark.asyncio
+async def test_my_trips_returns_empty_list() -> None:
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+
+    class FakeUpcomingTripsService:
+        async def execute(self, *, driver_id):
+            return []
+
+    app.dependency_overrides[get_upcoming_trips] = (
+        lambda: FakeUpcomingTripsService()
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth.headers(),
+    ) as client:
+        response = await client.get("/mine")
+
+    assert response.status_code == 200, response.text
+    assert response.json() == []
