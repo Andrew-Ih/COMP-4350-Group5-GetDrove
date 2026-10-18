@@ -121,8 +121,7 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
                 duration_seconds=900,
                 distance_meters=6000,
                 seats_total=3,
-            ),
-            status=TripStatus.CANCELLED,
+            )
         )
 
         async with session_factory() as session:
