@@ -146,6 +146,7 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             assert [trip.id for trip in result] == [
                 earlier_trip.id,
                 later_trip.id,
+                cancelled_trip.id,
             ]
 
             # No commit: closing the session rolls back test data.
