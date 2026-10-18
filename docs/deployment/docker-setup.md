@@ -192,6 +192,7 @@ Each service gets environment variables with its own prefix, matching its `infra
 | `<SERVICE>_REDIS_URL` | `redis://redis:6379/0` | All (once events are added) |
 | `TRIPS_ROUTING_URL`, `TRIPS_PAYMENTS_URL`, `TRIPS_ACCOUNTS_URL` | `http://<service>:8000` | Trips |
 | `NOTIFICATIONS_SMTP_HOST`, `NOTIFICATIONS_SMTP_PORT` | `mailpit`, `1025` | Notifications |
+| `ROUTING_OSRM_CAR_URL`, `ROUTING_OSRM_FOOT_URL` | `http://osrm-car:5000`, `http://osrm-foot:5000` | Routing (OSRM runs with `--profile osrm`; see [infra/osrm](../../infra/osrm/README.md)) |
 
 Inside Docker, hosts are container names (`postgres`, `redis`, `mailpit`, `routing`); from your laptop they're `localhost`. Settings a service doesn't define yet are simply ignored.
 
