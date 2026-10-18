@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import trips
 from trips.domain.entities import Trip
-from trips.domain.values import Direction, Location, TripStatus
+from trips.domain.values import Direction, Location
 from trips.infrastructure.settings import get_settings
 
 
