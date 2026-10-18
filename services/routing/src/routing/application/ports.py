@@ -1,7 +1,29 @@
-"""Ports: the interfaces (``typing.Protocol``) that use cases need from the outside world.
+"""Interfaces used by Routing application use cases."""
 
-Adapters implement these, and tests use in-memory fakes. Example:
+from dataclasses import dataclass
+from typing import Protocol
 
-    class TripRepository(Protocol):
-        async def add(self, trip: Trip) -> None: ...
-"""
+from routing.domain.entities import Route
+from routing.domain.values import LatLng
+
+
+@dataclass(frozen=True)
+class DrivingRoute:
+    """What the routing engine returns for a drive between two points."""
+
+    path: tuple[LatLng, ...]
+    distance_meters: int
+    duration_seconds: int
+
+
+class RoutingEngine(Protocol):
+    async def driving_route(self, origin: LatLng, destination: LatLng) -> DrivingRoute:
+        """Raise NoRouteError if there's no road route, RoutingEngineUnavailableError if the
+        engine is down or too slow."""
+        ...
+
+
+class RouteRepository(Protocol):
+    async def save(self, route: Route) -> None:
+        """Store the route, replacing the trip's existing route if it has one."""
+        ...

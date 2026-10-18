@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     # Defaults are the ports Docker Compose publishes; inside Docker they're osrm-car/-foot.
     osrm_car_url: str = "http://localhost:5050"
     osrm_foot_url: str = "http://localhost:5051"
+    # Computing a route must take under 3 seconds (contract), and Trips gives up after 5.
+    osrm_timeout_seconds: float = 2.5
 
 
 def get_settings() -> Settings:

@@ -32,11 +32,7 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
-        (
-            "POST",
-            "/internal/routes",
-            {"json": {"tripId": TRIP_ID, "origin": POINT, "destination": POINT}},
-        ),
+        # POST /internal/routes is implemented (#24): see test_compute_route_api.py.
         ("POST", "/internal/matches", {"json": {"rider": POINT, "tripIds": [TRIP_ID]}}),
         ("GET", f"/trips/{TRIP_ID}/geometry", {}),
     ],

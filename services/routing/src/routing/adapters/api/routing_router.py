@@ -4,7 +4,8 @@
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
-Handlers return 501 Not Implemented until the real code lands (#23-#26 and the geometry task).
+POST /internal/routes is implemented by issue #24. The other handlers return 501 Not
+Implemented until their code lands (#25, #26 and #123).
 """
 
 from typing import Any, NoReturn
@@ -13,6 +14,7 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from common_security.dependencies import AuthenticatedUser
+from routing.adapters.api.dependencies import ComputeRouteService
 from routing.adapters.api.schemas import (
     MatchRequest,
     MatchResponse,
@@ -21,6 +23,7 @@ from routing.adapters.api.schemas import (
     RouteRequest,
     RouteResponse,
 )
+from routing.domain.values import LatLng
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 public_router = APIRouter(tags=["routes"])
@@ -52,8 +55,18 @@ def _not_implemented() -> NoReturn:
     "Calling it again for the same trip replaces the route.",
     responses={**INVALID, **ENGINE_DOWN},
 )
-async def compute_route(body: RouteRequest) -> RouteResponse:
-    _not_implemented()
+async def compute_route(body: RouteRequest, service: ComputeRouteService) -> RouteResponse:
+    route = await service.execute(
+        trip_id=body.trip_id,
+        origin=LatLng(lat=body.origin.lat, lng=body.origin.lng),
+        destination=LatLng(lat=body.destination.lat, lng=body.destination.lng),
+    )
+
+    return RouteResponse(
+        trip_id=route.trip_id,
+        distance_meters=route.distance_meters,
+        duration_seconds=route.duration_seconds,
+    )
 
 
 @internal_router.post(
