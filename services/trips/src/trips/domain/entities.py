@@ -85,3 +85,6 @@ class Trip:
             seats_available=seats_total,
             status=TripStatus.SCHEDULED,
         )
+
+    def cancel(self) -> None:
+        self.status = TripStatus.CANCELLED

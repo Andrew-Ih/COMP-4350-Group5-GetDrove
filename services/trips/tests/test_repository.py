@@ -111,6 +111,18 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             seats_total=3,
         )
 
+        cancelled_trip = Trip.create(
+            driver_id=driver_id,
+            direction=Direction.TO_CAMPUS,
+            place=place,
+            departure_at=now + timedelta(days=2),
+            duration_seconds=900,
+            distance_meters=6000,
+            seats_total=3,
+        )
+
+        cancelled_trip.cancel()
+
         async with session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
 
@@ -118,6 +130,7 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
                 later_trip,
                 past_trip,
                 other_driver_trip,
+                cancelled_trip,
                 earlier_trip,
             ):
                 await repository.add(trip)
