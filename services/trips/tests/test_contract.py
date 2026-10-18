@@ -263,7 +263,6 @@ async def test_my_trips_returns_empty_list() -> None:
             self, *, driver_id: UUID
         ) -> list[SimpleNamespace]:
             return []
-        
     app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
 
     async with AsyncClient(

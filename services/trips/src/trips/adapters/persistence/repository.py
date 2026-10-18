@@ -1,7 +1,6 @@
 """SQLAlchemy implementation of the Trips repository."""
 
 from datetime import datetime
-
 from uuid import UUID
 
 from sqlalchemy import insert, select
@@ -11,7 +10,6 @@ from trips.adapters.persistence.tables import trips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, TripStatus
 
-from dataclasses import replace
 
 class SQLAlchemyTripRepository:
     """Store Trip domain entities in PostgreSQL."""
