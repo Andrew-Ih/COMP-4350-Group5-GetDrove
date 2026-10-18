@@ -70,6 +70,12 @@ Calling it again for the same trip replaces that trip's route. Errors:
 
 Nothing is stored when a request fails.
 
+### The corridor around each route (#25)
+
+When a route is stored, points every 100 m along it are stored too, in `routing.route_samples` (a PostGIS geography `POINT` with a GiST index). Each sample knows how far into the drive it is (`offset_meters`, `offset_seconds`, scaled to OSRM's distance and duration), so a rider picked up there rides `distance_meters - offset_meters`. Samples are replaced with their route and deleted with it.
+
+The corridor is the area within `ROUTING_CORRIDOR_METERS` (default 800) of a route, in a straight line. `SQLAlchemyRouteRepository.samples_in_corridor` finds, for a rider and the candidate trips Trips sends, the samples inside it, nearest first. It's only a quick first pass: a rider across the river from a route can be well inside the corridor, so matching (#26) then checks the real walking time to these samples with OSRM's foot profile.
+
 ### A trip's route for the map (#123)
 
 `GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the stored route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs, exactly as stored; `properties` has the trip ID, distance and duration. The driver's screen after posting a trip and the rider's search results both use it.

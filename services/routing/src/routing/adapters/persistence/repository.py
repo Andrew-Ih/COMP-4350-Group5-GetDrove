@@ -1,16 +1,17 @@
 """SQLAlchemy implementation of the Routing repository."""
 
 import json
+from collections.abc import Sequence
 from uuid import UUID
 
-from geoalchemy2 import WKTElement
-from sqlalchemy import func, select
+from geoalchemy2 import Geography, Geometry, WKTElement
+from sqlalchemy import cast, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from routing.adapters.persistence.tables import SRID, routes
+from routing.adapters.persistence.tables import SRID, route_samples, routes
 from routing.domain.entities import Route
-from routing.domain.values import LatLng
+from routing.domain.values import Corridor, CorridorHit, LatLng, RouteSample
 
 # ST_AsGeoJSON rounds to 9 decimal places by default; keep every digit that was stored.
 MAX_DECIMAL_DIGITS = 15
@@ -21,13 +22,17 @@ def _linestring(route: Route) -> WKTElement:
     return WKTElement(f"LINESTRING({points})", srid=SRID)
 
 
+def _point(point: LatLng) -> WKTElement:
+    return WKTElement(f"POINT({point.lng} {point.lat})", srid=SRID)
+
+
 class SQLAlchemyRouteRepository:
     """Store Route domain entities in PostgreSQL (PostGIS)."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def save(self, route: Route) -> None:
+    async def save(self, route: Route, samples: Sequence[RouteSample]) -> None:
         values = {
             "path": _linestring(route),
             "distance_meters": route.distance_meters,
@@ -41,6 +46,25 @@ class SQLAlchemyRouteRepository:
                 set_={**values, "updated_at": func.now()},
             )
         )
+
+        # The old route's samples go with it, in the same transaction.
+        await self.session.execute(
+            delete(route_samples).where(route_samples.c.trip_id == route.trip_id)
+        )
+        if samples:
+            await self.session.execute(
+                insert(route_samples),
+                [
+                    {
+                        "trip_id": route.trip_id,
+                        "seq": sample.seq,
+                        "point": _point(sample.point),
+                        "offset_meters": sample.offset_meters,
+                        "offset_seconds": sample.offset_seconds,
+                    }
+                    for sample in samples
+                ],
+            )
 
     async def get(self, trip_id: UUID) -> Route | None:
         result = await self.session.execute(
@@ -62,3 +86,45 @@ class SQLAlchemyRouteRepository:
             distance_meters=row["distance_meters"],
             duration_seconds=row["duration_seconds"],
         )
+
+    async def samples_in_corridor(
+        self, rider: LatLng, trip_ids: Sequence[UUID], corridor: Corridor
+    ) -> list[CorridorHit]:
+        if not trip_ids:
+            return []
+
+        here = cast(_point(rider), Geography(srid=SRID))
+        distance = func.ST_Distance(route_samples.c.point, here)
+        # ST_X/ST_Y need a geometry; the cast keeps the same coordinates.
+        point = cast(route_samples.c.point, Geometry(srid=SRID))
+        result = await self.session.execute(
+            select(
+                route_samples.c.trip_id,
+                route_samples.c.seq,
+                func.ST_Y(point).label("lat"),
+                func.ST_X(point).label("lng"),
+                route_samples.c.offset_meters,
+                route_samples.c.offset_seconds,
+                distance.label("distance"),
+            )
+            .where(
+                route_samples.c.trip_id.in_(trip_ids),
+                # Uses the GiST index on point; meters, because point is a geography.
+                func.ST_DWithin(route_samples.c.point, here, corridor.radius_meters),
+            )
+            .order_by(route_samples.c.trip_id, distance, route_samples.c.seq)
+        )
+
+        return [
+            CorridorHit(
+                trip_id=row["trip_id"],
+                sample=RouteSample(
+                    seq=row["seq"],
+                    point=LatLng(lat=row["lat"], lng=row["lng"]),
+                    offset_meters=row["offset_meters"],
+                    offset_seconds=row["offset_seconds"],
+                ),
+                distance_meters=round(row["distance"]),
+            )
+            for row in result.mappings()
+        ]

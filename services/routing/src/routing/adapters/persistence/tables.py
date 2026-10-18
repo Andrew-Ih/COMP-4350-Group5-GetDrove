@@ -4,14 +4,16 @@ Every table belongs to this service's own Postgres schema; no other service read
 Alembic autogenerates migrations from ``metadata``.
 """
 
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geography, Geometry
 from sqlalchemy import (
     CheckConstraint,
     Column,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     MetaData,
+    PrimaryKeyConstraint,
     Table,
     Uuid,
     func,
@@ -49,4 +51,27 @@ routes = Table(
         name="valid_route_metrics",
     ),
     Index("ix_routes_path", "path", postgresql_using="gist"),
+)
+
+# Points every 100 m along each route (#25). Geography, so distances are in meters: finding
+# the samples within a corridor's radius of a rider is one ST_DWithin on the GiST index.
+route_samples = Table(
+    "route_samples",
+    metadata,
+    Column(
+        "trip_id",
+        Uuid,
+        ForeignKey(routes.c.trip_id, ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("seq", Integer, nullable=False),
+    Column("point", Geography("POINT", srid=SRID, spatial_index=False), nullable=False),
+    Column("offset_meters", Integer, nullable=False),
+    Column("offset_seconds", Integer, nullable=False),
+    PrimaryKeyConstraint("trip_id", "seq"),
+    CheckConstraint(
+        "seq >= 0 AND offset_meters >= 0 AND offset_seconds >= 0",
+        name="valid_sample",
+    ),
+    Index("ix_route_samples_point", "point", postgresql_using="gist"),
 )

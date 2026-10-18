@@ -3,6 +3,7 @@
 from uuid import UUID
 
 from routing.application.ports import RouteRepository, RoutingEngine
+from routing.domain.corridor import sample_route
 from routing.domain.entities import Route
 from routing.domain.values import LatLng
 
@@ -22,6 +23,7 @@ class ComputeRoute:
             duration_seconds=driving.duration_seconds,
         )
 
-        await self.repository.save(route)
+        # Stored with the route, so riders along it can be found by its corridor (#25).
+        await self.repository.save(route, sample_route(route))
 
         return route

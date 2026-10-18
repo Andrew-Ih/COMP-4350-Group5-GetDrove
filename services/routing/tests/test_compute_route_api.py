@@ -11,7 +11,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
-from routing.adapters.persistence.tables import routes
+from routing.adapters.persistence.tables import route_samples, routes
 from routing.infrastructure.main import create_app
 from routing.infrastructure.settings import get_settings
 
@@ -71,6 +71,17 @@ async def saved(api: API) -> list[RowMapping]:
         return list(result.mappings())
 
 
+async def saved_samples(api: API) -> int:
+    _, engine, trip_id = api
+    async with engine.connect() as connection:
+        count = await connection.scalar(
+            select(func.count())
+            .select_from(route_samples)
+            .where(route_samples.c.trip_id == trip_id)
+        )
+        return count or 0
+
+
 async def test_compute_route_returns_metrics_and_commits_route(
     api: API, osrm_route: Handler
 ) -> None:
@@ -87,6 +98,8 @@ async def test_compute_route_returns_metrics_and_commits_route(
     assert rows[0]["points"] == 3
     assert rows[0]["distance_meters"] == 6000
     assert rows[0]["duration_seconds"] == 900
+    # The fake route is about 2 km, so about 20 samples at 100 m (#25).
+    assert 15 <= await saved_samples(api) <= 25
 
 
 async def test_computing_again_replaces_the_route(api: API, osrm_route: Handler) -> None:
@@ -103,6 +116,8 @@ async def test_computing_again_replaces_the_route(api: API, osrm_route: Handler)
     rows = await saved(api)
     assert len(rows) == 1
     assert rows[0]["distance_meters"] == 7200
+    # The same path again: the old samples were replaced, not added to.
+    assert 15 <= await saved_samples(api) <= 25
 
 
 async def test_no_route_returns_422_and_saves_nothing(api: API, osrm_no_route: Handler) -> None:
@@ -113,6 +128,7 @@ async def test_no_route_returns_422_and_saves_nothing(api: API, osrm_no_route: H
     assert body["code"] == "invalid_input"
     assert [error["field"] for error in body["errors"]] == ["origin", "destination"]
     assert await saved(api) == []
+    assert await saved_samples(api) == 0
 
 
 async def test_engine_failure_returns_503_and_saves_nothing(
@@ -123,6 +139,7 @@ async def test_engine_failure_returns_503_and_saves_nothing(
     assert response.status_code == 503, response.text
     assert response.json()["code"] == "routing_engine_unavailable"
     assert await saved(api) == []
+    assert await saved_samples(api) == 0
 
 
 @pytest.mark.parametrize(
@@ -143,3 +160,4 @@ async def test_invalid_input_never_calls_osrm(api: API, change: dict[str, Any]) 
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_input"
     assert await saved(api) == []
+    assert await saved_samples(api) == 0

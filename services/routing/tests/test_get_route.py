@@ -1,5 +1,6 @@
 """Unit tests for the GetRoute application use case."""
 
+from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 import pytest
@@ -7,7 +8,7 @@ import pytest
 from routing.application.get_route import GetRoute
 from routing.domain.entities import Route
 from routing.domain.errors import RouteNotFoundError
-from routing.domain.values import LatLng
+from routing.domain.values import LatLng, RouteSample
 
 ROUTE = Route(
     trip_id=uuid4(),
@@ -21,7 +22,7 @@ class FakeRepository:
     def __init__(self, *stored: Route) -> None:
         self.routes = {route.trip_id: route for route in stored}
 
-    async def save(self, route: Route) -> None:
+    async def save(self, route: Route, samples: Sequence[RouteSample]) -> None:
         self.routes[route.trip_id] = route
 
     async def get(self, trip_id: UUID) -> Route | None:

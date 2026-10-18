@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 from common_security.testing import TestAuth
 from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.adapters.persistence.tables import routes
+from routing.domain.corridor import sample_route
 from routing.domain.entities import Route
 from routing.domain.values import LatLng
 from routing.infrastructure.main import create_app
@@ -36,7 +37,7 @@ async def api() -> AsyncIterator[API]:
     route = Route(trip_id=uuid4(), path=ROUTE_PATH, distance_meters=8832, duration_seconds=793)
     try:
         async with app.state.session_factory() as session, session.begin():
-            await SQLAlchemyRouteRepository(session).save(route)
+            await SQLAlchemyRouteRepository(session).save(route, sample_route(route))
         yield app, auth, engine, route
     finally:
         # Each test has its own trip ID. Clean up even when an assertion fails.
