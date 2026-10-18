@@ -98,3 +98,22 @@ def test_reject_naive_departure(place: Location) -> None:
             distance_meters=6000,
             seats_total=3,
         )
+
+def test_cancel_trip() -> None:
+    trip = Trip.create(
+        driver_id=uuid4(),
+        direction=Direction.TO_CAMPUS,
+        place=Location(
+            label="Pembina Highway",
+            lat=49.82,
+            lng=-97.15,
+        ),
+        departure_at=datetime.now(UTC) + timedelta(days=1),
+        duration_seconds=900,
+        distance_meters=6000,
+        seats_total=3,
+    )
+
+    trip.cancel()
+
+    assert trip.status == TripStatus.CANCELLED
