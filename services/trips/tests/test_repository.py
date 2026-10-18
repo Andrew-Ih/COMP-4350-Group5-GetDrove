@@ -1,5 +1,6 @@
 """Integration tests for the Trips repository."""
 
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -121,6 +122,8 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             seats_total=3,
             status=TripStatus.CANCELLED,
         )
+
+        cancelled_trip.status = replace(cancelled_trip.status, value=TripStatus.CANCELLED)
 
         async with session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
