@@ -204,7 +204,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
     app = create_app()
     auth.install(app)
 
-    driver_id = uuid4()
+    driver_id = auth.user_id
     departure = datetime.now(UTC) + timedelta(days=2)
     place = Location(
         label="Pembina Highway",
@@ -229,6 +229,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
 
     class FakeUpcomingTripsService:
         async def execute(self, *, driver_id: UUID) -> list[SimpleNamespace]:
+            assert driver_id == auth.user_id
             return [expected_trip]
 
     app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
@@ -271,3 +272,21 @@ async def test_my_trips_returns_empty_list() -> None:
 
     assert response.status_code == 200, response.text
     assert response.json() == []
+
+
+@pytest.mark.asyncio
+async def test_my_trips_rider_role_not_implemented() -> None:
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+
+    app.dependency_overrides[get_upcoming_trips] = lambda: object()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth.headers(),
+    ) as client:
+        response = await client.get("/mine?role=rider")
+
+    assert response.status_code == 501
