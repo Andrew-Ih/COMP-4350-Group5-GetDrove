@@ -111,7 +111,6 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             seats_total=3,
         )
 
-
         async with session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
 
