@@ -1,12 +1,15 @@
 """SQLAlchemy implementation of the Trips repository."""
 
-from sqlalchemy import UUID, insert,select
+from datetime import datetime
+
+from uuid import UUID
+
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import trips
 from trips.domain.entities import Trip
-from datetime import datetime
-from trips.domain.values import TripStatus, Direction, Location
+from trips.domain.values import Direction, Location, TripStatus
 
 
 class SQLAlchemyTripRepository:
@@ -37,9 +40,7 @@ class SQLAlchemyTripRepository:
             )
         )
 
-    async def get_upcoming_by_driver(
-        self, driver_id: UUID, now: datetime
-    ) -> list[Trip]:
+    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
         result = await self.session.execute(
             select(trips)
             .where(trips.c.driver_id == driver_id)
@@ -70,7 +71,5 @@ class SQLAlchemyTripRepository:
                 seats_available=row.seats_available,
                 status=TripStatus(row.status),
             )
-                for row in result.mappings().all()
-        ] 
-    
-    
+            for row in result.mappings().all()
+        ]

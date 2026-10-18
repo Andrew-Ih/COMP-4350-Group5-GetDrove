@@ -1,4 +1,3 @@
-
 """Application use case for listing a driver's upcoming trips."""
 
 from datetime import UTC, datetime

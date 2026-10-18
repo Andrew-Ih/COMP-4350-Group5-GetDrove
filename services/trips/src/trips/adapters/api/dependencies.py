@@ -14,9 +14,9 @@ from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.routing import HTTPRoutingService
 from trips.application.post_trip import PostTrip
+from trips.application.upcoming_trips import ListUpcomingTrips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location
-from trips.application.upcoming_trips import ListUpcomingTrips
 
 
 class PostTripCommand:
@@ -72,7 +72,6 @@ def get_post_trip(request: Request) -> PostTripCommand:
 PostTripService = Annotated[PostTripCommand, Depends(get_post_trip)]
 
 
-
 class UpcomingTripsCommand:
     """Runs the upcoming-trips query."""
 
@@ -95,7 +94,4 @@ def get_upcoming_trips(request: Request) -> UpcomingTripsCommand:
     )
 
 
-UpcomingTripsService = Annotated[
-    UpcomingTripsCommand, Depends(get_upcoming_trips)
-]
-
+UpcomingTripsService = Annotated[UpcomingTripsCommand, Depends(get_upcoming_trips)]

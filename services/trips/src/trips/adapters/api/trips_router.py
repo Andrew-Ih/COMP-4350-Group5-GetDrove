@@ -115,9 +115,9 @@ async def my_trips(
     service: UpcomingTripsService,
     role: Annotated[Literal["driver", "rider"], Query()] = "driver",
 ) -> list[Trip]:
-     if role == "rider":
+    if role == "rider":
         _not_implemented()
-     else:
+    else:
         trips = await service.execute(driver_id=user.id)
 
         return [
@@ -144,7 +144,8 @@ async def my_trips(
                 status=trip.status,
             )
             for trip in trips
-         ]
+        ]
+
 
 @router.get(
     "/search",

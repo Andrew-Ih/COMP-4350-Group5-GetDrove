@@ -12,9 +12,7 @@ from trips.domain.values import Location
 class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
 
-    async def get_upcoming_by_driver(
-        self, driver_id: UUID, now: datetime
-    ) -> list[Trip]: ...
+    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
 
 
 class TripEvents(Protocol):

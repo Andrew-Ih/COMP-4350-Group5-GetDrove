@@ -9,11 +9,10 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
-from trips.adapters.api.dependencies import get_post_trip
+from trips.adapters.api.dependencies import get_post_trip, get_upcoming_trips
 from trips.adapters.api.schemas import PostTripRequest
 from trips.domain.values import Direction, Location
 from trips.infrastructure.main import create_app
-from trips.adapters.api.dependencies import get_upcoming_trips
 
 VALID_TRIP = {
     "direction": "to_campus",
@@ -60,7 +59,6 @@ def test_example_request_is_valid() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
-        
         ("GET", "/search", {"params": SEARCH}),
         ("GET", "/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11", {}),
     ],
@@ -200,7 +198,6 @@ def test_every_error_response_has_its_own_example() -> None:
                 assert f"`{example['code']}" in response["description"], where
 
 
-
 @pytest.mark.asyncio
 async def test_my_trips_returns_upcoming_trips() -> None:
     auth = TestAuth()
@@ -234,9 +231,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
         async def execute(self, *, driver_id):
             return [expected_trip]
 
-    app.dependency_overrides[get_upcoming_trips] = (
-        lambda: FakeUpcomingTripsService()
-    )
+    app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -247,7 +242,6 @@ async def test_my_trips_returns_upcoming_trips() -> None:
 
     assert response.status_code == 200, response.text
     body = response.json()
-    print(body)
     assert len(body) == 1
     assert body[0]["id"] == str(expected_trip.id)
     assert body[0]["driverId"] == str(expected_trip.driver_id)
@@ -266,9 +260,7 @@ async def test_my_trips_returns_empty_list() -> None:
         async def execute(self, *, driver_id):
             return []
 
-    app.dependency_overrides[get_upcoming_trips] = (
-        lambda: FakeUpcomingTripsService()
-    )
+    app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
