@@ -11,7 +11,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
-from trips.adapters.api.dependencies import PostTripService
+from trips.adapters.api.dependencies import PostTripService, UpcomingTripsService
 from trips.adapters.api.schemas import (
     Place,
     PostTripRequest,
@@ -112,10 +112,39 @@ async def post_trip(
 )
 async def my_trips(
     user: AuthenticatedUser,
+    service: UpcomingTripsService,
     role: Annotated[Literal["driver", "rider"], Query()] = "driver",
 ) -> list[Trip]:
-    _not_implemented()
-
+     if role == "rider":
+        _not_implemented()
+     else:
+        trips = await service.execute(driver_id=user.id)
+        
+        return [
+            Trip(
+                id=trip.id,
+                driver_id=trip.driver_id,
+                direction=trip.direction,
+                origin=Place(
+                    label=trip.origin.label,
+                    lat=trip.origin.lat,
+                    lng=trip.origin.lng,
+                ),
+                destination=Place(
+                    label=trip.destination.label,
+                    lat=trip.destination.lat,
+                    lng=trip.destination.lng,
+                ),
+                departure_at=trip.departure_at,
+                estimated_arrival_at=trip.estimated_arrival_at,
+                duration_seconds=trip.duration_seconds,
+                distance_meters=trip.distance_meters,
+                seats_total=trip.seats_total,
+                seats_available=trip.seats_available,
+                status=trip.status,
+            )
+            for trip in trips
+        ]
 
 @router.get(
     "/search",
