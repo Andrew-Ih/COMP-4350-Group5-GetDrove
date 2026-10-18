@@ -31,8 +31,10 @@ MAX_INT = 2**31 - 1
 # and one of them is the rider.
 MAX_TABLE_DESTINATIONS = 99
 
-# Candidate roads for a pickup label: the nearest is often an unnamed ramp or service road.
-ROAD_NAME_CANDIDATES = 5
+# Candidate roads for a pickup label: the nearest are often unnamed service roads or parking
+# lot aisles, so look a little further, but not so far that the name misleads the rider.
+ROAD_NAME_CANDIDATES = 20
+MAX_ROAD_NAME_METERS = 150
 
 
 def _coordinate(point: LatLng) -> str:
@@ -58,6 +60,7 @@ class _RouteResponse(BaseModel):
 
 class _Waypoint(BaseModel):
     name: str = ""
+    distance: float = 0  # meters from the point asked about
 
 
 class _NearestResponse(BaseModel):
@@ -90,8 +93,15 @@ class OSRMRoutingEngine:
 
         if response.status_code != 200 or data.code != "Ok":
             return None
-        # Nearest first: the closest road that has a name.
-        return next((waypoint.name for waypoint in data.waypoints if waypoint.name), None)
+        # Nearest first: the closest road that has a name, if it's close enough.
+        return next(
+            (
+                waypoint.name
+                for waypoint in data.waypoints
+                if waypoint.name and waypoint.distance <= MAX_ROAD_NAME_METERS
+            ),
+            None,
+        )
 
     async def driving_route(self, origin: LatLng, destination: LatLng) -> DrivingRoute:
         coordinates = f"{_coordinate(origin)};{_coordinate(destination)}"

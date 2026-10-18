@@ -82,9 +82,11 @@ The corridor is the area within `ROUTING_CORRIDOR_METERS` (default 800) of a rou
 
 1. **Corridor:** the samples of those trips' routes within `ROUTING_CORRIDOR_METERS` of the rider (#25), the 20 nearest per trip.
 2. **Walking check:** one OSRM foot `table` request (split into chunks of 99, OSRM's limit) gives the walking time from the rider to each sample. A trip matches only if some sample is within `ROUTING_MAX_WALK_SECONDS` (default 600, about 830 m at OSRM's 5 km/h). This is what leaves out a rider across the river from a route: close in a straight line, but a long walk round to a bridge.
-3. **Pickup:** per matching trip, the sample with the shortest walk. It's on the driver's route, so the driver can stop there. Its label is the nearest named road from OSRM's car profile (`nearest`), or "On the driver's route" if there's none or the lookup fails.
+3. **Pickup:** per matching trip, the sample with the shortest walk. It's on the driver's route, so the driver can stop there. Its label is the nearest named road within 150 m, from OSRM's car profile (`nearest`, 20 candidates, since the closest are often unnamed service roads or parking lot aisles), or "a spot on the driver's route" if there's none or the lookup fails.
 
-Each match has the pickup, the walk in seconds, and `riderDistanceMeters`: the rest of the route from the pickup, which is what the rider rides. Matches come back in the order of `tripIds`; trips that don't match are left out, and an empty list is a normal result. If the foot profile is down, the answer is 503 `routing_engine_unavailable`. The rider's location is used for the calculation only, never stored or logged.
+**The ends of a route are never offered.** Samples within 300 m of either end are skipped. One end is campus; the other is the driver's own place, usually near home, and a pickup pin a few meters from it would give it away. A rider who's only near an end gets no match for that trip.
+
+Going to campus, the point is where the rider is picked up; leaving campus, where they're dropped off. `riderDistanceMeters` is always the rest of the route from that point to the trip's end; Trips knows the direction and works out how far the rider rides. Matches come back in the order of `tripIds`; trips that don't match are left out, and an empty list is a normal result. If the foot profile is down, the answer is 503 `routing_engine_unavailable`. The rider's location is used for the calculation only, never stored or logged.
 
 ### A trip's route for the map (#123)
 

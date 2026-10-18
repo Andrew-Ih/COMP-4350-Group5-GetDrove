@@ -1,4 +1,4 @@
-"""Errors raised when posting a trip."""
+"""Errors raised when posting or searching for trips."""
 
 from common_web.errors import DomainError, InvalidField, InvalidInputError
 
@@ -28,5 +28,12 @@ class RoutingUnavailableError(DomainError):
     code = "routing_unavailable"
     title = "Routing unavailable"
 
-    def __init__(self) -> None:
-        super().__init__("Could not calculate a driving route. Please try again.")
+    def __init__(
+        self, detail: str = "Could not calculate a driving route. Please try again."
+    ) -> None:
+        super().__init__(detail)
+
+
+class PricingUnavailableError(Exception):
+    """Payments couldn't price a rider's share. Search still shows the trip, without a cost,
+    so this never becomes an HTTP error."""

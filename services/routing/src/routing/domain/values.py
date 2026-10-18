@@ -45,6 +45,7 @@ class CorridorHit:
     sample: RouteSample
     distance_meters: int  # straight line from the rider
     remaining_meters: int  # along the route, from this sample to the trip's end
+    from_ends_meters: int  # straight line to the nearer end of the route
 
 
 @dataclass(frozen=True)

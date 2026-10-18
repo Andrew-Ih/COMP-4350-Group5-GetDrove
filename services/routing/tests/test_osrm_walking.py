@@ -153,25 +153,40 @@ async def test_walking_engine_failure_is_unavailable(table_failure: Handler) -> 
 # ---------------------------------------------------------------- road names
 
 
-def nearest(*names: str) -> Handler:
+def nearest(*roads: tuple[str, float]) -> Handler:
+    """OSRM's nearest roads, nearest first, as (name, meters away)."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/nearest/v1/driving/-97.15,49.85"
-        assert request.url.params["number"] == "5"
-        return httpx.Response(
-            200, json={"code": "Ok", "waypoints": [{"name": name} for name in names]}
-        )
+        assert request.url.params["number"] == "20"
+        waypoints = [{"name": name, "distance": meters} for name, meters in roads]
+        return httpx.Response(200, json={"code": "Ok", "waypoints": waypoints})
 
     return handler
 
 
 async def test_road_name_is_the_nearest_named_road() -> None:
-    assert await road_name(nearest("", "Pembina Highway", "Chancellor Drive")) == (
-        "Pembina Highway"
-    )
+    roads = nearest(("", 0), ("Pembina Highway", 30), ("Chancellor Drive", 60))
+
+    assert await road_name(roads) == "Pembina Highway"
+
+
+async def test_road_name_looks_past_unnamed_service_roads() -> None:
+    """A trip starting in a parking lot: the nearest named road is a few aisles away."""
+    unnamed = [("", meters) for meters in (0, 21, 35, 35, 55, 60, 70)]
+
+    assert await road_name(nearest(*unnamed, ("Allegheny Drive", 82))) == "Allegheny Drive"
+
+
+@pytest.mark.parametrize("meters,name", [(150, "Allegheny Drive"), (151, None)])
+async def test_road_name_must_be_close_enough_to_describe_the_pickup(
+    meters: float, name: str | None
+) -> None:
+    assert await road_name(nearest(("", 0), ("Allegheny Drive", meters))) == name
 
 
 async def test_road_name_is_none_when_no_road_has_a_name() -> None:
-    assert await road_name(nearest("", "")) is None
+    assert await road_name(nearest(("", 0), ("", 40))) is None
 
 
 @pytest.mark.parametrize(

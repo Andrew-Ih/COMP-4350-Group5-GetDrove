@@ -272,3 +272,25 @@ async def test_samples_in_corridor_respects_the_radius(
     )
 
     assert len({hit.trip_id for hit in hits}) == expected
+
+
+async def test_samples_in_corridor_measure_the_straight_line_to_the_nearer_end(
+    session: AsyncSession,
+) -> None:
+    """For matching (#26): pickups are never offered near either end of a route."""
+    route = east_west(49.85)
+    await save(session, route)
+    west_end, east_end = route.path[0], route.path[-1]
+    repository = SQLAlchemyRouteRepository(session)
+
+    near_west = await repository.samples_in_corridor(west_end, [route.trip_id], CORRIDOR)
+    near_east = await repository.samples_in_corridor(east_end, [route.trip_id], CORRIDOR)
+
+    # The sample at each end is 0 m from it; the others are as far as they are along this
+    # straight route.
+    assert near_west[0].from_ends_meters == 0
+    assert near_east[0].from_ends_meters == 0
+    for corridor_hit in near_west:
+        assert corridor_hit.from_ends_meters == pytest.approx(
+            distance_meters(west_end, corridor_hit.sample.point), abs=2
+        )

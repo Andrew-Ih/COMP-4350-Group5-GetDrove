@@ -4,7 +4,16 @@
    of the rider. Quick, but a river or a highway can be in the way.
 2. The real check: the walking time from the rider to those samples, along paths and
    sidewalks. A trip matches only if some sample is close enough on foot.
-3. Per matching trip, the sample with the shortest walk is the pickup point.
+3. Per matching trip, the sample with the shortest walk is the point offered to the rider.
+
+Samples near either end of a route are never offered. One end is campus; the other is the
+driver's own place, usually near home, which riders must not be able to find (a pickup
+pin a few meters from it would give it away). "Near" is in a straight line, not along the
+route: leaving a cul-de-sac, 300 m of road can end up a few houses from where it started.
+
+The point is where the rider is picked up going to campus, and dropped off leaving it.
+``rider_distance_meters`` is always the rest of the route from that point; Trips knows the
+direction, and works out how far the rider actually rides.
 
 The rider's location is used for the calculation only, never stored or logged.
 """
@@ -20,8 +29,12 @@ from routing.domain.values import Corridor, CorridorHit, LatLng, RiderMatch, Wal
 # 100 m spacing is about 17, so this keeps a whole pass of the route.
 SAMPLES_PER_TRIP = 20
 
-# When the nearest road has no name (a ramp, a service road).
-DEFAULT_PICKUP_LABEL = "On the driver's route"
+# Samples this close to either end of a route, in a straight line, are never offered.
+PRIVATE_END_METERS = 300
+
+# When no road nearby has a name (a parking lot, a service road). Read after "Pickup at"
+# and "5 min walk to".
+DEFAULT_PICKUP_LABEL = "a spot on the driver's route"
 
 
 class MatchRider:
@@ -44,7 +57,11 @@ class MatchRider:
             return []
 
         hits = _nearest_per_trip(
-            await self.repository.samples_in_corridor(rider, trip_ids, self.corridor)
+            [
+                hit
+                for hit in await self.repository.samples_in_corridor(rider, trip_ids, self.corridor)
+                if _away_from_the_ends(hit)
+            ]
         )
         if not hits:
             return []
@@ -75,6 +92,10 @@ class MatchRider:
             )
             for trip_id, name in zip(matched, names, strict=True)
         ]
+
+
+def _away_from_the_ends(hit: CorridorHit) -> bool:
+    return hit.from_ends_meters >= PRIVATE_END_METERS
 
 
 def _nearest_per_trip(hits: list[CorridorHit]) -> list[CorridorHit]:

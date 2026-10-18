@@ -97,6 +97,8 @@ class SQLAlchemyRouteRepository:
         distance = func.ST_Distance(route_samples.c.point, here)
         # ST_X/ST_Y need a geometry; the cast keeps the same coordinates.
         point = cast(route_samples.c.point, Geometry(srid=SRID))
+        start = cast(func.ST_StartPoint(routes.c.path), Geography(srid=SRID))
+        end = cast(func.ST_EndPoint(routes.c.path), Geography(srid=SRID))
         result = await self.session.execute(
             select(
                 route_samples.c.trip_id,
@@ -108,6 +110,10 @@ class SQLAlchemyRouteRepository:
                 distance.label("distance"),
                 # Never negative: offsets are scaled to the route's distance (#25).
                 (routes.c.distance_meters - route_samples.c.offset_meters).label("remaining"),
+                func.least(
+                    func.ST_Distance(route_samples.c.point, start),
+                    func.ST_Distance(route_samples.c.point, end),
+                ).label("from_ends"),
             )
             .join(routes, routes.c.trip_id == route_samples.c.trip_id)
             .where(
@@ -129,6 +135,7 @@ class SQLAlchemyRouteRepository:
                 ),
                 distance_meters=round(row["distance"]),
                 remaining_meters=row["remaining"],
+                from_ends_meters=round(row["from_ends"]),
             )
             for row in result.mappings()
         ]

@@ -7,6 +7,7 @@ import pytest
 
 from routing.application.match_rider import (
     DEFAULT_PICKUP_LABEL,
+    PRIVATE_END_METERS,
     SAMPLES_PER_TRIP,
     MatchRider,
 )
@@ -25,14 +26,22 @@ CORRIDOR = Corridor(radius_meters=800)
 MAX_WALK = 600
 
 
-def hit(trip_id: UUID, seq: int, distance: int = 300, remaining: int = 5000) -> CorridorHit:
-    """A sample whose point is unique to its trip and seq, so fakes can key on it."""
+def hit(
+    trip_id: UUID,
+    seq: int,
+    distance: int = 300,
+    remaining: int = 5000,
+    from_ends: int = 1000,
+) -> CorridorHit:
+    """A sample whose point is unique to its trip and seq, so fakes can key on it. By default
+    it's 1 km from either end of the route, well away from the private ends."""
     point = LatLng(lat=49.8 + seq / 10_000, lng=-97.1 - trip_id.int % 1000 / 10_000)
     return CorridorHit(
         trip_id=trip_id,
-        sample=RouteSample(seq=seq, point=point, offset_meters=seq * 100, offset_seconds=seq * 9),
+        sample=RouteSample(seq=seq, point=point, offset_meters=seq * 100, offset_seconds=0),
         distance_meters=distance,
         remaining_meters=remaining,
+        from_ends_meters=from_ends,
     )
 
 
@@ -201,3 +210,42 @@ async def test_walking_engine_down_is_an_error() -> None:
 
     with pytest.raises(RoutingEngineUnavailableError):
         await use_case.execute(RIDER, [trip])
+
+
+# ---------------------------------------------------------------- the private ends
+
+
+async def test_samples_near_an_end_of_the_route_are_never_offered() -> None:
+    """One end is the driver's own place, usually near home."""
+    trip = uuid4()
+    at_the_end = hit(trip, 0, distance=10, from_ends=12)
+    just_inside = hit(trip, 2, distance=150, from_ends=PRIVATE_END_METERS - 1)
+    first_allowed = hit(trip, 3, distance=250, from_ends=PRIVATE_END_METERS)
+    hits = [at_the_end, just_inside, first_allowed]
+    use_case, _, walking, _ = match_rider(hits, {h.sample.point: walk(60) for h in hits})
+
+    [match] = await use_case.execute(RIDER, [trip])
+
+    # The nearest, quickest samples are skipped, and never even walked to.
+    assert match.pickup == first_allowed.sample.point
+    [(_, destinations)] = walking.calls
+    assert destinations == [first_allowed.sample.point]
+
+
+async def test_near_means_in_a_straight_line_not_along_the_route() -> None:
+    """Leaving a cul-de-sac: 600 m of road in, but still only 150 m from the driver's door."""
+    trip = uuid4()
+    round_the_bend = hit(trip, 6, distance=100, from_ends=150)
+    use_case, *_ = match_rider([round_the_bend], {round_the_bend.sample.point: walk(60)})
+
+    assert await use_case.execute(RIDER, [trip]) == []
+
+
+async def test_a_rider_only_near_an_end_does_not_match() -> None:
+    """Better no match than a pickup that gives away where the driver lives."""
+    trip = uuid4()
+    hits = [hit(trip, seq, from_ends=seq * 100) for seq in range(3)]
+    use_case, _, walking, _ = match_rider(hits, {h.sample.point: walk(60) for h in hits})
+
+    assert await use_case.execute(RIDER, [trip]) == []
+    assert walking.calls == []

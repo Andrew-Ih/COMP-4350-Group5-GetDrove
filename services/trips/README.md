@@ -103,3 +103,15 @@ workflow, or Routing service change is introduced here.
 The checked-in Routing compute handler is still a 501 contract stub (#23-#26).
 A deployed Routing implementation is required for a live successful POST; the
 Trips adapter maps its HTTP failures to the existing 503 response.
+
+## Searching for trips (#97)
+
+`GET /search?lat=&lng=&direction=&time=` (gateway: `GET /api/trips/search`) requires authentication and returns the trips that pass near the rider, soonest departure first.
+
+1. **Candidates** (this service): scheduled trips in the rider's direction with a free seat that haven't left yet, excluding the rider's own. Going to campus, `time` is when the rider wants to arrive: trips arriving in the hour before it. Leaving campus, it's when they want to leave: trips departing in the hour after it. Both ends are included.
+2. **Matching** (Routing, `POST /internal/matches`): which candidates the rider can walk to, with a pickup point on the route, the walking time, and how far the rider rides. No candidates means Routing isn't called.
+3. **Cost** (Payments, `POST /internal/quotes`): the rider's share for how far they ride. Going to campus that's from the pickup to campus (Routing's `riderDistanceMeters`); leaving campus it's from campus to the drop-off (the trip's distance minus it). A price is optional: if Payments fails or is slow (2 s timeout), the trip is still shown with `cost: null`. Until the quote endpoint lands (#99), Payments answers 501, so every cost is null.
+
+Each result is the trip as a rider sees it: the driver's own end (`origin` going to campus, `destination` leaving it) is null, so their home area is never shown. If Routing can't answer, the search fails with 503 `routing_unavailable`; an empty list is a normal result. The rider's location is only passed to Routing, never stored.
+
+Settings: `TRIPS_PAYMENTS_URL` (default `http://localhost:8004`; Docker Compose sets `http://payments:8000`).
