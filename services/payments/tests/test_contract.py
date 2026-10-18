@@ -3,6 +3,7 @@
 from httpx import ASGITransport, AsyncClient
 
 from payments.infrastructure.main import create_app
+from payments.infrastructure.settings import Settings, get_settings
 
 
 def test_spec_documents_the_quote_endpoint() -> None:
@@ -50,3 +51,73 @@ def test_every_error_response_has_its_own_example() -> None:
                 example = content["example"]
                 assert example["status"] == int(status), where
                 assert f"`{example['code']}" in response["description"], where
+
+
+async def test_zero_distance_returns_minimum_quote() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/internal/quotes",
+            json={"distanceMeters": 0},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "amountCents": 200,
+        "currency": "CAD",
+        "explanation": "0 km at $0.45/km ($2.00 minimum)",
+    }
+
+
+async def test_distance_above_maximum_is_rejected() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/internal/quotes",
+            json={"distanceMeters": 200_001},
+        )
+
+    assert response.status_code == 422
+
+
+async def test_explanation_uses_one_decimal_place() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/internal/quotes",
+            json={"distanceMeters": 12345},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["explanation"] == "12.3 km at $0.45/km"
+
+
+async def test_custom_rate_updates_price_and_explanation() -> None:
+    app = create_app()
+
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        rate_cents_per_km=50,
+        minimum_fare_cents=200,
+    )
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+    ) as client:
+        response = await client.post(
+            "/internal/quotes",
+            json={"distanceMeters": 6000},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "amountCents": 300,
+        "currency": "CAD",
+        "explanation": "6 km at $0.50/km",
+    }
