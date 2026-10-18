@@ -116,14 +116,14 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             driver_id=driver_id,
             direction=Direction.TO_CAMPUS,
             place=place,
-            departure_at=now + timedelta(days=2),
+            departure_at=now - timedelta(days=2),
             duration_seconds=900,
             distance_meters=6000,
             seats_total=3,
             status=TripStatus.CANCELLED,
         )
 
-        cancelled_trip.status = replace(cancelled_trip.status, value=TripStatus.CANCELLED)
+        # cancelled_trip.status = replace(cancelled_trip.status, value=TripStatus.CANCELLED)
 
         async with session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
