@@ -250,7 +250,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
     print(body)
     assert len(body) == 1
     assert body[0]["id"] == str(expected_trip.id)
-    assert body[0]["driver_id"] == str(expected_trip.driver_id)
+    assert body[0]["driverId"] == str(expected_trip.driver_id)
     assert body[0]["origin"]["label"] == "Pembina Highway"
     assert body[0]["destination"]["label"] == "Pembina Highway"
     assert body[0]["status"] == "scheduled"
