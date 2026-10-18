@@ -99,6 +99,7 @@ def test_reject_naive_departure(place: Location) -> None:
             seats_total=3,
         )
 
+
 def test_cancel_trip() -> None:
     trip = Trip.create(
         driver_id=uuid4(),
