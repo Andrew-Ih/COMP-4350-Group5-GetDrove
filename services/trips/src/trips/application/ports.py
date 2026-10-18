@@ -1,6 +1,7 @@
 """Interfaces used by Trips application use cases."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
@@ -10,6 +11,10 @@ from trips.domain.values import Location
 
 class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
+
+    async def get_upcoming_by_driver(
+        self, driver_id: UUID, now: datetime
+    ) -> list[Trip]: ...
 
 
 class TripEvents(Protocol):
