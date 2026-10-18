@@ -11,6 +11,7 @@ from trips.adapters.persistence.tables import trips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, TripStatus
 
+from dataclasses import replace
 
 class SQLAlchemyTripRepository:
     """Store Trip domain entities in PostgreSQL."""
