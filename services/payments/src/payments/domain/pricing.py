@@ -19,8 +19,7 @@ def calculate_rider_share(distance_meters: int) -> int:
     rounding_divisor = METRES_PER_KILOMETRE * ROUNDING_INCREMENT_CENTS
 
     rounded_amount_cents = (
-        (distance_meters * CENTS_PER_KILOMETRE + rounding_divisor // 2)
-        // rounding_divisor
+        (distance_meters * CENTS_PER_KILOMETRE + rounding_divisor // 2) // rounding_divisor
     ) * ROUNDING_INCREMENT_CENTS
 
     return max(MINIMUM_AMOUNT_CENTS, rounded_amount_cents)

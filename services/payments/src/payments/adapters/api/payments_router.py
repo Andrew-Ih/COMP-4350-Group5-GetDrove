@@ -38,7 +38,6 @@ async def quote(body: QuoteRequest) -> Quote:
         amount_cents=amount_cents,
         currency="CAD",
         explanation=(
-            f"{distance_km:g} km at $0.45/km, rounded to the nearest $0.05 "
-            f"with a $2.00 minimum."
+            f"{distance_km:g} km at $0.45/km, rounded to the nearest $0.05 with a $2.00 minimum."
         ),
     )

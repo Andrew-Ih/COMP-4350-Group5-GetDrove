@@ -22,10 +22,7 @@ async def test_valid_quote_request_returns_calculated_price() -> None:
     assert response.json() == {
         "amountCents": 420,
         "currency": "CAD",
-        "explanation": (
-            "9.3 km at $0.45/km, rounded to the nearest $0.05 "
-            "with a $2.00 minimum."
-        ),
+        "explanation": ("9.3 km at $0.45/km, rounded to the nearest $0.05 with a $2.00 minimum."),
     }
 
 
