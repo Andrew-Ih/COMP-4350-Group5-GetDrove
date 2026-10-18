@@ -228,9 +228,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
     )
 
     class FakeUpcomingTripsService:
-        async def execute(
-            self, *, driver_id: UUID
-        ) -> list[SimpleNamespace]:
+        async def execute(self, *, driver_id: UUID) -> list[SimpleNamespace]:
             return [expected_trip]
 
     app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
@@ -259,10 +257,9 @@ async def test_my_trips_returns_empty_list() -> None:
     auth.install(app)
 
     class FakeUpcomingTripsService:
-        async def execute(
-            self, *, driver_id: UUID
-        ) -> list[SimpleNamespace]:
+        async def execute(self, *, driver_id: UUID) -> list[SimpleNamespace]:
             return []
+
     app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
 
     async with AsyncClient(

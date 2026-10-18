@@ -112,7 +112,7 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             seats_total=3,
         )
 
-        cancelled_trip = replace (
+        cancelled_trip = replace(
             Trip.create(
                 driver_id=driver_id,
                 direction=Direction.TO_CAMPUS,
