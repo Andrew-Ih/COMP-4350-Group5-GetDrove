@@ -2,20 +2,16 @@
 
 Internal: called by Trips inside Docker (http://payments:8000/internal/quotes) to show each
 search result's cost; the gateway never exposes it. Card setup and holds come in Sprint 2.
-The handler returns 501 Not Implemented until the real code lands (#99).
 """
 
-from typing import Any, NoReturn
+from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from payments.adapters.api.schemas import Problem, Quote, QuoteRequest
+from payments.domain.pricing import calculate_quote
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
-
-
-def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
 
 
 INVALID: dict[int | str, dict[str, Any]] = {
@@ -36,4 +32,11 @@ INVALID: dict[int | str, dict[str, Any]] = {
     responses=INVALID,
 )
 async def quote(body: QuoteRequest) -> Quote:
-    _not_implemented()
+    amount_cents = calculate_quote(body.distance_meters)
+    distance_km = body.distance_meters / 1000
+
+    return Quote(
+        amount_cents=amount_cents,
+        currency="CAD",
+        explanation=f"{distance_km:g} km at $0.45/km",
+    )
