@@ -1,6 +1,5 @@
 """Integration tests for the Trips repository."""
 
-from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
