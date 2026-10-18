@@ -1,6 +1,7 @@
 """Integration tests for the Trips repository."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from os import replace
 from uuid import uuid4
 
 import pytest
@@ -10,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import trips
 from trips.domain.entities import Trip
-from trips.domain.values import Direction, Location
+from trips.domain.values import Direction, Location, TripStatus
 from trips.infrastructure.settings import get_settings
 
 
@@ -111,7 +112,7 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             seats_total=3,
         )
 
-        cancelled_trip = replace(
+        cancelled_trip = replace (
             Trip.create(
                 driver_id=driver_id,
                 direction=Direction.TO_CAMPUS,
