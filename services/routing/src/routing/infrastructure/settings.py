@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # Riders within this straight-line distance of a route are checked by walking time (#25,
     # #26). Generous on purpose: the walking check is what rules riders out.
     corridor_meters: int = 800
+    # A trip matches if the rider can walk to its route within this (#26). OSRM's foot profile
+    # walks at 5 km/h, so 10 minutes is about 830 m: just over the corridor.
+    max_walk_seconds: int = 600
 
 
 def get_settings() -> Settings:

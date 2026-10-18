@@ -44,3 +44,23 @@ class CorridorHit:
     trip_id: UUID
     sample: RouteSample
     distance_meters: int  # straight line from the rider
+    remaining_meters: int  # along the route, from this sample to the trip's end
+
+
+@dataclass(frozen=True)
+class Walk:
+    """How long a walk takes on foot, along paths and sidewalks."""
+
+    seconds: int
+    meters: int
+
+
+@dataclass(frozen=True)
+class RiderMatch:
+    """A trip the rider can walk to, with the best place on its route to be picked up (#26)."""
+
+    trip_id: UUID
+    pickup: LatLng
+    pickup_label: str
+    walk_seconds: int
+    rider_distance_meters: int  # in the car, from the pickup to the trip's end

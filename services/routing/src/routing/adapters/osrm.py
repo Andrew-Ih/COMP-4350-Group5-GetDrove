@@ -1,8 +1,11 @@
-"""HTTP adapter for OSRM, the routing engine (ADR 0008, infra/osrm/README.md).
+"""HTTP adapters for OSRM, the routing engine (ADR 0008, infra/osrm/README.md).
 
-OSRM's route service: https://project-osrm.org/docs/v5.24.0/api/#route-service
+Two instances: car (driving routes, road names) and foot (walking times).
+OSRM's API: https://project-osrm.org/docs/v5.24.0/api/
 """
 
+from collections.abc import Sequence
+from itertools import batched
 from typing import Literal
 
 import httpx
@@ -10,7 +13,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from routing.application.ports import DrivingRoute
 from routing.domain.errors import NoRouteError, RoutingEngineUnavailableError
-from routing.domain.values import LatLng
+from routing.domain.values import LatLng, Walk
 
 # OSRM answers these (with HTTP 400) when the points are valid but can't be driven between:
 # NoRoute when nothing connects them, NoSegment when a point can't be matched to a road.
@@ -23,6 +26,18 @@ MAX_SNAP_METERS = 500
 
 # Routes are stored in PostgreSQL INTEGER columns.
 MAX_INT = 2**31 - 1
+
+# osrm-routed accepts at most 100 coordinates in a table request by default (--max-table-size),
+# and one of them is the rider.
+MAX_TABLE_DESTINATIONS = 99
+
+# Candidate roads for a pickup label: the nearest is often an unnamed ramp or service road.
+ROAD_NAME_CANDIDATES = 5
+
+
+def _coordinate(point: LatLng) -> str:
+    # OSRM takes coordinates as longitude,latitude.
+    return f"{point.lng},{point.lat}"
 
 
 class _Geometry(BaseModel):
@@ -41,13 +56,45 @@ class _RouteResponse(BaseModel):
     routes: list[_Route] = []
 
 
+class _Waypoint(BaseModel):
+    name: str = ""
+
+
+class _NearestResponse(BaseModel):
+    code: str
+    waypoints: list[_Waypoint] = []
+
+
+class _TableResponse(BaseModel):
+    code: str
+    # One row per source (just the rider); None where there's no route.
+    durations: list[list[float | None]] = []
+    distances: list[list[float | None]] = []
+
+
 class OSRMRoutingEngine:
+    """The car profile."""
+
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
 
+    async def road_name(self, point: LatLng) -> str | None:
+        try:
+            response = await self.client.get(
+                f"/nearest/v1/driving/{_coordinate(point)}",
+                params={"number": ROAD_NAME_CANDIDATES},
+            )
+            data = _NearestResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError):
+            return None
+
+        if response.status_code != 200 or data.code != "Ok":
+            return None
+        # Nearest first: the closest road that has a name.
+        return next((waypoint.name for waypoint in data.waypoints if waypoint.name), None)
+
     async def driving_route(self, origin: LatLng, destination: LatLng) -> DrivingRoute:
-        # OSRM takes coordinates as longitude,latitude.
-        coordinates = f"{origin.lng},{origin.lat};{destination.lng},{destination.lat}"
+        coordinates = f"{_coordinate(origin)};{_coordinate(destination)}"
 
         try:
             response = await self.client.get(
@@ -75,3 +122,48 @@ class OSRMRoutingEngine:
             distance_meters=round(route.distance),
             duration_seconds=round(route.duration),
         )
+
+
+class OSRMWalkingEngine:
+    """The foot profile: walking times from a rider to many points, with OSRM's table service
+    (https://project-osrm.org/docs/v5.24.0/api/#table-service)."""
+
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self.client = client
+
+    async def walks(self, origin: LatLng, destinations: Sequence[LatLng]) -> list[Walk | None]:
+        walks: list[Walk | None] = []
+        # The last chunk is shorter, so not strict.
+        for chunk in batched(destinations, MAX_TABLE_DESTINATIONS, strict=False):
+            walks.extend(await self._walks(origin, chunk))
+        return walks
+
+    async def _walks(self, origin: LatLng, destinations: Sequence[LatLng]) -> list[Walk | None]:
+        coordinates = ";".join(_coordinate(point) for point in (origin, *destinations))
+        try:
+            response = await self.client.get(
+                f"/table/v1/foot/{coordinates}",
+                params={"sources": "0", "annotations": "duration,distance"},
+            )
+            data = _TableResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError) as exc:
+            raise RoutingEngineUnavailableError() from exc
+
+        # The rider's row: the rider to itself, then each destination in order.
+        expected = len(destinations) + 1
+        if (
+            response.status_code != 200
+            or data.code != "Ok"
+            or len(data.durations) != 1
+            or len(data.distances) != 1
+            or len(data.durations[0]) != expected
+            or len(data.distances[0]) != expected
+        ):
+            raise RoutingEngineUnavailableError()
+
+        return [
+            Walk(seconds=round(seconds), meters=round(meters))
+            if seconds is not None and meters is not None
+            else None
+            for seconds, meters in zip(data.durations[0][1:], data.distances[0][1:], strict=True)
+        ]

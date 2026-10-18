@@ -76,6 +76,16 @@ When a route is stored, points every 100 m along it are stored too, in `routing.
 
 The corridor is the area within `ROUTING_CORRIDOR_METERS` (default 800) of a route, in a straight line. `SQLAlchemyRouteRepository.samples_in_corridor` finds, for a rider and the candidate trips Trips sends, the samples inside it, nearest first. It's only a quick first pass: a rider across the river from a route can be well inside the corridor, so matching (#26) then checks the real walking time to these samples with OSRM's foot profile.
 
+### Matching a rider to trips (#26)
+
+`POST /internal/matches` is called by Trips' search (#97) with the rider's location and the candidate trips (already filtered by time, seats and status). It's internal, like `/internal/routes`.
+
+1. **Corridor:** the samples of those trips' routes within `ROUTING_CORRIDOR_METERS` of the rider (#25), the 20 nearest per trip.
+2. **Walking check:** one OSRM foot `table` request (split into chunks of 99, OSRM's limit) gives the walking time from the rider to each sample. A trip matches only if some sample is within `ROUTING_MAX_WALK_SECONDS` (default 600, about 830 m at OSRM's 5 km/h). This is what leaves out a rider across the river from a route: close in a straight line, but a long walk round to a bridge.
+3. **Pickup:** per matching trip, the sample with the shortest walk. It's on the driver's route, so the driver can stop there. Its label is the nearest named road from OSRM's car profile (`nearest`), or "On the driver's route" if there's none or the lookup fails.
+
+Each match has the pickup, the walk in seconds, and `riderDistanceMeters`: the rest of the route from the pickup, which is what the rider rides. Matches come back in the order of `tripIds`; trips that don't match are left out, and an empty list is a normal result. If the foot profile is down, the answer is 503 `routing_engine_unavailable`. The rider's location is used for the calculation only, never stored or logged.
+
 ### A trip's route for the map (#123)
 
 `GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the stored route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs, exactly as stored; `properties` has the trip ID, distance and duration. The driver's screen after posting a trip and the rider's search results both use it.

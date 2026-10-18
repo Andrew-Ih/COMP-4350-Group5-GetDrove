@@ -4,21 +4,27 @@
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
-POST /internal/routes is implemented by issue #24 and the geometry endpoint by #123.
-POST /internal/matches returns 501 Not Implemented until its code lands (#25, #26).
+Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches) and
+#123 (the geometry endpoint).
 """
 
-from typing import Any, NoReturn
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from common_security.dependencies import AuthenticatedUser
-from routing.adapters.api.dependencies import ComputeRouteService, GetRouteService
+from routing.adapters.api.dependencies import (
+    ComputeRouteService,
+    GetRouteService,
+    MatchRiderService,
+)
 from routing.adapters.api.schemas import (
     LineString,
+    Match,
     MatchRequest,
     MatchResponse,
+    Pickup,
     Problem,
     RouteFeature,
     RouteProperties,
@@ -43,10 +49,6 @@ ENGINE_DOWN: Responses = {
         "The routing engine (OSRM) is unavailable or too slow", "routing_engine_unavailable"
     )
 }
-
-
-def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
 
 
 @internal_router.post(
@@ -80,8 +82,23 @@ async def compute_route(body: RouteRequest, service: ComputeRouteService) -> Rou
     "are left out; an empty list is a normal result.",
     responses={**INVALID, **ENGINE_DOWN},
 )
-async def match_trips(body: MatchRequest) -> MatchResponse:
-    _not_implemented()
+async def match_trips(body: MatchRequest, service: MatchRiderService) -> MatchResponse:
+    matches = await service.execute(
+        rider=LatLng(lat=body.rider.lat, lng=body.rider.lng),
+        trip_ids=body.trip_ids,
+    )
+
+    return MatchResponse(
+        matches=[
+            Match(
+                trip_id=match.trip_id,
+                pickup=Pickup(label=match.pickup_label, lat=match.pickup.lat, lng=match.pickup.lng),
+                walk_seconds=match.walk_seconds,
+                rider_distance_meters=match.rider_distance_meters,
+            )
+            for match in matches
+        ]
+    )
 
 
 @public_router.get(

@@ -106,7 +106,10 @@ class SQLAlchemyRouteRepository:
                 route_samples.c.offset_meters,
                 route_samples.c.offset_seconds,
                 distance.label("distance"),
+                # Never negative: offsets are scaled to the route's distance (#25).
+                (routes.c.distance_meters - route_samples.c.offset_meters).label("remaining"),
             )
+            .join(routes, routes.c.trip_id == route_samples.c.trip_id)
             .where(
                 route_samples.c.trip_id.in_(trip_ids),
                 # Uses the GiST index on point; meters, because point is a geography.
@@ -125,6 +128,7 @@ class SQLAlchemyRouteRepository:
                     offset_seconds=row["offset_seconds"],
                 ),
                 distance_meters=round(row["distance"]),
+                remaining_meters=row["remaining"],
             )
             for row in result.mappings()
         ]

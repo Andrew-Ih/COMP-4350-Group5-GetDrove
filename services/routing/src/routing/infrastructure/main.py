@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from common_security.dependencies import install_security
 from common_web.app import install
 from routing.adapters.api import health, routing_router
+from routing.domain.values import Corridor
 from routing.infrastructure.settings import get_settings
 
 
@@ -24,12 +25,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    app.state.corridor = Corridor(radius_meters=settings.corridor_meters)
+    app.state.max_walk_seconds = settings.max_walk_seconds
 
-    async with httpx.AsyncClient(
-        base_url=settings.osrm_car_url,
-        timeout=settings.osrm_timeout_seconds,
-    ) as osrm_car_client:
+    async with (
+        httpx.AsyncClient(
+            base_url=settings.osrm_car_url, timeout=settings.osrm_timeout_seconds
+        ) as osrm_car_client,
+        httpx.AsyncClient(
+            base_url=settings.osrm_foot_url, timeout=settings.osrm_timeout_seconds
+        ) as osrm_foot_client,
+    ):
         app.state.osrm_car_client = osrm_car_client
+        app.state.osrm_foot_client = osrm_foot_client
         try:
             yield
         finally:

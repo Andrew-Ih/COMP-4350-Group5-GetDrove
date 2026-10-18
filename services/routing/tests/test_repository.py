@@ -206,6 +206,10 @@ async def test_samples_in_corridor_finds_a_route_passing_near_the_rider(
     assert nearest.offset_meters == pytest.approx(route.distance_meters / 2, abs=100)
     # About 800 m either side of the nearest point, at 100 m spacing.
     assert 13 <= len(hits) <= 17
+    # What's left of the drive from each sample: a rider picked up there rides that far (#26).
+    for corridor_hit in hits:
+        expected = route.distance_meters - corridor_hit.sample.offset_meters
+        assert corridor_hit.remaining_meters == expected
 
 
 async def test_samples_in_corridor_leaves_out_routes_too_far_away(
