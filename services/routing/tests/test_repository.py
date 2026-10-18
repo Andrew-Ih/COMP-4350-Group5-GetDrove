@@ -77,3 +77,26 @@ async def test_save_again_replaces_the_route(session: AsyncSession) -> None:
     assert row["wkt"] == "LINESTRING(-97.1366 49.8075,-97.15 49.82)"
     assert row["distance_meters"] == 6500
     assert row["duration_seconds"] == 960
+
+
+async def test_get_returns_the_route_as_saved(session: AsyncSession) -> None:
+    repository = SQLAlchemyRouteRepository(session)
+    # Real OSRM coordinates have up to 6 decimal places; nothing may be rounded away.
+    route = Route(
+        trip_id=uuid4(),
+        path=(
+            LatLng(lat=49.876812, lng=-97.143807),
+            LatLng(lat=49.123456789012, lng=-97.987654321098),
+            CAMPUS,
+        ),
+        distance_meters=6000,
+        duration_seconds=900,
+    )
+
+    await repository.save(route)
+
+    assert await repository.get(route.trip_id) == route
+
+
+async def test_get_unknown_trip_returns_none(session: AsyncSession) -> None:
+    assert await SQLAlchemyRouteRepository(session).get(uuid4()) is None

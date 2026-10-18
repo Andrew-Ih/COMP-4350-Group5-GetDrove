@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from routing.adapters.osrm import OSRMRoutingEngine
 from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.application.compute_route import ComputeRoute
+from routing.application.get_route import GetRoute
 from routing.domain.entities import Route
 from routing.domain.values import LatLng
 
@@ -44,3 +45,21 @@ def get_compute_route(request: Request) -> ComputeRouteCommand:
 
 
 ComputeRouteService = Annotated[ComputeRouteCommand, Depends(get_compute_route)]
+
+
+class GetRouteQuery:
+    """Reads a trip's route in its own database session."""
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+
+    async def execute(self, trip_id: UUID) -> Route:
+        async with self.session_factory() as session:
+            return await GetRoute(SQLAlchemyRouteRepository(session)).execute(trip_id)
+
+
+def get_get_route(request: Request) -> GetRouteQuery:
+    return GetRouteQuery(session_factory=request.app.state.session_factory)
+
+
+GetRouteService = Annotated[GetRouteQuery, Depends(get_get_route)]

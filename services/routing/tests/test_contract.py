@@ -32,9 +32,9 @@ def test_spec_documents_the_sprint_1_endpoints() -> None:
 @pytest.mark.parametrize(
     ("method", "path", "kwargs"),
     [
-        # POST /internal/routes is implemented (#24): see test_compute_route_api.py.
+        # Implemented: POST /internal/routes (#24, test_compute_route_api.py) and
+        # GET /trips/{trip_id}/geometry (#123, test_route_geometry_api.py).
         ("POST", "/internal/matches", {"json": {"rider": POINT, "tripIds": [TRIP_ID]}}),
-        ("GET", f"/trips/{TRIP_ID}/geometry", {}),
     ],
 )
 async def test_valid_requests_reach_the_not_yet_implemented_handler(

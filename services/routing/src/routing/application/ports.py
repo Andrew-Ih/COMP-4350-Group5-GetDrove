@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from typing import Protocol
+from uuid import UUID
 
 from routing.domain.entities import Route
 from routing.domain.values import LatLng
@@ -26,4 +27,8 @@ class RoutingEngine(Protocol):
 class RouteRepository(Protocol):
     async def save(self, route: Route) -> None:
         """Store the route, replacing the trip's existing route if it has one."""
+        ...
+
+    async def get(self, trip_id: UUID) -> Route | None:
+        """The trip's route, or None if it has none."""
         ...

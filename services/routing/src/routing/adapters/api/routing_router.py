@@ -4,8 +4,8 @@
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
-POST /internal/routes is implemented by issue #24. The other handlers return 501 Not
-Implemented until their code lands (#25, #26 and #123).
+POST /internal/routes is implemented by issue #24 and the geometry endpoint by #123.
+POST /internal/matches returns 501 Not Implemented until its code lands (#25, #26).
 """
 
 from typing import Any, NoReturn
@@ -14,12 +14,14 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from common_security.dependencies import AuthenticatedUser
-from routing.adapters.api.dependencies import ComputeRouteService
+from routing.adapters.api.dependencies import ComputeRouteService, GetRouteService
 from routing.adapters.api.schemas import (
+    LineString,
     MatchRequest,
     MatchResponse,
     Problem,
     RouteFeature,
+    RouteProperties,
     RouteRequest,
     RouteResponse,
 )
@@ -94,5 +96,16 @@ async def match_trips(body: MatchRequest) -> MatchResponse:
         404: _problem("No route for this trip", "route_not_found"),
     },
 )
-async def route_geometry(trip_id: UUID, user: AuthenticatedUser) -> RouteFeature:
-    _not_implemented()
+async def route_geometry(
+    trip_id: UUID, user: AuthenticatedUser, service: GetRouteService
+) -> RouteFeature:
+    route = await service.execute(trip_id)
+
+    return RouteFeature(
+        geometry=LineString(coordinates=[(point.lng, point.lat) for point in route.path]),
+        properties=RouteProperties(
+            trip_id=route.trip_id,
+            distance_meters=route.distance_meters,
+            duration_seconds=route.duration_seconds,
+        ),
+    )

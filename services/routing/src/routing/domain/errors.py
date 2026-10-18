@@ -1,6 +1,6 @@
-"""Errors raised when computing a route."""
+"""Errors raised when computing or reading a route."""
 
-from common_web.errors import DomainError, InvalidField, InvalidInputError
+from common_web.errors import DomainError, InvalidField, InvalidInputError, NotFoundError
 
 
 class NoRouteError(InvalidInputError):
@@ -15,6 +15,14 @@ class NoRouteError(InvalidInputError):
                 InvalidField(field="destination", message=message),
             ],
         )
+
+
+class RouteNotFoundError(NotFoundError):
+    code = "route_not_found"
+    title = "Route not found"
+
+    def __init__(self) -> None:
+        super().__init__("No route for this trip")
 
 
 class RoutingEngineUnavailableError(DomainError):

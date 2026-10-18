@@ -70,6 +70,14 @@ Calling it again for the same trip replaces that trip's route. Errors:
 
 Nothing is stored when a request fails.
 
+### A trip's route for the map (#123)
+
+`GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the stored route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs, exactly as stored; `properties` has the trip ID, distance and duration. The driver's screen after posting a trip and the rider's search results both use it.
+
+It needs a logged-in user (401 otherwise), returns 404 `route_not_found` for a trip with no route, and 422 for an ID that isn't a UUID.
+
+In Sprint 1, any logged-in user gets the full route, including the driver's starting point. From Sprint 2, riders get the route from their pickup point on, so the driver's start stays private.
+
 ## Events
 
 _Published and consumed events, linking to `contracts/events/`._
