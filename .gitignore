@@ -68,5 +68,3 @@ web/public/maplibre/
 .idea/
 .vscode/
 
-# OSRM map data, built by infra/osrm/prepare.sh (large; never committed)
-infra/osrm/data/

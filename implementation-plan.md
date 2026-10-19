@@ -182,7 +182,7 @@ COMP-4350-Group5-GetDrove/
 │   ├── traefik/                   # Gateway config (routes, middlewares, TLS)
 │   ├── postgres/init/             # Creates one schema + one DB user per service
 │   ├── osrm/
-│   │   ├── prepare.sh             # Downloads Manitoba extract, clips to Winnipeg, builds car + foot graphs
+│   │   ├── Dockerfile             # Downloads Manitoba extract, clips to Winnipeg, builds car + foot graphs into the image
 │   │   └── README.md
 │   ├── seed/                      # Demo and load-test data (users, drivers, trips)
 │   └── k8s/                       # OPTIONAL learning area, not deployed or graded (see 6.6)
@@ -751,7 +751,7 @@ Everything on the backend, grouped by sprint and then by area: shared platform w
 | Lib | `libs/common-security` | JWT validation against the JWKS endpoint, current-user resolver, role checks, dev test-token profile |
 | Lib | `libs/events` | Event envelope, `outbox` table + relay to Redis Streams, consumer helper with `processed_events` idempotency |
 | Infra | `infra/docker-compose.yml` | PostGIS (schema + user per service), Redis (AOF on), OSRM car + foot, Mailpit, Traefik routes |
-| Infra | `infra/osrm/prepare.sh` | Manitoba extract, clipped to Winnipeg, car and foot graphs |
+| Infra | `infra/osrm/Dockerfile` | Manitoba extract, clipped to Winnipeg, car and foot graphs |
 | Infra | CI v1 (`ci.yml`) | Lint, unit and integration tests, coverage artifacts, path filters |
 | Infra | Hosting: VM, domain, TLS via Traefik, SSH deploy key | Live URL serving the frontend and every `/health` |
 | Infra | Deploy pipeline (manual trigger is acceptable in Sprint 1) | Builds images and runs `docker compose up -d` on the VM |
@@ -1332,7 +1332,7 @@ Rules: payloads carry IDs and the minimum data consumers need (never home addres
 | `accounts`, `trips`, `routing`, `payments`, `notifications` | Services (source mounted, `uvicorn --reload` for instant restarts) |
 | `web` | Next.js dev server (`next dev`) with hot reload |
 
-**Map data:** `infra/osrm/prepare.sh` downloads the Manitoba extract from Geofabrik, clips it to a Winnipeg bounding box with `osmium extract`, and runs `osrm-extract` / `osrm-partition` / `osrm-customize` for car and foot profiles. The output is a few hundred MB and is **not committed**; developers run the script once (document it in local-setup.md), and the CD pipeline builds it on the server or bakes it into an image.
+**Map data:** `infra/osrm/Dockerfile` downloads the Manitoba extract from Geofabrik, clips it to a Winnipeg bounding box with `osmium extract`, and runs `osrm-extract` / `osrm-partition` / `osrm-customize` for the car or foot profile. The graphs are built into the image (never committed): Docker Compose builds it locally, and the deploy pipeline builds the same image for the live server (#233).
 
 Tips: `docker compose up postgres redis osrm-car osrm-foot` while running your own service from the IDE; set container memory limits so the whole stack fits on a laptop; health checks + `depends_on: condition: service_healthy` so services start in order.
 
