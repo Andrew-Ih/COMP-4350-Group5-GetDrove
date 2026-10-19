@@ -12,7 +12,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
-from trips.adapters.persistence.tables import trips
+from trips.adapters.persistence.tables import outbox, trips
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
@@ -33,6 +33,11 @@ async def api() -> AsyncIterator[API]:
     finally:
         try:
             async with engine.begin() as connection:
+                await connection.execute(
+                    delete(outbox).where(
+                        outbox.c.envelope["correlationId"].astext == str(auth.user_id)
+                    )
+                )
                 await connection.execute(delete(trips).where(trips.c.driver_id == auth.user_id))
         finally:
             await engine.dispose()
