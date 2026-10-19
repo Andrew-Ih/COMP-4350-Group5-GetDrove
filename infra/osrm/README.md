@@ -34,6 +34,10 @@ bash infra/osrm/check.sh
 
 Try it yourself: `curl "http://localhost:5050/route/v1/driving/-97.1438,49.8768;-97.1366,49.8075?overview=false"`. OSRM takes coordinates as `longitude,latitude`. Its API is documented at <https://project-osrm.org/docs/v5.24.0/api/>.
 
+## Logging
+
+Both instances run with `--verbosity WARNING`. At OSRM's default (`INFO`), `osrm-routed` logs every request's URL, and the URL holds the coordinates of riders and drivers, which must never be stored. Keep this setting anywhere OSRM runs, including production. For the same reason, the services don't log httpx's request URLs (`common_web.configure_logging`).
+
 ## Updating the map
 
 Run `prepare.sh` again: it rebuilds the graphs from the extract already downloaded. Delete `infra/osrm/data/manitoba-latest.osm.pbf` first to download newer map data. Restart the two containers afterwards.

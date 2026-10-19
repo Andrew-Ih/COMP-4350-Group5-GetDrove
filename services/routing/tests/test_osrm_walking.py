@@ -1,5 +1,6 @@
 """Tests for OSRM walking times (table service) and road names (nearest), with OSRM mocked."""
 
+import asyncio
 from collections.abc import Callable
 from typing import Any
 
@@ -85,6 +86,30 @@ async def test_walks_splits_large_requests_and_keeps_the_order() -> None:
     first_of_each_chunk = result[0], result[MAX_TABLE_DESTINATIONS], result[-3]
     assert first_of_each_chunk == (Walk(seconds=100, meters=140),) * 3
     assert result[MAX_TABLE_DESTINATIONS - 1] == Walk(seconds=9940, meters=13816)
+
+
+async def test_walks_asks_for_every_chunk_at_once() -> None:
+    """Chunks are independent: awaiting them one by one made search slower with every five
+    or so matching trips, until Trips' 5 s timeout turned it into a 503."""
+    in_flight = peak = 0
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, peak
+        in_flight += 1
+        peak = max(peak, in_flight)
+        await asyncio.sleep(0.05)  # all three are waiting here together
+        in_flight -= 1
+        return table(request)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://osrm-foot:5000"
+    ) as client:
+        result = await OSRMWalkingEngine(client).walks(
+            RIDER, points(MAX_TABLE_DESTINATIONS * 2 + 3)
+        )
+
+    assert peak == 3
+    assert len(result) == MAX_TABLE_DESTINATIONS * 2 + 3
 
 
 async def test_walks_with_no_destinations_asks_nothing() -> None:

@@ -4,6 +4,7 @@ Two instances: car (driving routes, road names) and foot (walking times).
 OSRM's API: https://project-osrm.org/docs/v5.24.0/api/
 """
 
+import asyncio
 from collections.abc import Sequence
 from itertools import batched
 from typing import Literal
@@ -142,11 +143,12 @@ class OSRMWalkingEngine:
         self.client = client
 
     async def walks(self, origin: LatLng, destinations: Sequence[LatLng]) -> list[Walk | None]:
-        walks: list[Walk | None] = []
-        # The last chunk is shorter, so not strict.
-        for chunk in batched(destinations, MAX_TABLE_DESTINATIONS, strict=False):
-            walks.extend(await self._walks(origin, chunk))
-        return walks
+        # The chunks are independent, so ask for them all at once: search time stays about
+        # one request however many trips match. gather keeps them in order. The last chunk
+        # is shorter, so not strict.
+        chunks = batched(destinations, MAX_TABLE_DESTINATIONS, strict=False)
+        results = await asyncio.gather(*(self._walks(origin, chunk) for chunk in chunks))
+        return [walk for chunk in results for walk in chunk]
 
     async def _walks(self, origin: LatLng, destinations: Sequence[LatLng]) -> list[Walk | None]:
         coordinates = ";".join(_coordinate(point) for point in (origin, *destinations))

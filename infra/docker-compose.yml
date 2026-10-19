@@ -103,7 +103,10 @@ services:
     image: &osrm-image ghcr.io/project-osrm/osrm-backend:v5.27.1
     profiles: [osrm]
     restart: unless-stopped
-    command: ["osrm-routed", "--algorithm", "mld", "/data/winnipeg.osrm"]
+    # At its default (INFO), osrm-routed logs every request's URL, which holds riders' and
+    # drivers' coordinates. WARNING keeps startup problems and errors, not requests.
+    command: &osrm-command
+      ["osrm-routed", "--algorithm", "mld", "--verbosity", "WARNING", "/data/winnipeg.osrm"]
     volumes:
       - ./osrm/data/car:/data:ro
     ports:
@@ -120,7 +123,7 @@ services:
     image: *osrm-image
     profiles: [osrm]
     restart: unless-stopped
-    command: ["osrm-routed", "--algorithm", "mld", "/data/winnipeg.osrm"]
+    command: *osrm-command
     volumes:
       - ./osrm/data/foot:/data:ro
     ports:

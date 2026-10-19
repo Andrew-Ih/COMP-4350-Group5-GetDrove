@@ -127,3 +127,10 @@ def configure_logging(service: str, *, level: str | None = None, fmt: str | None
     access = logging.getLogger("uvicorn.access")
     access.handlers.clear()
     access.propagate = False
+
+    # httpx logs every outgoing request's URL at INFO, and httpcore its details at DEBUG.
+    # Calls between services can carry private data in the URL (OSRM takes the rider's and
+    # driver's coordinates in the path), so only their warnings get through, whatever the
+    # level. common_web.app already logs each incoming request, without its query string.
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
