@@ -66,31 +66,7 @@ class SQLAlchemyTripRepository:
             .where(trips.c.status == TripStatus.SCHEDULED.value)
             .order_by(trips.c.departure_at.asc())
         )
-        return [
-            Trip(
-                id=row.id,
-                driver_id=row.driver_id,
-                direction=Direction(row.direction),
-                origin=Location(
-                    label=row.origin_label,
-                    lat=row.origin_lat,
-                    lng=row.origin_lng,
-                ),
-                destination=Location(
-                    label=row.destination_label,
-                    lat=row.destination_lat,
-                    lng=row.destination_lng,
-                ),
-                departure_at=row.departure_at,
-                estimated_arrival_at=row.estimated_arrival_at,
-                duration_seconds=row.duration_seconds,
-                distance_meters=row.distance_meters,
-                seats_total=row.seats_total,
-                seats_available=row.seats_available,
-                status=TripStatus(row.status),
-            )
-            for row in result.mappings().all()
-        ]
+        return [_trip(row) for row in result.mappings()]
 
     async def search(
         self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
