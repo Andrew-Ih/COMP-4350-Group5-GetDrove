@@ -1,7 +1,7 @@
 """Trips API (Sprint 1): post a trip, my trips, trip detail and search.
 
-POST is implemented by issue #94. Read handlers remain contract stubs (#95, #97).
-Paths here are relative to the gateway prefix /api/trips.
+POST is implemented by issue #94 and search by #97. The other read handlers remain contract
+stubs (#95). Paths here are relative to the gateway prefix /api/trips.
 """
 
 from typing import Annotated, Any, Literal, NoReturn
@@ -11,15 +11,18 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
-from trips.adapters.api.dependencies import PostTripService, UpcomingTripsService
+from trips.adapters.api.dependencies import PostTripService, SearchTripsService
 from trips.adapters.api.schemas import (
+    Cost,
+    Pickup,
     Place,
     PostTripRequest,
     Problem,
     SearchResult,
     Trip,
 )
-from trips.domain.values import Direction, Location
+from trips.domain.entities import Trip as TripEntity
+from trips.domain.values import Direction, Location, Point
 
 router = APIRouter(tags=["trips"])
 
@@ -174,8 +177,54 @@ async def search_trips(
         AwareDatetime,
         Query(description="Arrive by (to_campus) or leave after (from_campus)."),
     ],
+    service: SearchTripsService,
 ) -> list[SearchResult]:
-    _not_implemented()
+    results = await service.execute(
+        rider_id=user.id, rider=Point(lat=lat, lng=lng), direction=direction, time=time
+    )
+
+    return [
+        SearchResult(
+            trip=_for_rider(result.trip),
+            pickup=Pickup(
+                label=result.match.pickup.label,
+                lat=result.match.pickup.lat,
+                lng=result.match.pickup.lng,
+                walk_seconds=result.match.walk_seconds,
+            ),
+            cost=Cost(
+                amount_cents=result.cost.amount_cents,
+                explanation=result.cost.explanation,
+            )
+            if result.cost
+            else None,
+        )
+        for result in results
+    ]
+
+
+def _place(location: Location) -> Place:
+    return Place(label=location.label, lat=location.lat, lng=location.lng)
+
+
+def _for_rider(trip: TripEntity) -> Trip:
+    """A trip as someone other than its driver sees it: the driver's own end (near their
+    home) is null. Only the campus end is shown."""
+    to_campus = trip.direction == Direction.TO_CAMPUS
+    return Trip(
+        id=trip.id,
+        driver_id=trip.driver_id,
+        direction=trip.direction,
+        origin=None if to_campus else _place(trip.origin),
+        destination=_place(trip.destination) if to_campus else None,
+        departure_at=trip.departure_at,
+        estimated_arrival_at=trip.estimated_arrival_at,
+        duration_seconds=trip.duration_seconds,
+        distance_meters=trip.distance_meters,
+        seats_total=trip.seats_total,
+        seats_available=trip.seats_available,
+        status=trip.status,
+    )
 
 
 @router.get(

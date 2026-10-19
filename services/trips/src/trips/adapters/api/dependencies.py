@@ -10,13 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from common_web import current_request_id
 from events.outbox import OutboxPublisher
 from trips.adapters.events import OutboxTripEvents
+from trips.adapters.payments import HTTPPricingService
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.routing import HTTPRoutingService
 from trips.application.post_trip import PostTrip
+from trips.application.search_trips import SearchResult, SearchTrips
 from trips.application.upcoming_trips import ListUpcomingTrips
 from trips.domain.entities import Trip
-from trips.domain.values import Direction, Location
+from trips.domain.values import Direction, Location, Point
 
 
 class PostTripCommand:
@@ -70,6 +72,38 @@ def get_post_trip(request: Request) -> PostTripCommand:
 
 
 PostTripService = Annotated[PostTripCommand, Depends(get_post_trip)]
+
+
+class SearchTripsQuery:
+    """Runs a trip search, reading trips in its own database session."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        routing: HTTPRoutingService,
+        pricing: HTTPPricingService,
+    ) -> None:
+        self.session_factory = session_factory
+        self.routing = routing
+        self.pricing = pricing
+
+    async def execute(
+        self, *, rider_id: UUID, rider: Point, direction: Direction, time: datetime
+    ) -> list[SearchResult]:
+        async with self.session_factory() as session:
+            use_case = SearchTrips(SQLAlchemyTripRepository(session), self.routing, self.pricing)
+            return await use_case.execute(rider_id, rider, direction, time)
+
+
+def get_search_trips(request: Request) -> SearchTripsQuery:
+    return SearchTripsQuery(
+        session_factory=request.app.state.session_factory,
+        routing=HTTPRoutingService(request.app.state.routing_client),
+        pricing=HTTPPricingService(request.app.state.payments_client),
+    )
+
+
+SearchTripsService = Annotated[SearchTripsQuery, Depends(get_search_trips)]
 
 
 class UpcomingTripsCommand:

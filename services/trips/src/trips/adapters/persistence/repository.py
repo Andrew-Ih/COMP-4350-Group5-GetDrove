@@ -3,12 +3,31 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import insert, select
+from sqlalchemy import RowMapping, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import trips
 from trips.domain.entities import Trip
-from trips.domain.values import Direction, Location, TripStatus
+from trips.domain.values import Direction, Location, SearchWindow, TripStatus
+
+
+def _trip(row: RowMapping) -> Trip:
+    return Trip(
+        id=row["id"],
+        driver_id=row["driver_id"],
+        direction=Direction(row["direction"]),
+        origin=Location(row["origin_label"], row["origin_lat"], row["origin_lng"]),
+        destination=Location(
+            row["destination_label"], row["destination_lat"], row["destination_lng"]
+        ),
+        departure_at=row["departure_at"],
+        estimated_arrival_at=row["estimated_arrival_at"],
+        duration_seconds=row["duration_seconds"],
+        distance_meters=row["distance_meters"],
+        seats_total=row["seats_total"],
+        seats_available=row["seats_available"],
+        status=TripStatus(row["status"]),
+    )
 
 
 class SQLAlchemyTripRepository:
@@ -72,3 +91,21 @@ class SQLAlchemyTripRepository:
             )
             for row in result.mappings().all()
         ]
+
+    async def search(
+        self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
+    ) -> list[Trip]:
+        time = trips.c.estimated_arrival_at if window.by_arrival else trips.c.departure_at
+        result = await self.session.execute(
+            select(trips)
+            .where(
+                trips.c.direction == window.direction.value,
+                trips.c.status == TripStatus.SCHEDULED.value,
+                trips.c.seats_available > 0,
+                time.between(window.start, window.end),
+                trips.c.departure_at > departs_after,
+                trips.c.driver_id != exclude_driver_id,
+            )
+            .order_by(trips.c.departure_at, trips.c.id)
+        )
+        return [_trip(row) for row in result.mappings()]

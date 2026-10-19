@@ -9,7 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
-from trips.adapters.api.dependencies import get_post_trip, get_upcoming_trips
+from trips.adapters.api.dependencies import get_post_trip, get_search_trips, get_upcoming_trips
 from trips.adapters.api.schemas import PostTripRequest
 from trips.domain.values import Direction, Location
 from trips.infrastructure.main import create_app
@@ -33,7 +33,12 @@ async def client() -> AsyncClient:
     def fake_post_trip() -> object:
         return object()
 
+    class FakeSearch:
+        async def execute(self, **kwargs: Any) -> list[Any]:
+            return []
+
     app.dependency_overrides[get_post_trip] = fake_post_trip
+    app.dependency_overrides[get_search_trips] = FakeSearch
 
     return AsyncClient(
         transport=ASGITransport(app=app),
@@ -60,6 +65,7 @@ def test_example_request_is_valid() -> None:
     ("method", "path", "kwargs"),
     [
         ("GET", "/search", {"params": SEARCH}),
+        ("GET", "/mine", {}),
         ("GET", "/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11", {}),
     ],
 )
@@ -85,6 +91,14 @@ async def test_invalid_trips_are_rejected(client: AsyncClient, change: dict[str,
     response = await client.post("/", json={**VALID_TRIP, **change})
 
     assert response.status_code == 422
+
+
+async def test_valid_search_reaches_the_search_service(client: AsyncClient) -> None:
+    """Implemented by #97: see test_search_trips_api.py for the real thing."""
+    response = await client.get("/search", params=SEARCH)
+
+    assert response.status_code == 200
+    assert response.json() == []
 
 
 async def test_search_requires_location_direction_and_time(client: AsyncClient) -> None:
