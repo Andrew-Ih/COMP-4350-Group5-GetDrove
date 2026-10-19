@@ -69,7 +69,6 @@ def _not_implemented() -> NoReturn:
         ),
     },
 )
-
 async def post_trip(
     body: PostTripRequest,
     user: AuthenticatedUser,
