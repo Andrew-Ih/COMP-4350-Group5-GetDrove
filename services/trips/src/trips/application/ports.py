@@ -1,15 +1,24 @@
 """Interfaces used by Trips application use cases."""
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from trips.domain.entities import Trip
-from trips.domain.values import Location
+from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
 
 
 class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
+
+    async def search(
+        self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
+    ) -> list[Trip]:
+        """Scheduled trips in this direction and time window, with a free seat, that haven't
+        left yet, except the given driver's own."""
+        ...
 
 
 class TripEvents(Protocol):
@@ -31,3 +40,15 @@ class RoutingService(Protocol):
         origin: Location,
         destination: Location,
     ) -> RouteEstimate: ...
+
+    async def match(self, rider: Point, trip_ids: Sequence[UUID]) -> list[TripMatch]:
+        """The trips the rider can walk to, with a pickup point for each. Raise
+        RoutingUnavailableError if Routing can't answer."""
+        ...
+
+
+class PricingService(Protocol):
+    async def quote(self, distance_meters: int) -> Quote:
+        """The rider's share for riding this far. Raise PricingUnavailableError if Payments
+        can't answer."""
+        ...

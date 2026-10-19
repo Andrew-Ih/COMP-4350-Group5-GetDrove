@@ -123,7 +123,7 @@ export interface components {
              * Format: uuid
              */
             tripId: string;
-            /** @description Best point on the route for this rider. */
+            /** @description Best point on the route for this rider: where they're picked up going to campus, or dropped off leaving it. Never near either end of the route, so the driver's own end stays private. */
             pickup: components["schemas"]["Pickup"];
             /**
              * Walkseconds
@@ -132,7 +132,7 @@ export interface components {
             walkSeconds: number;
             /**
              * Riderdistancemeters
-             * @description Distance the rider travels in the car (from the pickup to the trip's end).
+             * @description Distance along the route from `pickup` to the trip's end. Going to campus, that's how far the rider rides; leaving campus, they ride the rest: the trip's distance minus this.
              */
             riderDistanceMeters: number;
         };

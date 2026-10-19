@@ -4,23 +4,34 @@
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
-Handlers return 501 Not Implemented until the real code lands (#23-#26 and the geometry task).
+Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches) and
+#123 (the geometry endpoint).
 """
 
-from typing import Any, NoReturn
+from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
 from common_security.dependencies import AuthenticatedUser
+from routing.adapters.api.dependencies import (
+    ComputeRouteService,
+    GetRouteService,
+    MatchRiderService,
+)
 from routing.adapters.api.schemas import (
+    LineString,
+    Match,
     MatchRequest,
     MatchResponse,
+    Pickup,
     Problem,
     RouteFeature,
+    RouteProperties,
     RouteRequest,
     RouteResponse,
 )
+from routing.domain.values import LatLng
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 public_router = APIRouter(tags=["routes"])
@@ -40,10 +51,6 @@ ENGINE_DOWN: Responses = {
 }
 
 
-def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#108).")
-
-
 @internal_router.post(
     "/routes",
     summary="Compute and store a trip's driving route",
@@ -52,8 +59,18 @@ def _not_implemented() -> NoReturn:
     "Calling it again for the same trip replaces the route.",
     responses={**INVALID, **ENGINE_DOWN},
 )
-async def compute_route(body: RouteRequest) -> RouteResponse:
-    _not_implemented()
+async def compute_route(body: RouteRequest, service: ComputeRouteService) -> RouteResponse:
+    route = await service.execute(
+        trip_id=body.trip_id,
+        origin=LatLng(lat=body.origin.lat, lng=body.origin.lng),
+        destination=LatLng(lat=body.destination.lat, lng=body.destination.lng),
+    )
+
+    return RouteResponse(
+        trip_id=route.trip_id,
+        distance_meters=route.distance_meters,
+        duration_seconds=route.duration_seconds,
+    )
 
 
 @internal_router.post(
@@ -65,8 +82,23 @@ async def compute_route(body: RouteRequest) -> RouteResponse:
     "are left out; an empty list is a normal result.",
     responses={**INVALID, **ENGINE_DOWN},
 )
-async def match_trips(body: MatchRequest) -> MatchResponse:
-    _not_implemented()
+async def match_trips(body: MatchRequest, service: MatchRiderService) -> MatchResponse:
+    matches = await service.execute(
+        rider=LatLng(lat=body.rider.lat, lng=body.rider.lng),
+        trip_ids=body.trip_ids,
+    )
+
+    return MatchResponse(
+        matches=[
+            Match(
+                trip_id=match.trip_id,
+                pickup=Pickup(label=match.pickup_label, lat=match.pickup.lat, lng=match.pickup.lng),
+                walk_seconds=match.walk_seconds,
+                rider_distance_meters=match.rider_distance_meters,
+            )
+            for match in matches
+        ]
+    )
 
 
 @public_router.get(
@@ -81,5 +113,16 @@ async def match_trips(body: MatchRequest) -> MatchResponse:
         404: _problem("No route for this trip", "route_not_found"),
     },
 )
-async def route_geometry(trip_id: UUID, user: AuthenticatedUser) -> RouteFeature:
-    _not_implemented()
+async def route_geometry(
+    trip_id: UUID, user: AuthenticatedUser, service: GetRouteService
+) -> RouteFeature:
+    route = await service.execute(trip_id)
+
+    return RouteFeature(
+        geometry=LineString(coordinates=[(point.lng, point.lat) for point in route.path]),
+        properties=RouteProperties(
+            trip_id=route.trip_id,
+            distance_meters=route.distance_meters,
+            duration_seconds=route.duration_seconds,
+        ),
+    )

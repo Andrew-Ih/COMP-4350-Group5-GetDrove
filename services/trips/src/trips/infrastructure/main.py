@@ -41,11 +41,19 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
     )
 
-    async with httpx.AsyncClient(
-        base_url=settings.routing_url,
-        timeout=5.0,
-    ) as routing_client:
+    async with (
+        httpx.AsyncClient(
+            base_url=settings.routing_url,
+            timeout=5.0,
+        ) as routing_client,
+        # A price is optional in search results, so don't wait long for one.
+        httpx.AsyncClient(
+            base_url=settings.payments_url,
+            timeout=2.0,
+        ) as payments_client,
+    ):
         app.state.routing_client = routing_client
+        app.state.payments_client = payments_client
         stop = asyncio.Event()
         relay_task = asyncio.create_task(relay.run(stop))
 

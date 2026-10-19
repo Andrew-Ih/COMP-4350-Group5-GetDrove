@@ -83,6 +83,16 @@ jobs:
           cd services/trips
           uv run alembic upgrade head
 
+      - name: Prepare Routing test database
+        # Same user and schema as infra/postgres/init, so the default ROUTING_DATABASE_URL works.
+        # The postgis image has already enabled PostGIS in the getdrove database.
+        run: |
+          PGPASSWORD=trips psql -h localhost -U trips -d getdrove \
+            -c "CREATE ROLE routing LOGIN PASSWORD 'routing';" \
+            -c "CREATE SCHEMA IF NOT EXISTS routing AUTHORIZATION routing;"
+          cd services/routing
+          uv run alembic upgrade head
+
       - name: Tests with coverage
         run: >
           uv run pytest
