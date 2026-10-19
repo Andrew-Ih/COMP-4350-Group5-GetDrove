@@ -23,7 +23,7 @@ class FakeRepository:
     async def add(self, trip: Trip) -> None:
         self.saved.append(trip)
 
-    async def get_upcoming_by_driver(self, driver_id, now):
+    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
         return []
 
 

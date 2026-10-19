@@ -1,5 +1,7 @@
+"""Unit tests for the ListUpcomingTrips use case."""
+
 from datetime import UTC, datetime
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -9,7 +11,7 @@ from trips.domain.values import Direction, Location
 
 
 @pytest.mark.asyncio
-async def test_execute_passes_driver_id_and_current_time_to_repository():
+async def test_execute_passes_driver_id_and_current_time_to_repository() -> None:
     driver_id = uuid4()
     now = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 
@@ -28,11 +30,11 @@ async def test_execute_passes_driver_id_and_current_time_to_repository():
     )
 
     class FakeRepository:
-        def __init__(self):
-            self.received_driver_id = None
-            self.received_now = None
+        def __init__(self) -> None:
+            self.received_driver_id: UUID | None = None
+            self.received_now: datetime | None = None
 
-        async def get_upcoming_by_driver(self, *, driver_id, now):
+        async def get_upcoming_by_driver(self, *, driver_id: UUID, now: datetime) -> list[Trip]:
             self.received_driver_id = driver_id
             self.received_now = now
             return [trip]
