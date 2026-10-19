@@ -12,7 +12,7 @@ from pydantic import AwareDatetime
 
 
 from common_security.dependencies import AuthenticatedUser
-from trips.adapters.api.dependencies import PostTripService, SearchTripsService
+from trips.adapters.api.dependencies import PostTripService, SearchTripsService, UpcomingTripsService
 from trips.adapters.api.schemas import (
     Cost,
     Pickup,
