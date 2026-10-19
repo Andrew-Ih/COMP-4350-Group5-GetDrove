@@ -1,7 +1,7 @@
 """Trips API (Sprint 1): post a trip, my trips, trip detail and search.
 
-POST is implemented by issue #94 and search by #97. The other read handlers remain contract
-stubs (#95). Paths here are relative to the gateway prefix /api/trips.
+POST, my trips, and search are implemented. Trip detail remains a contract stub.
+Paths here are relative to the gateway prefix /api/trips.
 """
 
 from typing import Annotated, Any, Literal, NoReturn
@@ -9,6 +9,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import AwareDatetime
+
 
 from common_security.dependencies import AuthenticatedUser
 from trips.adapters.api.dependencies import PostTripService, SearchTripsService
@@ -82,7 +83,7 @@ async def post_trip(
         seats_total=body.seats_total,
     )
 
-    return Trip(
+    return _to_response(Trip(
         id=trip.id,
         driver_id=trip.driver_id,
         direction=trip.direction,
@@ -104,7 +105,7 @@ async def post_trip(
         seats_available=trip.seats_available,
         status=trip.status,
     )
-
+)
 
 @router.get(
     "/mine",
@@ -120,34 +121,9 @@ async def my_trips(
 ) -> list[Trip]:
     if role == "rider":
         _not_implemented()
-    else:
-        trips = await service.execute(driver_id=user.id)
 
-        return [
-            Trip(
-                id=trip.id,
-                driver_id=trip.driver_id,
-                direction=trip.direction,
-                origin=Place(
-                    label=trip.origin.label,
-                    lat=trip.origin.lat,
-                    lng=trip.origin.lng,
-                ),
-                destination=Place(
-                    label=trip.destination.label,
-                    lat=trip.destination.lat,
-                    lng=trip.destination.lng,
-                ),
-                departure_at=trip.departure_at,
-                estimated_arrival_at=trip.estimated_arrival_at,
-                duration_seconds=trip.duration_seconds,
-                distance_meters=trip.distance_meters,
-                seats_total=trip.seats_total,
-                seats_available=trip.seats_available,
-                status=trip.status,
-            )
-            for trip in trips
-        ]
+    trips = await service.execute(driver_id=user.id)
+    return [_to_response(trip) for trip in trips]
 
 
 @router.get(
@@ -217,6 +193,22 @@ def _for_rider(trip: TripEntity) -> Trip:
         direction=trip.direction,
         origin=None if to_campus else _place(trip.origin),
         destination=_place(trip.destination) if to_campus else None,
+        departure_at=trip.departure_at,
+        estimated_arrival_at=trip.estimated_arrival_at,
+        duration_seconds=trip.duration_seconds,
+        distance_meters=trip.distance_meters,
+        seats_total=trip.seats_total,
+        seats_available=trip.seats_available,
+        status=trip.status,
+    )
+
+def _to_response(trip: TripEntity) -> Trip:
+    return Trip(
+        id=trip.id,
+        driver_id=trip.driver_id,
+        direction=trip.direction,
+        origin=_place(trip.origin),
+        destination=_place(trip.destination),
         departure_at=trip.departure_at,
         estimated_arrival_at=trip.estimated_arrival_at,
         duration_seconds=trip.duration_seconds,
