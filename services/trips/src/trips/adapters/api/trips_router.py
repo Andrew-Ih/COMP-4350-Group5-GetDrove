@@ -69,6 +69,7 @@ def _not_implemented() -> NoReturn:
         ),
     },
 )
+
 async def post_trip(
     body: PostTripRequest,
     user: AuthenticatedUser,
@@ -86,30 +87,7 @@ async def post_trip(
         seats_total=body.seats_total,
     )
 
-    return _to_response(
-        Trip(
-            id=trip.id,
-            driver_id=trip.driver_id,
-            direction=trip.direction,
-            origin=Place(
-                label=trip.origin.label,
-                lat=trip.origin.lat,
-                lng=trip.origin.lng,
-            ),
-            destination=Place(
-                label=trip.destination.label,
-                lat=trip.destination.lat,
-                lng=trip.destination.lng,
-            ),
-            departure_at=trip.departure_at,
-            estimated_arrival_at=trip.estimated_arrival_at,
-            duration_seconds=trip.duration_seconds,
-            distance_meters=trip.distance_meters,
-            seats_total=trip.seats_total,
-            seats_available=trip.seats_available,
-            status=trip.status,
-        )
-    )
+    return _to_response(trip)
 
 
 @router.get(
