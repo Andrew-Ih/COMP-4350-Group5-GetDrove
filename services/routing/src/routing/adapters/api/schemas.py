@@ -52,11 +52,17 @@ class Pickup(ApiModel):
 
 class Match(ApiModel):
     trip_id: UUID
-    pickup: Pickup = Field(description="Best point on the route for this rider.")
+    pickup: Pickup = Field(
+        description="Best point on the route for this rider: where they're picked up going to "
+        "campus, or dropped off leaving it. Never near either end of the route, so the "
+        "driver's own end stays private."
+    )
     walk_seconds: int = Field(ge=0, description="Walking time from the rider to the pickup.")
     rider_distance_meters: int = Field(
         ge=0,
-        description="Distance the rider travels in the car (from the pickup to the trip's end).",
+        description="Distance along the route from `pickup` to the trip's end. Going to "
+        "campus, that's how far the rider rides; leaving campus, they ride the rest: the "
+        "trip's distance minus this.",
     )
 
 
@@ -104,6 +110,6 @@ class Problem(ApiModel):
     status: int
     detail: str
     instance: str
-    code: str = Field(description="Stable error name.", examples=["routing_engine_unavailable"])
+    code: str = Field(description="Stable error name.")
     request_id: str | None = None
     errors: list[InvalidFieldOut] | None = None

@@ -16,7 +16,7 @@ The Routing service computes driving routes, road-network corridor matches, walk
 
 ## Decision
 
-Use **OSRM**, with two instances (**car** and **foot** profiles) built from a Winnipeg-clipped OpenStreetMap extract by `infra/osrm/prepare.sh`. **GraphHopper is the backup** if the Sprint 1 spike finds OSRM unsuitable (e.g. no ARM support).
+Use **OSRM**, with two instances (**car** and **foot** profiles) built from a Winnipeg-clipped OpenStreetMap extract by `infra/osrm/Dockerfile` (amended in #233: the graphs are built into the images, locally and for the live server, instead of by a `prepare.sh` script). **GraphHopper is the backup** if the Sprint 1 spike finds OSRM unsuitable (e.g. no ARM support).
 
 ## Consequences
 

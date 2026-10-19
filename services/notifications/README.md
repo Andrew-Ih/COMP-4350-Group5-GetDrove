@@ -17,6 +17,8 @@ Then open http://localhost:8005/health and the API docs at http://localhost:8005
 
 Notifications needs PostgreSQL, Redis and an SMTP server; the defaults point at the ones Docker Compose starts on localhost (`docker compose up postgres redis mailpit`). Emails land in Mailpit at http://localhost:8025, and nothing reaches a real inbox. Settings are listed in `.env.example` under "Notifications email".
 
+In production, email goes out through Brevo's SMTP relay, and links open the live site. The settings come from `infra/docker-compose.prod.yml` and GitHub Secrets; see [Deployment: Email (Brevo)](../../docs/deployment/deployment.md#email-brevo).
+
 ## Test and check
 
 ```bash

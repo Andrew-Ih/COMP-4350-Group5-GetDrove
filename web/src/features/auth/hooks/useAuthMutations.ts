@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 
-import { type ApiError, setAccessToken } from "@/shared/api";
+import { type ApiError, startSession } from "@/shared/api";
 
 import { login, resendVerification, signup, verifyEmail } from "../api/authApi";
 import type { LoginValues } from "../model/login";
@@ -24,6 +24,7 @@ export function useResendVerification() {
 export function useLogin() {
   return useMutation<Awaited<ReturnType<typeof login>>, ApiError, LoginValues>({
     mutationFn: login,
-    onSuccess: (token) => setAccessToken(token.accessToken),
+    // Keeps the token in memory and refreshes it before it expires.
+    onSuccess: (token) => startSession(token),
   });
 }

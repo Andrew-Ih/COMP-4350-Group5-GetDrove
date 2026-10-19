@@ -41,6 +41,6 @@ class Problem(ApiModel):
     status: int
     detail: str
     instance: str
-    code: str = Field(description="Stable error name.", examples=["invalid_input"])
+    code: str = Field(description="Stable error name.")
     request_id: str | None = None
     errors: list[InvalidFieldOut] | None = None

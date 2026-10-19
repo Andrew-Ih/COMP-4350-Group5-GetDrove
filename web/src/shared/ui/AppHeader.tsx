@@ -1,10 +1,12 @@
 "use client";
 
-import { Bell, Menu, X } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Bell, LogOut, Menu, X } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
+import { logOut } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 
 import { Avatar } from "./Avatar";
@@ -17,12 +19,35 @@ const NAV = [
 ] as const;
 
 /**
- * Top bar on every signed-in screen. Desktop: logo, Ride / Drive / My trips, bell, avatar.
- * Mobile: logo, avatar and a menu button that opens the same links.
+ * Top bar on every signed-in screen. Desktop: logo, Ride / Drive / My trips, bell, and the
+ * avatar, which opens a menu with Log out. Mobile: logo, avatar and a menu button that
+ * opens the same links and Log out.
  */
 export function AppHeader({ userName }: { userName: string }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+  const accountMenu = useRef<HTMLDivElement>(null);
+
+  // Close the account menu when clicking anywhere else.
+  useEffect(() => {
+    if (!accountOpen) return;
+    const close = (event: PointerEvent) => {
+      if (!accountMenu.current?.contains(event.target as Node)) setAccountOpen(false);
+    };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, [accountOpen]);
+
+  async function handleLogOut() {
+    setLoggingOut(true);
+    await logOut();
+    queryClient.clear(); // nothing from this student's session stays in memory
+    router.replace("/login");
+  }
 
   const links = NAV.map((item) => {
     const active = pathname.startsWith(item.match);
@@ -58,7 +83,32 @@ export function AppHeader({ userName }: { userName: string }) {
           <button type="button" aria-label="Notifications" className="hidden p-2 md:block">
             <Bell className="size-6" />
           </button>
-          <Avatar name={userName} tone="dark" />
+          <div ref={accountMenu} className="relative">
+            <button
+              type="button"
+              aria-label="Account"
+              aria-haspopup="menu"
+              aria-expanded={accountOpen}
+              onClick={() => setAccountOpen((open) => !open)}
+              className="block rounded-full"
+            >
+              <Avatar name={userName} tone="dark" />
+            </button>
+            {accountOpen && (
+              <div role="menu" className="absolute top-full right-0 mt-2 w-56 rounded-md bg-surface py-2 shadow-card">
+                {userName && <p className="truncate px-4 pt-1 pb-2 text-sm text-ink-soft">Logged in as {userName}</p>}
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void handleLogOut()}
+                  disabled={loggingOut}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 text-left font-semibold hover:bg-surface-muted"
+                >
+                  <LogOut aria-hidden="true" className="size-4" /> {loggingOut ? "Logging out…" : "Log out"}
+                </button>
+              </div>
+            )}
+          </div>
           <button
             type="button"
             aria-label={menuOpen ? "Close menu" : "Open menu"}
@@ -87,9 +137,17 @@ export function AppHeader({ userName }: { userName: string }) {
               {link.label}
             </Link>
           ))}
-          <Link href="/notifications" onClick={() => setMenuOpen(false)} className="block py-4 text-lg font-semibold text-muted">
+          <Link href="/notifications" onClick={() => setMenuOpen(false)} className="block border-b border-line py-4 text-lg font-semibold text-muted">
             Notifications
           </Link>
+          <button
+            type="button"
+            onClick={() => void handleLogOut()}
+            disabled={loggingOut}
+            className="flex w-full items-center gap-2 py-4 text-left text-lg font-semibold text-muted"
+          >
+            <LogOut aria-hidden="true" className="size-5" /> {loggingOut ? "Logging out…" : "Log out"}
+          </button>
         </nav>
       )}
     </header>

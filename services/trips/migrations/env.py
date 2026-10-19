@@ -11,6 +11,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 from trips.adapters.persistence.tables import SCHEMA, metadata
 from trips.infrastructure.settings import get_settings
 
+
+def include_name(name, type_, parent_names):
+    if type_ == "schema":
+        return name == SCHEMA
+
+    return True
+
+
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
@@ -24,6 +32,7 @@ def run_migrations_offline() -> None:
         version_table_schema=SCHEMA,
         include_schemas=True,
         literal_binds=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -35,6 +44,7 @@ def do_run_migrations(connection: Connection) -> None:
         target_metadata=metadata,
         version_table_schema=SCHEMA,
         include_schemas=True,
+        include_name=include_name,
     )
     with context.begin_transaction():
         context.run_migrations()

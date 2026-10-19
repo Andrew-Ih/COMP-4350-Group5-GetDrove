@@ -50,8 +50,13 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 - [Technology stack](docs/architecture/tech-stack.md)
 - [Architecture](docs/architecture/architecture.md)
 - [Architecture Decision Records](docs/architecture/adr/README.md)
+- [API documentation](docs/api/README.md) (Swagger UI for each service, endpoints and events)
 - [API contracts](contracts/README.md)
 - [Monorepo structure](docs/architecture/monorepo.md)
+
+**Testing**
+
+- [Testing strategy](docs/testing/testing-strategy.md)
 
 **Deployment**
 
@@ -113,4 +118,4 @@ With [Docker Desktop](https://www.docker.com/products/docker-desktop/) running, 
 docker compose up --build
 ```
 
-This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway, all five services and the web app. The web app is at http://localhost, APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.
+This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway, OSRM (the routing engine), all five services and the web app. The first build downloads the Winnipeg map for OSRM and takes a few minutes; later builds are cached. The web app is at http://localhost, APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.

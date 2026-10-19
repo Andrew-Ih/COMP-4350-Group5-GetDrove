@@ -12,16 +12,17 @@ The live site tracks **`main`**, so it only changes when we release ([Git workfl
 
 ```text
 release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflows/deploy.yml)
-                                 1. build   six images → GitHub Container Registry, tagged with the commit
+                                 1. build   eight images → GitHub Container Registry, tagged with the commit
                                  2. deploy  copy files to the server, write .env, pull, restart
                                  3. smoke   home page + every /health through the gateway
 ```
 
-1. **Build.** GitHub Actions builds one image per service and one for the web app, for `linux/amd64`, and pushes them to GitHub Container Registry as `ghcr.io/andrew-ih/getdrove-<name>:<commit SHA>`. Builds are cached, so unchanged images take seconds.
+1. **Build.** GitHub Actions builds one image per service, one for the web app, and two for OSRM (car and foot, with the Winnipeg map built in; see [Routing engine](#routing-engine-osrm)), for `linux/amd64`, and pushes them to GitHub Container Registry as `ghcr.io/andrew-ih/getdrove-<name>:<commit SHA>`. Builds are cached, so unchanged images take seconds.
 2. **Deploy.** Actions connects to the server over SSH with the deploy key and:
    - copies `infra/docker-compose.prod.yml` and the database setup script to `/opt/getdrove`
    - writes `/opt/getdrove/.env` from GitHub Secrets (readable only by the server user)
    - logs in to the registry for the pull only, then runs `docker compose pull` and `docker compose up -d --wait`, which restarts only the containers whose image changed and waits until every container is healthy
+   - checks from inside the Routing container that both OSRM instances return a realistic Osborne Village → University Centre route
    - removes images older than a week, so the disk doesn't fill up
 3. **Smoke test.** Actions calls the live site from outside: the home page, every service's `/health`, and Accounts' public key (`/.well-known/jwks.json`), and checks that `/api/<service>/internal/...` is **not** reachable.
 
@@ -46,7 +47,8 @@ The production stack is the local one with these differences:
 | Images | Built on your machine | Pulled from GitHub Container Registry, tagged with the commit |
 | Passwords and keys | Local defaults | From `.env`, which comes from GitHub Secrets; missing values stop the deploy |
 | Reachable from outside | Gateway, database, Redis, Mailpit, Traefik dashboard | **Only the gateway on port 80** |
-| Mailpit | Yes | No (production email, Brevo, comes with the verification email story) |
+| Email | Caught by Mailpit (http://localhost:8025) | Sent for real through Brevo's SMTP relay ([ADR 0010](../architecture/adr/0010-email.md)) |
+| OSRM | Built from `infra/osrm/Dockerfile` on your machine, ports 5050/5051 for running Routing outside Docker | The same Dockerfile, built in Actions; no ports, only Routing reaches it |
 | Accounts | Temporary signing key | `ACCOUNTS_ENVIRONMENT=production`: refuses to start without the real key |
 | Limits | None | Memory limit per container, logs rotated at 3 × 10 MB |
 
@@ -60,8 +62,10 @@ All secrets live in **GitHub → Settings → Secrets and variables → Actions*
 | `POSTGRES_PASSWORD` | Database admin password |
 | `ACCOUNTS_DB_PASSWORD`, `TRIPS_DB_PASSWORD`, `ROUTING_DB_PASSWORD`, `PAYMENTS_DB_PASSWORD`, `NOTIFICATIONS_DB_PASSWORD` | One database password per service |
 | `ACCOUNTS_JWT_PRIVATE_KEY` | Accounts' private key for signing access tokens (PEM, RSA 2048) |
+| `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD` | Brevo's SMTP login and SMTP key (see [Email](#email-brevo)) |
+| `NOTIFICATIONS_EMAIL_FROM` | The From address, a sender verified in Brevo, e.g. `GetDrove <team@example.com>` |
 
-The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed.
+The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed. Links in emails use `SITE_URL` from the top of `deploy.yml`, which isn't a secret.
 
 **Creating them.** With the [GitHub CLI](https://cli.github.com/) logged in to the repository, each value goes straight into GitHub without being shown or saved on your computer:
 
@@ -70,13 +74,36 @@ for name in POSTGRES_PASSWORD ACCOUNTS_DB_PASSWORD TRIPS_DB_PASSWORD ROUTING_DB_
   openssl rand -hex 24 | gh secret set "$name"
 done
 openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null | gh secret set ACCOUNTS_JWT_PRIVATE_KEY
+gh secret set NOTIFICATIONS_SMTP_USERNAME    # paste Brevo's SMTP login
+gh secret set NOTIFICATIONS_SMTP_PASSWORD    # paste the Brevo SMTP key
+gh secret set NOTIFICATIONS_EMAIL_FROM       # e.g. GetDrove <team@example.com>
 gh secret list
 ```
+
+### Email (Brevo)
+
+Production email goes through [Brevo](https://www.brevo.com/)'s SMTP relay (free plan: 300 emails a day). Setting it up once:
+
+1. Create a Brevo account.
+2. **Senders, Domains & Dedicated IPs → Senders → Add a sender**, with an address the team controls. Brevo emails it a confirmation link; until it's confirmed, Brevo refuses to send. Once we have a domain (#110), verify the domain instead and send from it.
+3. **SMTP & API → SMTP**: copy the **Login** and generate an **SMTP key**. Put them in the two secrets above, and the confirmed sender in `NOTIFICATIONS_EMAIL_FROM`.
+
+The server name (`smtp-relay.brevo.com`), port 587 and STARTTLS are set in `docker-compose.prod.yml`, since they aren't secret.
 
 **Changing them later:**
 
 - **Database passwords** only take effect when the database is first created (the init script runs once, on an empty data volume). Changing one later means changing it inside Postgres too (`ALTER ROLE trips PASSWORD '...'`), then updating the secret and redeploying. Avoid it unless a password leaks.
 - **The signing key** can be replaced at any time: set the new secret and redeploy. Everyone is logged out, because tokens signed with the old key stop working.
+- **The Brevo SMTP key** can be replaced at any time: generate a new one in Brevo, set the secret, redeploy, then delete the old key in Brevo.
+
+### Routing engine (OSRM)
+
+The Routing service needs OSRM for driving routes and walking times ([ADR 0008](../architecture/adr/0008-routing-engine.md)). The server never prepares map data itself: `infra/osrm/Dockerfile` downloads the Manitoba OpenStreetMap extract, clips it to Winnipeg and builds the graph, and the result is part of the `getdrove-osrm-car` and `getdrove-osrm-foot` images.
+
+- **The map is cached.** It's only downloaded and built again when the Dockerfile changes (the OSRM version or the area) or when asked to. Other deploys reuse it, so they stay fast.
+- **Newer map data** (new streets): **Actions → Deploy → Run workflow** from `main` with **refresh_map** ticked.
+- **Memory:** each instance is limited to 512 MB; the Winnipeg graphs need much less.
+- **Privacy:** OSRM runs with `--verbosity WARNING`, because at its default level it logs every request URL, which holds riders' and drivers' coordinates. The services don't log httpx's request URLs either.
 
 ## 4. Did the deploy work?
 
@@ -89,8 +116,10 @@ gh secret list
 | `Permission denied (publickey)` | The deploy key or `DEPLOY_USER` secret is wrong ([Server setup](server-setup.md#troubleshooting)) |
 | A service is `unhealthy` and its log shows a migration error | Fix the migration and release a hotfix |
 | Accounts exits with an error about `ACCOUNTS_JWT_PRIVATE_KEY` | The secret isn't a valid PEM private key; create it again (section 3) |
+| `OSRM car returned …` / `OSRM foot returned …` | OSRM is running but its map is wrong or empty: check the `osrm-car` / `osrm-foot` build logs in the build job |
 
 - **If the smoke test fails,** the containers are running but the site doesn't answer from outside: check the VM's HTTP firewall setting and the Traefik logs.
+- **If sign-up works but no email arrives,** check the Notifications logs (`logs notifications`, below). `Authentication failed` means the Brevo login or key is wrong; a refusal about the sender means `NOTIFICATIONS_EMAIL_FROM` isn't a confirmed sender in Brevo. Brevo's **Transactional → Logs** page shows what it received and whether it was delivered. Failed emails are retried, then kept in the `notifications.failed_events` table after 5 tries. Also check the student's junk folder.
 
 On the server, from `/opt/getdrove`:
 
@@ -107,6 +136,8 @@ Every deploy is tagged with its commit SHA, so an earlier version can be put bac
 1. Find the last good deploy: **Actions → Deploy**, open its run, and copy the commit SHA (the full 40 characters).
 2. **Actions → Deploy → Run workflow**, branch `main`, paste the SHA into **image_tag**, and run it. This skips the build and redeploys those images.
 3. Fix the problem with a hotfix ([Git workflow](../process/git-workflow.md#hotfixes)); its release deploys normally.
+
+Rolling back to a deploy from before OSRM was added (#233) isn't possible: those commits have no OSRM images, and the Compose file needs them.
 
 A rollback doesn't undo database migrations. Migrations should only add things (new tables or columns), so older code keeps working with a newer database.
 
