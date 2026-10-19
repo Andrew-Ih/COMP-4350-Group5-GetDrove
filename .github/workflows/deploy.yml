@@ -2,12 +2,15 @@
 #
 # Runs on every push to main (a release or hotfix) and from the Actions tab
 # ("Run workflow"). Steps:
-#   1. build  — builds the six images and pushes them to GitHub Container Registry,
-#               tagged with the commit SHA
+#   1. build  — builds the eight images (five services, the web app, and OSRM car and
+#               foot with the Winnipeg map built in) and pushes them to GitHub Container
+#               Registry, tagged with the commit SHA
 #   2. deploy — copies the production Compose file to the server, writes its .env from
 #               GitHub Secrets, pulls the images and restarts what changed
 #   3. smoke  — checks the home page and every service's /health through the gateway
 # Roll back by running it by hand with "image_tag" set to an earlier deploy's commit SHA.
+# Get newer map data by running it by hand with "refresh_map" ticked (otherwise the OSRM
+# images reuse the map that's cached).
 # See docs/deployment/deployment.md.
 name: Deploy
 
@@ -20,6 +23,11 @@ on:
         description: "Roll back: commit SHA of images already built (leave empty to build main)"
         required: false
         default: ""
+      refresh_map:
+        description: "Download the latest OpenStreetMap data for OSRM instead of the cached map"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -47,12 +55,16 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - { image: accounts, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: accounts }
-          - { image: trips, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: trips }
-          - { image: routing, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: routing }
-          - { image: payments, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: payments }
-          - { image: notifications, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: notifications }
-          - { image: web, context: web, dockerfile: web/Dockerfile, service: "" }
+          - { image: accounts, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=accounts }
+          - { image: trips, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=trips }
+          - { image: routing, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=routing }
+          - { image: payments, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=payments }
+          - { image: notifications, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=notifications }
+          - { image: web, context: web, dockerfile: web/Dockerfile, build_args: "" }
+          # OSRM with the Winnipeg map built in (#233). The map download and graph build are
+          # cached, so they only run again when the Dockerfile changes or refresh_map is ticked.
+          - { image: osrm-car, context: infra/osrm, dockerfile: infra/osrm/Dockerfile, build_args: PROFILE=car }
+          - { image: osrm-foot, context: infra/osrm, dockerfile: infra/osrm/Dockerfile, build_args: PROFILE=foot }
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
@@ -72,7 +84,10 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          build-args: ${{ matrix.service && format('SERVICE={0}', matrix.service) || '' }}
+          # A new MAP_REFRESH value (this run's ID) skips the cached map; other images ignore it.
+          build-args: |
+            ${{ matrix.build_args }}
+            ${{ startsWith(matrix.image, 'osrm-') && format('MAP_REFRESH={0}', inputs.refresh_map && github.run_id || 'cached') || '' }}
           platforms: linux/amd64
           push: true
           tags: ${{ env.REGISTRY }}/getdrove-${{ matrix.image }}:${{ env.IMAGE_TAG }}
@@ -172,7 +187,25 @@ jobs:
           ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml up -d --remove-orphans --wait --wait-timeout 180"
           ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml ps"
           # Keep the disk from filling up with old images (a rollback pulls them again).
+          # OSRM images keep the map, so each is a few hundred MB.
           ssh server "docker image prune -af --filter until=168h" > /dev/null
+
+      - name: OSRM answers with a realistic route
+        # From inside the Routing container, like the service itself calls it: Osborne
+        # Village to University Centre (the same check as infra/osrm/check.sh).
+        run: |
+          ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml exec -T routing python -" <<'PY'
+          import httpx
+
+          route = "-97.1438,49.8768;-97.1366,49.8075?overview=false"
+          for name, url in (("car", "http://osrm-car:5000/route/v1/driving/"),
+                            ("foot", "http://osrm-foot:5000/route/v1/foot/")):
+              data = httpx.get(url + route, timeout=10).json()
+              km = data["routes"][0]["distance"] / 1000 if data.get("code") == "Ok" else 0
+              print(f"{name}: {km:.1f} km")
+              if not 7 <= km <= 14:
+                  raise SystemExit(f"OSRM {name} returned {data.get('code')}, {km:.1f} km")
+          PY
 
       - name: Show logs if the deploy failed
         if: failure()
