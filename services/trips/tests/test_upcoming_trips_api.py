@@ -1,4 +1,3 @@
-
 """Integration tests for GET /trips/mine using real PostgreSQL transactions."""
 
 import json
@@ -17,7 +16,6 @@ from trips.adapters.persistence.tables import trips
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
-
 type API = tuple[FastAPI, TestAuth, AsyncEngine]
 type Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -35,9 +33,7 @@ async def api() -> AsyncIterator[API]:
     finally:
         try:
             async with engine.begin() as connection:
-                await connection.execute(
-                    delete(trips).where(trips.c.driver_id == auth.user_id)
-                )
+                await connection.execute(delete(trips).where(trips.c.driver_id == auth.user_id))
         finally:
             await engine.dispose()
 
@@ -66,9 +62,7 @@ def route(request: httpx.Request) -> httpx.Response:
     )
 
 
-async def post_trip(
-    api: API, body: dict[str, Any]
-) -> httpx.Response:
+async def post_trip(api: API, body: dict[str, Any]) -> httpx.Response:
     app, auth, _ = api
 
     async with httpx.AsyncClient(
@@ -111,9 +105,7 @@ async def test_my_trips_returns_trips_in_departure_order(api: API) -> None:
     body = response.json()
     assert len(body) == 2
 
-    departure_times = [
-        datetime.fromisoformat(trip["departureAt"]) for trip in body
-    ]
+    departure_times = [datetime.fromisoformat(trip["departureAt"]) for trip in body]
     assert departure_times == sorted(departure_times)
     assert all(trip["driverId"] == str(api[1].user_id) for trip in body)
 

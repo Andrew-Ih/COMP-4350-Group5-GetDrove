@@ -3,7 +3,6 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
