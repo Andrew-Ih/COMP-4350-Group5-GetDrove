@@ -125,8 +125,6 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
             status=TripStatus.CANCELLED,
         )
 
-        cancelled_trip.cancel()
-
         async with session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
 
