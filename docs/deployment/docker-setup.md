@@ -6,7 +6,7 @@ How the local development stack is set up with Docker Compose, what each part do
 
 ## 1. The big picture
 
-- **One command runs everything.** `docker compose up --build` from the repo root starts the database, Redis, the email catcher, the gateway, all five services and the web app.
+- **One command runs everything.** `docker compose up --build` from the repo root starts the database, Redis, the email catcher, the gateway, OSRM (the routing engine, car and foot), all five services and the web app. The first build downloads the Winnipeg map for OSRM ([infra/osrm](../../infra/osrm/README.md)).
 - **The same containers locally and on the server.** The images built here are the ones the live server will run (with production settings), so "works on my machine" and "works on the server" mean the same thing.
 - **Nothing to install except Docker Desktop.** No local Postgres, Redis or Python is needed to run the stack. (Python and uv are still used for writing code and running tests outside Docker.)
 - **Safe local defaults.** Every setting has a default in the Compose file, so no `.env` file is needed. The passwords are for local development only; the live server sets its own.
@@ -192,7 +192,7 @@ Each service gets environment variables with its own prefix, matching its `infra
 | `<SERVICE>_REDIS_URL` | `redis://redis:6379/0` | All (once events are added) |
 | `TRIPS_ROUTING_URL`, `TRIPS_PAYMENTS_URL`, `TRIPS_ACCOUNTS_URL` | `http://<service>:8000` | Trips |
 | `NOTIFICATIONS_SMTP_HOST`, `NOTIFICATIONS_SMTP_PORT` | `mailpit`, `1025` | Notifications |
-| `ROUTING_OSRM_CAR_URL`, `ROUTING_OSRM_FOOT_URL` | `http://osrm-car:5000`, `http://osrm-foot:5000` | Routing (OSRM runs with `--profile osrm`; see [infra/osrm](../../infra/osrm/README.md)) |
+| `ROUTING_OSRM_CAR_URL`, `ROUTING_OSRM_FOOT_URL` | `http://osrm-car:5000`, `http://osrm-foot:5000` | Routing (see [infra/osrm](../../infra/osrm/README.md)) |
 
 Inside Docker, hosts are container names (`postgres`, `redis`, `mailpit`, `routing`); from your laptop they're `localhost`. Settings a service doesn't define yet are simply ignored.
 
