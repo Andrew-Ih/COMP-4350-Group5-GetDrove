@@ -2,8 +2,8 @@
 
 from httpx import ASGITransport, AsyncClient
 
+from payments.adapters.api.payments_router import PricingConfig, get_pricing_config
 from payments.infrastructure.main import create_app
-from payments.infrastructure.settings import Settings, get_settings
 
 
 def test_spec_documents_the_quote_endpoint() -> None:
@@ -101,7 +101,7 @@ async def test_explanation_uses_one_decimal_place() -> None:
 async def test_custom_rate_updates_price_and_explanation() -> None:
     app = create_app()
 
-    app.dependency_overrides[get_settings] = lambda: Settings(
+    app.dependency_overrides[get_pricing_config] = lambda: PricingConfig(
         rate_cents_per_km=50,
         minimum_fare_cents=200,
     )

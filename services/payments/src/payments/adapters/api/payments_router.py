@@ -4,15 +4,25 @@ Internal: called by Trips inside Docker (http://payments:8000/internal/quotes) t
 search result's cost; the gateway never exposes it. Card setup and holds come in Sprint 2.
 """
 
+from dataclasses import dataclass
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
 
 from payments.adapters.api.schemas import Problem, Quote, QuoteRequest
 from payments.domain.pricing import calculate_quote
-from payments.infrastructure.settings import Settings, get_settings
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
+
+
+@dataclass(frozen=True)
+class PricingConfig:
+    rate_cents_per_km: int
+    minimum_fare_cents: int
+
+
+def get_pricing_config() -> PricingConfig:
+    raise RuntimeError("Pricing dependency has not been configured")
 
 
 INVALID: dict[int | str, dict[str, Any]] = {
@@ -34,21 +44,21 @@ INVALID: dict[int | str, dict[str, Any]] = {
 )
 async def quote(
     body: QuoteRequest,
-    settings: Annotated[Settings, Depends(get_settings)],
+    config: Annotated[PricingConfig, Depends(get_pricing_config)],
 ) -> Quote:
     amount_cents = calculate_quote(
         distance_meters=body.distance_meters,
-        rate_cents_per_km=settings.rate_cents_per_km,
-        minimum_fare_cents=settings.minimum_fare_cents,
+        rate_cents_per_km=config.rate_cents_per_km,
+        minimum_fare_cents=config.minimum_fare_cents,
     )
 
     distance_km = round(body.distance_meters / 1000, 1)
-    rate_dollars = settings.rate_cents_per_km / 100
-    minimum_dollars = settings.minimum_fare_cents / 100
+    rate_dollars = config.rate_cents_per_km / 100
+    minimum_dollars = config.minimum_fare_cents / 100
 
     explanation = f"{distance_km:g} km at ${rate_dollars:.2f}/km"
 
-    if amount_cents == settings.minimum_fare_cents:
+    if amount_cents == config.minimum_fare_cents:
         explanation += f" (${minimum_dollars:.2f} minimum)"
 
     return Quote(
