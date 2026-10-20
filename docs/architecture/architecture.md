@@ -73,17 +73,17 @@ flowchart TB
     classDef built fill:#e6f4ea,stroke:#2e8b57,stroke-width:2px
     classDef partial fill:#fff4e0,stroke:#d9822b,stroke-width:2px
     classDef later fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray:4 3,color:#555
-    class web,traefik,next,accounts,notify,accountsDb,tripsDb,routingDb,payDb,notifyDb,redis,brevo,tiles built
-    class trips,routing,osrm partial
-    class payments,stripe later
+    class web,traefik,next,accounts,notify,accountsDb,tripsDb,routingDb,payDb,notifyDb,redis,osrm,brevo,tiles built
+    class trips,routing,payments partial
+    class stripe later
 ```
 
-**Key:** green = built in Sprint 1 · orange = partly built (in progress) · grey dashed = later sprints. Each box lists everything the component will do, not only what's built; see [Sprint 1 status](#sprint-1-status).
+**Key:** green = built in Sprint 1 · orange = the Sprint 1 part is built, more comes in later sprints · grey dashed = later sprints. Each box lists everything the component will do, not only what's built; see [Sprint 1 status](#sprint-1-status).
 
 | Component | Responsibility |
 |---|---|
 | **Web app** | Next.js + TypeScript client for riders and drivers. Mobile-first, responsive. Pages stay thin; logic lives in feature modules. |
-| **Traefik** | The only public entry point. HTTPS via Let's Encrypt (the live site is plain HTTP until [#110](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/110)); routes `/api/<service>/*` to services and everything else to the Next.js server. No business or auth logic. |
+| **Traefik** | The only public entry point. HTTPS via Let's Encrypt for https://getdrove.duckdns.org ([#110](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/110)); routes `/api/<service>/*` to services and everything else to the Next.js server. No business or auth logic. |
 | **Accounts** | Signup restricted to `@myumanitoba.ca`, email verification, login, JWT issuing (RS256) and the JWKS endpoint, driver documents and vehicle, admin approval, ratings, reputation, blocks, reports. |
 | **Trips** | One-off and recurring trips, seat requests, eligibility rules, manual and automatic acceptance, atomic seat counting, trip execution (start, pickup, no-show, complete), share links. |
 | **Routing** | Computes and stores driving routes (PostGIS), finds trips that pass near a rider by road-network distance, suggests pickup points, calculates detours with pickup ordering, and returns rider-safe route geometry (driver's start hidden). Uses OSRM. |
@@ -106,15 +106,16 @@ flowchart TB
 
 | Part | Status at the end of Sprint 1 |
 |---|---|
-| **Web app** | Built: signup, email verification, login (stays logged in, log out), rider home, search results with routes on the map, post a trip. Screens whose endpoints aren't live yet run on the mock API (`npm run dev:mock`). |
-| **Traefik** | Built: routes `/api/<service>/*` to the services and everything else to the web app, never exposes `/internal`. HTTPS is [#110](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/110). |
+| **Web app** | Built: signup, email verification, login (stays logged in across reloads, log out), rider home, search results with each trip's route, pickup point and cost on the map, and posting a trip, all against the real APIs. The mock API (`npm run dev:mock`) stays for building screens before their endpoints exist. |
+| **Traefik** | Built: HTTPS for https://getdrove.duckdns.org with a Let's Encrypt certificate, http redirected to https ([#110](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/110)); routes `/api/<service>/*` to the services and everything else to the web app, never exposes `/internal`. No access log, because request URLs hold riders' locations. |
 | **Accounts** | Built: signup (UofM emails only), email verification and resend, login, refresh and logout with reuse detection, `GET /me`, JWKS. Driver approval, ratings and blocks come later. |
 | **Notifications** | Built: consumes `UserRegistered` and `VerificationEmailRequested` and sends the verification email, handling each event once and parking ones that keep failing. |
-| **Trips** | In progress: contract written for posting, my trips, trip detail and search; trip posting in review. |
-| **Routing** | In progress: contract written for routes, matches and route geometry; OSRM runs locally ([infra/osrm](../../infra/osrm/README.md)). Storing routes and matching are next; OSRM on the live server is [#233](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/233). |
-| **Payments** | Contract only (internal price quote). |
-| **PostgreSQL, Redis** | Built: one schema and user per service, migrations run on start; the outbox and Redis Streams carry the Accounts events. |
-| **Deployment** | Built: merging to `main` builds the images in GitHub Actions, deploys them to the VM and runs a smoke test. Real emails go out through Brevo. |
+| **Trips** | Built: posting a one-off trip (its route computed by Routing, `TripPosted` published through the outbox), the driver's upcoming trips (`GET /mine`), and search (time window and free seats, matching from Routing, costs from Payments, the driver's end hidden). Next: trip detail, seat requests, recurring trips, execution. |
+| **Routing** | Built: computing and storing each trip's driving route (PostGIS), points every 100 m along it, matching a rider to the trips they can walk to (straight-line corridor, then real walking times), a private pickup point (never near either end of the route), and the route for the map. Next: detours and pickup ordering. |
+| **Payments** | Built: the internal price quote ($0.45/km, nearest 5¢, $2.00 minimum, from settings) with a one-line explanation. Next: card setup, holds and capture with Stripe. |
+| **OSRM** | Built: car and foot instances with the Winnipeg map built into their images, locally and on the live server, logging no request URLs ([#23](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/23), [#233](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/233)). |
+| **PostgreSQL, Redis** | Built: one schema and user per service, migrations run on start; the outbox and Redis Streams carry the Accounts and Trips events. |
+| **Deployment** | Built: merging to `main` builds the images (including OSRM) in GitHub Actions, deploys them to the VM, checks OSRM answers a real route, and runs a smoke test over HTTPS. Real emails go out through Brevo. |
 
 ## Flow built in Sprint 1: signing up and verifying an email
 
@@ -148,6 +149,42 @@ sequenceDiagram
 ```
 
 If Notifications is down, `UserRegistered` waits in the stream and the email goes out when it's back. Asking for a new link publishes `VerificationEmailRequested`, which takes the same path.
+
+## Flow built in Sprint 1: a driver posts a trip and a rider finds it
+
+The core of route matching: riders only see trips whose real driving route passes within walking distance, and they never see where the driver starts.
+
+```mermaid
+%%{init: {'sequence': {'mirrorActors': false}}}%%
+sequenceDiagram
+    autonumber
+    actor Driver
+    actor Rider
+    participant Trips
+    participant Routing
+    participant OSRM
+    participant Payments
+
+    Driver->>Trips: POST /api/trips (area, to campus, departure, seats)
+    Trips->>Routing: POST /internal/routes
+    Routing->>OSRM: Driving route (car)
+    Routing->>Routing: Store the route + points every 100 m (PostGIS)
+    Routing-->>Trips: Distance and duration
+    Note over Trips: Saves the trip and TripPosted (outbox) in one transaction
+    Trips-->>Driver: 201, trip with estimated arrival
+
+    Rider->>Trips: GET /api/trips/search (location, direction, time)
+    Note over Trips: Candidates: same direction, in the time window, free seats, not the rider's own
+    Trips->>Routing: POST /internal/matches (rider, candidate trip IDs)
+    Routing->>Routing: Route points within 800 m in a straight line
+    Routing->>OSRM: Walking times to those points (foot)
+    Routing-->>Trips: Trips within a 10-minute walk, each with a pickup point
+    Trips->>Payments: POST /internal/quotes (how far the rider rides)
+    Payments-->>Trips: e.g. $4.20, "9.3 km at $0.45/km"
+    Trips-->>Rider: Matching trips, soonest first, driver's end hidden
+```
+
+If Routing or OSRM is down, posting returns 503 and nothing is saved, and search returns 503. If Payments is down, search still shows the trips, without a cost. The rider's location is used for matching only, never stored or logged.
 
 ## Example flow (planned): a rider requests a seat and the driver accepts
 
