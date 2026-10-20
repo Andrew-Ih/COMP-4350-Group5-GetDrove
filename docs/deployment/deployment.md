@@ -4,7 +4,7 @@
 
 How the live site is deployed, which secrets it uses, how to tell whether a deploy worked, and how to roll back. The server itself is described in [Server setup](server-setup.md).
 
-**Live site:** http://34.130.160.109 (a domain with HTTPS follows in #110)
+**Live site:** https://getdrove.duckdns.org (HTTPS with a Let's Encrypt certificate; the domain and certificate are described in [Server setup](server-setup.md#9-domain-and-https))
 
 ## 1. How a deploy happens
 
@@ -14,7 +14,7 @@ The live site tracks **`main`**, so it only changes when we release ([Git workfl
 release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflows/deploy.yml)
                                  1. build   eight images → GitHub Container Registry, tagged with the commit
                                  2. deploy  copy files to the server, write .env, pull, restart
-                                 3. smoke   home page + every /health through the gateway
+                                 3. smoke   home page + every /health over HTTPS, http redirects
 ```
 
 1. **Build.** GitHub Actions builds one image per service, one for the web app, and two for OSRM (car and foot, with the Winnipeg map built in; see [Routing engine](#routing-engine-osrm)), for `linux/amd64`, and pushes them to GitHub Container Registry as `ghcr.io/andrew-ih/getdrove-<name>:<commit SHA>`. Builds are cached, so unchanged images take seconds.
@@ -24,7 +24,7 @@ release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflow
    - logs in to the registry for the pull only, then runs `docker compose pull` and `docker compose up -d --wait`, which restarts only the containers whose image changed and waits until every container is healthy
    - checks from inside the Routing container that both OSRM instances return a realistic Osborne Village → University Centre route
    - removes images older than a week, so the disk doesn't fill up
-3. **Smoke test.** Actions calls the live site from outside: the home page, every service's `/health`, and Accounts' public key (`/.well-known/jwks.json`), and checks that `/api/<service>/internal/...` is **not** reachable.
+3. **Smoke test.** Actions calls the live site from outside over HTTPS (which also checks the certificate is valid): the home page, every service's `/health`, and Accounts' public key (`/.well-known/jwks.json`). It checks that plain `http://` redirects to HTTPS and that `/api/<service>/internal/...` is **not** reachable.
 
 Database migrations run automatically: each service container applies its migrations when it starts.
 
@@ -46,7 +46,8 @@ The production stack is the local one with these differences:
 |---|---|---|
 | Images | Built on your machine | Pulled from GitHub Container Registry, tagged with the commit |
 | Passwords and keys | Local defaults | From `.env`, which comes from GitHub Secrets; missing values stop the deploy |
-| Reachable from outside | Gateway, database, Redis, Mailpit, Traefik dashboard | **Only the gateway on port 80** |
+| Reachable from outside | Gateway, database, Redis, Mailpit, Traefik dashboard | **Only the gateway:** HTTPS on 443 for `getdrove.duckdns.org`; port 80 only redirects to HTTPS |
+| Gateway access log | — | Off: request URLs hold riders' locations, which must never be stored. Each service logs its own requests, path only. |
 | Email | Caught by Mailpit (http://localhost:8025) | Sent for real through Brevo's SMTP relay ([ADR 0010](../architecture/adr/0010-email.md)) |
 | OSRM | Built from `infra/osrm/Dockerfile` on your machine, ports 5050/5051 for running Routing outside Docker | The same Dockerfile, built in Actions; no ports, only Routing reaches it |
 | Accounts | Temporary signing key | `ACCOUNTS_ENVIRONMENT=production`: refuses to start without the real key |
@@ -118,7 +119,7 @@ The Routing service needs OSRM for driving routes and walking times ([ADR 0008](
 | Accounts exits with an error about `ACCOUNTS_JWT_PRIVATE_KEY` | The secret isn't a valid PEM private key; create it again (section 3) |
 | `OSRM car returned …` / `OSRM foot returned …` | OSRM is running but its map is wrong or empty: check the `osrm-car` / `osrm-foot` build logs in the build job |
 
-- **If the smoke test fails,** the containers are running but the site doesn't answer from outside: check the VM's HTTP firewall setting and the Traefik logs.
+- **If the smoke test fails,** the containers are running but the site doesn't answer from outside: check the VM's HTTP/HTTPS firewall settings and the Traefik logs. A certificate error means Traefik couldn't get one from Let's Encrypt ([Server setup](server-setup.md#troubleshooting)).
 - **If sign-up works but no email arrives,** check the Notifications logs (`logs notifications`, below). `Authentication failed` means the Brevo login or key is wrong; a refusal about the sender means `NOTIFICATIONS_EMAIL_FROM` isn't a confirmed sender in Brevo. Brevo's **Transactional → Logs** page shows what it received and whether it was delivered. Failed emails are retried, then kept in the `notifications.failed_events` table after 5 tries. Also check the student's junk folder.
 
 On the server, from `/opt/getdrove`:
@@ -126,7 +127,7 @@ On the server, from `/opt/getdrove`:
 ```bash
 docker compose -f docker-compose.prod.yml ps                 # status and health
 docker compose -f docker-compose.prod.yml logs -f trips      # one service's logs
-docker compose -f docker-compose.prod.yml logs traefik       # every request through the gateway
+docker compose -f docker-compose.prod.yml logs traefik       # certificates and gateway errors (no access log)
 ```
 
 ## 5. Rolling back
@@ -147,4 +148,4 @@ A rollback doesn't undo database migrations. Migrations should only add things (
 - **One environment, deployed from `main`,** so the live site the instructor sees only changes with releases ([ADR 0016](../architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md)). A separate staging environment would double the server cost and work.
 - **`docker compose up -d --wait`** restarts only the containers that changed and fails the deploy if any container doesn't become healthy, so a broken release shows up as a red workflow instead of a silently broken site.
 
-Coming next: HTTPS and a domain (#110); in Sprint 2, images published on every merge to `develop` and a Discord alert when a deploy fails.
+Coming next: in Sprint 2, images published on every merge to `develop` and a Discord alert when a deploy fails.

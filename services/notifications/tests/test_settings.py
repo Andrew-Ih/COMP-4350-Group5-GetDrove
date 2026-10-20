@@ -27,7 +27,7 @@ def test_production_settings_are_read_from_the_environment(
     monkeypatch.setenv("NOTIFICATIONS_SMTP_PORT", "587")
     monkeypatch.setenv("NOTIFICATIONS_SMTP_STARTTLS", "true")
     monkeypatch.setenv("NOTIFICATIONS_EMAIL_FROM", "GetDrove <team@example.com>")
-    monkeypatch.setenv("NOTIFICATIONS_WEB_BASE_URL", "http://34.130.160.109")
+    monkeypatch.setenv("NOTIFICATIONS_WEB_BASE_URL", "https://getdrove.duckdns.org")
 
     settings = Settings()
 
@@ -35,7 +35,7 @@ def test_production_settings_are_read_from_the_environment(
     assert settings.smtp_port == 587
     assert settings.smtp_starttls is True
     assert settings.email_from == "GetDrove <team@example.com>"
-    assert settings.web_base_url == "http://34.130.160.109"
+    assert settings.web_base_url == "https://getdrove.duckdns.org"
 
 
 def test_without_a_key_there_is_no_login() -> None:

@@ -42,8 +42,13 @@ env:
   REGISTRY: ghcr.io/andrew-ih
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
   APP_DIR: /opt/getdrove
-  # The live site. Changes to the domain with HTTPS in #110.
-  SITE_URL: http://34.130.160.109
+  # The live site (#110). The domain points at the server's static IP (34.130.160.109) in
+  # DuckDNS; Traefik gets its HTTPS certificate from Let's Encrypt. To change the domain,
+  # point the new one at the server, change both lines below, and deploy.
+  SITE_DOMAIN: getdrove.duckdns.org
+  SITE_URL: https://getdrove.duckdns.org
+  # Let's Encrypt writes here only if a certificate is about to expire without renewing.
+  ACME_EMAIL: getdrove.noreply@gmail.com
 
 jobs:
   build:
@@ -144,8 +149,10 @@ jobs:
                       NOTIFICATIONS_SMTP_USERNAME NOTIFICATIONS_SMTP_PASSWORD NOTIFICATIONS_EMAIL_FROM; do
             if [ -z "${!name}" ]; then echo "::error::GitHub secret $name is not set"; exit 1; fi
           done
-          # Not a secret: the live site's address, set at the top of this file.
-          if [ -z "$SITE_URL" ]; then echo "::error::SITE_URL is not set at the top of deploy.yml"; exit 1; fi
+          # Not secrets: the live site's address and certificate contact, set at the top of this file.
+          for name in SITE_DOMAIN SITE_URL ACME_EMAIL; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set at the top of deploy.yml"; exit 1; fi
+          done
           umask 077
           {
             echo "IMAGE_REGISTRY=$REGISTRY"
@@ -164,8 +171,11 @@ jobs:
             printf "NOTIFICATIONS_SMTP_USERNAME='%s'\n" "$NOTIFICATIONS_SMTP_USERNAME"
             printf "NOTIFICATIONS_SMTP_PASSWORD='%s'\n" "$NOTIFICATIONS_SMTP_PASSWORD"
             printf "NOTIFICATIONS_EMAIL_FROM='%s'\n" "$NOTIFICATIONS_EMAIL_FROM"
-            # Links in emails open the live site.
+            # The live site: its domain and certificate contact for Traefik, and the address
+            # links in emails open.
+            echo "SITE_DOMAIN=$SITE_DOMAIN"
             echo "SITE_URL=$SITE_URL"
+            echo "ACME_EMAIL=$ACME_EMAIL"
           } > deploy.env
 
       - name: Copy the Compose file, database setup script and .env
@@ -218,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Home page and every service's /health answer through the gateway
+      - name: Home page and every service's /health answer over HTTPS
         env:
           BASE_URL: ${{ env.SITE_URL }}
         run: |
@@ -234,6 +244,13 @@ jobs:
                       /api/payments/health /api/notifications/health /api/accounts/.well-known/jwks.json; do
             check "$path" || failed=1
           done
+          # Plain http must redirect to HTTPS. (curl above already checks the certificate:
+          # it refuses an invalid one.)
+          redirect=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://$SITE_DOMAIN/")
+          case "$redirect" in
+            30[1278]" https://$SITE_DOMAIN/"*) echo "ok   http redirects to https" ;;
+            *) echo "::error::http://$SITE_DOMAIN/ answered '$redirect', expected a redirect to https"; failed=1 ;;
+          esac
           # Internal endpoints must never be reachable from outside.
           status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/routing/internal/routes")
           if [ "$status" != "404" ]; then echo "::error::/internal answered $status, expected 404"; failed=1; fi
