@@ -125,4 +125,49 @@ Coverage is measured on every pull request. To see the current numbers:
 
 Coverage counts the code that runs during tests. It leaves out the tests themselves, migrations, test helpers, the frontend's mock API and the types generated from the contracts, since counting those would make the numbers look better than they are.
 
-The Sprint 1 coverage report, with what's under-tested and why, is added at the end of the sprint (#112).
+### Sprint 1 report
+
+Measured on `develop` at the end of Sprint 1, with every test running (596 backend tests, including the integration tests against real PostgreSQL, Redis and Mailpit, and 178 frontend tests). All passed.
+
+**Backend: 98%** (statements and branches together; 98.5% of statements)
+
+| Package | Statements | Statements covered | Branches partly covered |
+|---|---|---|---|
+| Accounts | 701 | 99.9% | 1 of 48 |
+| Notifications | 165 | 100% | 0 of 8 |
+| Trips | 527 | 99.1% | 5 of 40 |
+| Routing | 504 | 97.8% | 1 of 46 |
+| Payments | 95 | 97.9% | 1 of 6 |
+| `libs/common-security` | 147 | 98.6% | 2 of 18 |
+| `libs/common-web` | 270 | 97.8% | 6 of 62 |
+| `libs/events` | 277 | 94.9% | 6 of 42 |
+
+**Frontend: 79%** of lines (79% of statements, 80% of branches, 75% of functions)
+
+| Area | Lines covered |
+|---|---|
+| Feature logic (`features/*/model`, `api`, `hooks`) | 92–100% |
+| Screens (`features/*/ui`) | 86–94% |
+| Shared API and login session (`shared/api`) | 100% (69% of branches in `session.ts`) |
+| Shared components (`shared/ui`) | 89% |
+| Map (`shared/map`) | 29% |
+| Next.js pages (`app/`) | 0% |
+
+### What's under-tested, and why
+
+**Backend.** Almost everything is covered, because each use case has unit tests with fakes and each adapter has integration tests against the real database, Redis or SMTP server. The gaps:
+
+- **Routing's startup wiring** (`routing/infrastructure/main.py`, 66%): the tests give the app its database and OSRM clients directly instead of starting it, so the code that creates them at startup never runs in a test. It's checked when the service actually starts, and the deploy now checks a real OSRM route from inside the Routing container after every release.
+- **A few validation rules on a trip** (`trips/domain/entities.py`): the checks for more free seats than seats, a time without a timezone, and an arrival before the departure aren't tested on their own. The API and `Trip.create` never produce those, but the rules should still have their own tests.
+- **Rare error paths in the event library** (`libs/events`, 95%): the consumer loop recovering after Redis drops mid-read, an event that can't be parsed, and an entry deleted from the stream. The main paths (retry, park after 5 tries, handle each event once) are tested against real Redis.
+- **Calls between services are tested with fake HTTP**: Trips' calls to Routing and Payments, and Routing's calls to OSRM, run against fake responses (every failure mode is tested that way). Nothing yet runs the services together in a test. Real OSRM is checked by `infra/osrm/check.sh` and the deploy's route check, not by the test suite.
+- **The Trips and Routing database tests need a Postgres started by hand**, unlike Accounts and Notifications, which start their own with testcontainers. They run in CI (which provides one), but on a laptop without it they fail instead of skipping. This is being moved to testcontainers.
+
+**Frontend.** Feature logic and screens are well covered. The total is pulled down by code that can't run in the simulated browser tests use, or that isn't worth testing on its own:
+
+- **Next.js pages** (`app/`, 0%): each page only reads the URL and renders a feature component, which has its own tests. What's untested is the wiring between pages (redirects after login, the search going to the results page). That needs end-to-end tests in a real browser (Playwright), which aren't set up yet. The `app/design` pages are a developer-only showcase of the design system.
+- **The map** (`MapView.client.tsx`, 0%): MapLibre needs WebGL, which jsdom doesn't have. The map's logic (fitting the view, drawing routes and pickups) is kept in `shared/map/geo.ts`, which is 100% covered; what's left is drawing.
+- **The service status page** (`features/status`, mostly 0%): a developer page that shows each service's `/health`. Only its API call is tested.
+- **Cross-tab login session branches** (`shared/api/session.ts`, 69% of branches): the code that shares a refresh between tabs (`navigator.locks`, `BroadcastChannel`) has fallbacks for browsers without those APIs, and jsdom only exercises one side of each.
+
+**Next sprint:** tests for the trip validation rules, Playwright for the main rider and driver flows (which would also cover the pages and the map), and the Trips and Routing database tests on testcontainers.
