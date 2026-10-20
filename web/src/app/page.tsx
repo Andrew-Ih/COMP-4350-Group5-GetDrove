@@ -1,19 +1,13 @@
-import { ServiceStatus } from "@/features/status";
-import { Card, Logo } from "@/shared/ui";
+import { redirect } from "next/navigation";
 
-// Placeholder home page for the walking skeleton: proves the browser reaches every
-// service through the gateway. Replaced by the rider home screen.
-export default function HomePage() {
-  return (
-    <main className="min-h-dvh bg-canvas px-4 py-12">
-      <Card className="mx-auto max-w-md bg-surface p-8">
-        <Logo className="text-3xl" />
-        <h1 className="mt-6 text-3xl">A seat that&apos;s actually yours</h1>
-        <p className="mt-2 text-lg text-ink-soft">Carpooling for UofM students. Coming soon.</p>
-        <div className="mt-6">
-          <ServiceStatus />
-        </div>
-      </Card>
-    </main>
-  );
+import { AFTER_LOGIN } from "@/features/auth";
+
+/**
+ * The site's front door (#249): straight into the app, at the rider home. That page asks
+ * logged-out visitors to log in first and brings them back, so `/` opens the login page
+ * for them and the rider home for anyone already logged in. The service status list that
+ * used to be here is at /status.
+ */
+export default function HomePage(): never {
+  redirect(AFTER_LOGIN);
 }

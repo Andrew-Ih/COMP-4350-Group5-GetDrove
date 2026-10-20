@@ -64,7 +64,7 @@ web/
         └── config/                    # Settings read from the environment
 ```
 
-`features/status/` is the example to copy: a small feature that checks every service's `/health` and is shown on the placeholder home page.
+`features/status/` is the example to copy: a small feature that checks every service's `/health`, shown at `/status` (for the team, after a deploy or before a demo). The home page `/` goes straight to the rider home, which asks logged-out visitors to log in first.
 
 ### Folder rules
 
