@@ -77,6 +77,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 ## Sprints
 
 - [Sprint 0: Planning and setup](sprint0.md)
+- [Sprint 1: The first working slice](sprint1.md)
 
 ## Getting started
 
