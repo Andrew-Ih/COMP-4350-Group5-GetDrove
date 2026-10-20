@@ -3,6 +3,8 @@
 import json
 import logging
 
+import pytest
+
 from common_web.context import _set_request_id, set_user_id
 from common_web.logs import JsonFormatter, TextFormatter, configure_logging
 
@@ -68,3 +70,21 @@ def test_configure_logging_can_run_twice_without_duplicate_handlers() -> None:
 
     ours = [h for h in logging.getLogger().handlers if getattr(h, "_getdrove_handler", False)]
     assert len(ours) == 1
+
+
+def test_outgoing_request_urls_are_not_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """httpx logs each request's URL at INFO, and OSRM URLs hold riders' and drivers'
+    coordinates. Only httpx's warnings get through, even at DEBUG."""
+    for level in ("INFO", "DEBUG"):
+        configure_logging("routing", level=level)
+
+        with caplog.at_level(logging.DEBUG):
+            logging.getLogger("httpx").info(
+                'HTTP Request: GET http://osrm-foot:5000/table/v1/foot/-97.15,49.85 "200 OK"'
+            )
+            logging.getLogger("httpcore.http11").debug("send_request_headers.started")
+            logging.getLogger("httpx").warning("Connection pool is full")
+
+        messages = [record.getMessage() for record in caplog.records]
+        assert messages == ["Connection pool is full"], level
+        caplog.clear()

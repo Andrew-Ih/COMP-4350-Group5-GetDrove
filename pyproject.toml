@@ -120,7 +120,8 @@ testpaths = ["libs", "services"]
 [tool.coverage.run]
 branch = true
 source = ["libs", "services"]
-omit = ["**/tests/**", "**/migrations/**"]
+# testing.py modules are fakes for tests (e.g. accounts/testing.py), not running code.
+omit = ["**/tests/**", "**/migrations/**", "**/testing.py"]
 # SQLAlchemy's async engine runs database code in greenlets; without this, coverage
 # reports code that ran inside a database call as never run.
 concurrency = ["thread", "greenlet"]

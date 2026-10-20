@@ -3,6 +3,7 @@
 Call ``install(app, service="trips")`` once in each service's ``create_app()``.
 """
 
+import json
 import logging
 import re
 import time
@@ -32,13 +33,111 @@ _VALID_REQUEST_ID = re.compile(r"^[A-Za-z0-9._:-]{1,128}$")
 
 
 def install(app: FastAPI, *, service: str) -> None:
-    """Adds logging, request IDs and Problem Details error handling to a service."""
+    """Adds logging, request IDs and Problem Details error handling to a service, and
+    makes its OpenAPI spec document those errors as they really are."""
     configure_logging(service)
     app.add_middleware(RequestContextMiddleware)
     app.add_exception_handler(DomainError, _domain_error_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
     app.add_exception_handler(StarletteHTTPException, _http_error_handler)
     app.add_exception_handler(Exception, _unexpected_error_handler)
+    _document_errors(app)
+
+
+# ---------------------------------------------------------------- OpenAPI error docs
+
+PROBLEM_REF = "#/components/schemas/Problem"
+_VALIDATION_REF = "#/components/schemas/HTTPValidationError"
+_INVALID_INPUT_DESCRIPTION = "Invalid input; `errors` lists the fields (code `invalid_input`)"
+# Routers describe each error as "What went wrong (code `some_code`)".
+_CODE_IN_DESCRIPTION = re.compile(r"\s*\(code `([^`]+)`\)")
+
+
+def _document_errors(app: FastAPI) -> None:
+    """Fixes two things in the generated OpenAPI spec (#230):
+
+    - Every error response uses the same ``Problem`` schema, so without an example of its
+      own, the docs fill each one in from the schema and show the same body for every
+      error. Each error response now gets an example built from its own status and the
+      ``(code `...`)`` in its description.
+    - FastAPI documents its automatic 422 as ``HTTPValidationError`` (``{"detail": [...]}``),
+      but ``install()`` answers invalid input with a ``Problem``. Those 422s now say so.
+    """
+    generate = app.openapi
+
+    def openapi() -> dict[str, Any]:
+        if app.openapi_schema is not None:
+            return app.openapi_schema
+        spec = generate()
+        _fix_error_responses(spec)
+        app.openapi_schema = spec  # built once, like FastAPI's own
+        return spec
+
+    app.openapi = openapi  # type: ignore[method-assign]
+
+
+def _fix_error_responses(spec: dict[str, Any]) -> None:
+    schemas: dict[str, Any] = spec.get("components", {}).get("schemas", {})
+    if "Problem" not in schemas:
+        return  # a service without documented errors: leave its spec alone
+    invalid_field = _invalid_field_example(schemas)
+
+    for path, operations in spec.get("paths", {}).items():
+        for operation in operations.values():
+            for status, response in operation.get("responses", {}).items():
+                if not status.isdigit() or int(status) < 400:
+                    continue
+                content = response.get("content", {}).get("application/json")
+                if content is None:
+                    continue
+                if content.get("schema", {}).get("$ref") == _VALIDATION_REF:
+                    content["schema"] = {"$ref": PROBLEM_REF}
+                    response["description"] = _INVALID_INPUT_DESCRIPTION
+                if content.get("schema", {}).get("$ref") == PROBLEM_REF:
+                    description = response.get("description", "")
+                    example = _problem_example(int(status), description, path, invalid_field)
+                    content.setdefault("example", example)
+
+    # FastAPI's validation schemas are only kept while something still uses them.
+    if _VALIDATION_REF not in json.dumps(spec.get("paths", {})):
+        schemas.pop("HTTPValidationError", None)
+        schemas.pop("ValidationError", None)
+
+
+def _invalid_field_example(schemas: dict[str, Any]) -> dict[str, str]:
+    """One entry for a 422's ``errors``, from the service's own InvalidFieldOut examples."""
+    properties = schemas.get("InvalidFieldOut", {}).get("properties", {})
+
+    def first(name: str, fallback: str) -> str:
+        examples = properties.get(name, {}).get("examples") or [fallback]
+        return str(examples[0])
+
+    return {"field": first("field", "fieldName"), "message": first("message", "Field required")}
+
+
+def _problem_example(
+    status: int, description: str, path: str, invalid_field: dict[str, str]
+) -> dict[str, Any]:
+    match = _CODE_IN_DESCRIPTION.search(description)
+    # "invalid_input / email_not_uofm" lists alternatives: the example shows the first.
+    code = match.group(1).split("/")[0].strip() if match else "error"
+    reason = HTTPStatus(status).phrase
+    if status == 422:
+        detail = "Invalid input"
+    else:
+        detail = _CODE_IN_DESCRIPTION.sub("", description) or reason
+    example: dict[str, Any] = {
+        "type": "about:blank",
+        "title": reason,
+        "status": status,
+        "detail": detail,
+        "instance": path,
+        "code": code,
+        "requestId": "b1e2c3d4e5f6",
+    }
+    if status == 422:
+        example["errors"] = [invalid_field]
+    return example
 
 
 # ---------------------------------------------------------------- request context

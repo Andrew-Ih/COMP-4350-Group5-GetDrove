@@ -10,6 +10,7 @@
 #   - only Traefik is reachable from the internet (port 80); no database, Redis or
 #     dashboard ports, and no Mailpit: real emails go out through Brevo
 #   - memory limits, log rotation, and Accounts runs in production mode
+#   - OSRM runs from images with the map built in, instead of a local build
 # See docs/deployment/deployment.md.
 
 name: getdrove
@@ -87,6 +88,22 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
+  # OSRM, the routing engine (#233, ADR 0008): one instance per profile, from images with
+  # the Winnipeg map built in (infra/osrm/Dockerfile, built by deploy.yml), so the server
+  # never prepares map data. Only the Routing service talks to them: no ports, no Traefik.
+  # The image sets the health check and --verbosity WARNING (no request URLs in the logs).
+  osrm-car:
+    image: ${IMAGE_REGISTRY}/getdrove-osrm-car:${IMAGE_TAG}
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+
+  osrm-foot:
+    image: ${IMAGE_REGISTRY}/getdrove-osrm-foot:${IMAGE_TAG}
+    restart: unless-stopped
+    logging: *logging
+    mem_limit: 512m
+
   # ---------------------------------------------------------------- services
   # Same routing as locally: /api/<service> → the service with the prefix stripped,
   # /api/<service>/internal never exposed.
@@ -131,7 +148,19 @@ services:
     environment:
       ROUTING_DATABASE_URL: postgresql+asyncpg://routing:${ROUTING_DB_PASSWORD}@postgres:5432/getdrove
       ROUTING_REDIS_URL: redis://redis:6379/0
+      ROUTING_OSRM_CAR_URL: http://osrm-car:5000
+      ROUTING_OSRM_FOOT_URL: http://osrm-foot:5000
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
+    # Routing can't compute or match routes without OSRM, so it waits for both.
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      osrm-car:
+        condition: service_healthy
+      osrm-foot:
+        condition: service_healthy
     labels:
       - traefik.enable=true
       - traefik.http.routers.routing.rule=PathPrefix(`/api/routing`) && !PathPrefix(`/api/routing/internal`)

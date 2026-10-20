@@ -154,15 +154,13 @@ class InvalidFieldOut(ApiModel):
 class Problem(ApiModel):
     """Every error response (RFC 9457 Problem Details, `application/problem+json`)."""
 
-    type: str = Field(default="about:blank")
-    title: str = Field(examples=["Not found"])
-    status: int = Field(examples=[404])
-    detail: str = Field(examples=["Trip not found"])
-    instance: str = Field(examples=["/api/trips/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11"])
-    code: str = Field(
-        description="Stable error name for the frontend to check.", examples=["trip_not_found"]
-    )
-    request_id: str | None = Field(default=None, examples=["b1e2c3d4e5f6"])
+    type: str = "about:blank"
+    title: str
+    status: int
+    detail: str
+    instance: str
+    code: str = Field(description="Stable error name for the frontend to check.")
+    request_id: str | None = None
     errors: list[InvalidFieldOut] | None = Field(
         default=None, description="Only on 422: the fields that were invalid."
     )

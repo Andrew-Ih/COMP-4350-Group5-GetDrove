@@ -80,7 +80,6 @@ export interface components {
             /**
              * Code
              * @description Stable error name.
-             * @example invalid_input
              */
             code: string;
             /** Requestid */
@@ -175,6 +174,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/internal/quotes",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };

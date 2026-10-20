@@ -234,36 +234,20 @@ export interface components {
              * @default about:blank
              */
             type: string;
-            /**
-             * Title
-             * @example Not found
-             */
+            /** Title */
             title: string;
-            /**
-             * Status
-             * @example 404
-             */
+            /** Status */
             status: number;
-            /**
-             * Detail
-             * @example Trip not found
-             */
+            /** Detail */
             detail: string;
-            /**
-             * Instance
-             * @example /api/trips/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11
-             */
+            /** Instance */
             instance: string;
             /**
              * Code
              * @description Stable error name for the frontend to check.
-             * @example trip_not_found
              */
             code: string;
-            /**
-             * Requestid
-             * @example b1e2c3d4e5f6
-             */
+            /** Requestid */
             requestId?: string | null;
             /**
              * Errors
@@ -408,15 +392,43 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Invalid input, including seats outside 1-6 or a departure in the past (code `invalid_input / departure_in_past`) */
+            /** @description Invalid input, including seats outside 1-6, an unroutable place, or a departure in the past (code `invalid_input / departure_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "seatsTotal",
+                     *           "message": "Input should be less than or equal to 6"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -426,6 +438,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The route couldn't be computed right now",
+                     *       "instance": "/",
+                     *       "code": "routing_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -457,6 +480,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/mine",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -466,6 +500,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/mine",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "seatsTotal",
+                     *           "message": "Input should be less than or equal to 6"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -503,6 +554,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/search",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -512,6 +574,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/search",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "seatsTotal",
+                     *           "message": "Input should be less than or equal to 6"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -521,6 +600,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "Matching is unavailable right now",
+                     *       "instance": "/search",
+                     *       "code": "routing_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -552,6 +642,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/{trip_id}",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -561,6 +662,17 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Not Found",
+                     *       "status": 404,
+                     *       "detail": "No trip with this ID",
+                     *       "instance": "/{trip_id}",
+                     *       "code": "trip_not_found",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };
@@ -570,6 +682,23 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/{trip_id}",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "seatsTotal",
+                     *           "message": "Input should be less than or equal to 6"
+                     *         }
+                     *       ]
+                     *     }
+                     */
                     "application/json": components["schemas"]["Problem"];
                 };
             };

@@ -1,0 +1,16 @@
+{
+  "description": "A trip was posted. Published on the events.trips stream.",
+  "properties": {
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tripId"
+  ],
+  "title": "TripPosted",
+  "type": "object",
+  "x-event-version": 1
+}
