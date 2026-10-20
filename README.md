@@ -60,6 +60,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 
 **Deployment**
 
+- [Local setup guide](docs/deployment/local-setup.md)
 - [Server setup](docs/deployment/server-setup.md)
 - [Deployment](docs/deployment/deployment.md)
 - [Local Docker setup](docs/deployment/docker-setup.md)
@@ -78,6 +79,8 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 - [Sprint 0: Planning and setup](sprint0.md)
 
 ## Getting started
+
+New to the project? Follow the [Local setup guide](docs/deployment/local-setup.md): it goes from installing the tools to running the whole app, on macOS or Windows. The commands below are the short version.
 
 You need [uv](https://docs.astral.sh/uv/getting-started/installation/) installed. It installs Python 3.13 for you.
 
