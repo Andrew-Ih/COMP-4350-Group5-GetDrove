@@ -33,6 +33,8 @@ from trips.domain.entities import Trip
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("trips_database")
+
 type API = tuple[FastAPI, TestAuth, AsyncEngine]
 type Handler = Callable[[httpx.Request], httpx.Response]
 

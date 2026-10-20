@@ -1,10 +1,18 @@
-"""Fake OSRM responses shared by the adapter and API tests."""
+"""Shared test fixtures: fake OSRM responses for the adapter and API tests, and the
+throwaway test database."""
 
-from collections.abc import Callable
+import asyncio
+import os
+from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 
 import httpx
 import pytest
+from alembic import command
+from alembic.config import Config
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import create_async_engine
 
 type Handler = Callable[[httpx.Request], httpx.Response]
 
@@ -94,3 +102,64 @@ def osrm_no_route(request: pytest.FixtureRequest) -> Handler:
         return httpx.Response(400, json={"code": request.param, "message": "Impossible route"})
 
     return handler
+
+
+# ---------------------------------------------------------------- test database (#245)
+#
+# One throwaway PostgreSQL + PostGIS database per test run (testcontainers, so Docker must be
+# running; GitHub Actions runners have it), set up the way infra/postgres/init does it: a
+# `routing` user that owns a `routing` schema, with PostGIS in the public schema. The real
+# Alembic migrations run on it, so the tests also check them. Tests that need it say so with
+# `pytestmark = pytest.mark.usefixtures("routing_database")`; they read the URL through
+# `get_settings()`, like the service. Without Docker they're skipped with a message.
+
+ROUTING_DIR = Path(__file__).resolve().parents[1]
+
+
+def _docker_available() -> bool:
+    try:
+        import docker  # installed with testcontainers
+
+        docker.from_env().ping()
+    except Exception:
+        return False
+    return True
+
+
+async def _create_routing_user_and_schema(admin_url: str) -> None:
+    """What infra/postgres/init/20-create-service-schemas.sh does for routing."""
+    engine = create_async_engine(admin_url, isolation_level="AUTOCOMMIT")
+    async with engine.connect() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS postgis"))
+        await conn.execute(text("CREATE ROLE routing LOGIN PASSWORD 'routing'"))
+        await conn.execute(text("CREATE SCHEMA routing AUTHORIZATION routing"))
+        await conn.execute(text("ALTER ROLE routing SET search_path = routing, public"))
+    await engine.dispose()
+
+
+@pytest.fixture(scope="session")
+def routing_database() -> Iterator[str]:
+    """The routing user's connection URL on a fresh database, with the migrations applied."""
+    if not _docker_available():
+        pytest.skip("Docker isn't running; start Docker Desktop to run the database tests")
+    from testcontainers.community.postgres import PostgresContainer
+
+    with PostgresContainer("postgis/postgis:17-3.5", driver="asyncpg") as postgres:
+        asyncio.run(_create_routing_user_and_schema(postgres.get_connection_url()))
+        host = postgres.get_container_host_ip()
+        port = postgres.get_exposed_port(5432)
+        url = f"postgresql+asyncpg://routing:routing@{host}:{port}/{postgres.dbname}"
+
+        # get_settings() (in the tests and in migrations/env.py) reads it from here.
+        previous = os.environ.get("ROUTING_DATABASE_URL")
+        os.environ["ROUTING_DATABASE_URL"] = url
+        try:
+            config = Config()  # no alembic.ini: loading it reconfigures logging for the run
+            config.set_main_option("script_location", str(ROUTING_DIR / "migrations"))
+            command.upgrade(config, "head")
+            yield url
+        finally:
+            if previous is None:
+                os.environ.pop("ROUTING_DATABASE_URL", None)
+            else:
+                os.environ["ROUTING_DATABASE_URL"] = previous

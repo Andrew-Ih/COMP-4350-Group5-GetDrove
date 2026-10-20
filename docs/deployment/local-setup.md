@@ -135,16 +135,13 @@ Then either:
 bash scripts/check.sh
 ```
 
-**Backend tests need Docker running.** The Accounts, Notifications and events integration tests start their own throwaway Postgres, Redis and Mailpit. The Trips and Routing database tests currently need the stack's Postgres with their tables created (this is being moved to the same throwaway setup):
+**Backend tests need Docker running,** and nothing else: the integration tests start their own throwaway Postgres (with PostGIS where needed), Redis and Mailpit, with the real migrations, and remove them afterwards. You don't need the stack running. Without Docker, those tests are skipped with a message and the rest still run.
 
 ```bash
-docker compose up -d postgres redis
-cd services/trips && uv run alembic upgrade head && cd ../..
-cd services/routing && uv run alembic upgrade head && cd ../..
 uv run pytest
 ```
 
-In PowerShell, run the same commands with `;` instead of `&&`, or use `uv run --directory services/trips alembic upgrade head`, which works everywhere.
+The first run downloads the test images (Postgres, PostGIS, Redis, Mailpit), so it takes longer.
 
 **The checks one by one** (what `check.sh` runs; these work in PowerShell too):
 
@@ -178,8 +175,7 @@ Then branch off `develop` for your task ([Git workflow](../process/git-workflow.
 | `Cannot connect to the Docker daemon` / `error during connect` | Docker Desktop isn't running. Start it and wait for "Engine running". |
 | `port is already allocated` | Something else uses that port. Stop it, or move ours in a `.env` file at the repo root, e.g. `GATEWAY_PORT=8000` or `POSTGRES_PORT=5433` ([infra/README.md](../../infra/README.md#configuration)). |
 | `exec /app/entrypoint.sh: no such file or directory` (Windows) | The script was checked out with CRLF line endings. See [Windows and line endings](#2-get-the-code), then `docker compose up --build`. |
-| Trips or Routing tests fail with `Connect call failed ('127.0.0.1', 5432)` | Postgres isn't running: `docker compose up -d postgres`, then run their migrations ([section 6](#6-run-the-tests-and-checks)). |
-| Trips or Routing tests fail with `relation "…" does not exist` | Postgres is running but the tables aren't there: run their migrations. |
+| Integration tests are all `skipped` ("Docker isn't running") | Start Docker Desktop and run the tests again. |
 | A service keeps restarting | `docker compose logs <service>`. Usually a failed migration. If your local database is out of date beyond repair, `docker compose down -v` starts it fresh (deletes local data). |
 | The first build stops while downloading the map | A network hiccup: run `docker compose up --build -d` again. It continues from the cached steps. |
 | Search or posting a trip says routing is unavailable | OSRM isn't up: `docker compose ps osrm-car osrm-foot` should say `healthy`. Its logs are empty on purpose (it doesn't log requests). |

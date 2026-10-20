@@ -16,6 +16,8 @@ from routing.domain.entities import Route
 from routing.domain.values import Corridor, LatLng
 from routing.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("routing_database")
+
 HOME = LatLng(lat=49.82, lng=-97.15)
 CAMPUS = LatLng(lat=49.8075, lng=-97.1366)
 CORRIDOR = Corridor(radius_meters=800)

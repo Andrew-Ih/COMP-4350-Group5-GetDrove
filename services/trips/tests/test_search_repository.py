@@ -13,6 +13,8 @@ from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, SearchWindow, TripStatus
 from trips.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("trips_database")
+
 # Well in the future, so other trips in a local database don't get in the way.
 TIME = datetime.now(UTC).replace(microsecond=0) + timedelta(days=30)
 NOW = datetime.now(UTC)

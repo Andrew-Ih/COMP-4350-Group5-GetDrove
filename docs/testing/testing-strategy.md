@@ -161,7 +161,6 @@ Measured on `develop` at the end of Sprint 1, with every test running (596 backe
 - **A few validation rules on a trip** (`trips/domain/entities.py`): the checks for more free seats than seats, a time without a timezone, and an arrival before the departure aren't tested on their own. The API and `Trip.create` never produce those, but the rules should still have their own tests.
 - **Rare error paths in the event library** (`libs/events`, 95%): the consumer loop recovering after Redis drops mid-read, an event that can't be parsed, and an entry deleted from the stream. The main paths (retry, park after 5 tries, handle each event once) are tested against real Redis.
 - **Calls between services are tested with fake HTTP**: Trips' calls to Routing and Payments, and Routing's calls to OSRM, run against fake responses (every failure mode is tested that way). Nothing yet runs the services together in a test. Real OSRM is checked by `infra/osrm/check.sh` and the deploy's route check, not by the test suite.
-- **The Trips and Routing database tests need a Postgres started by hand**, unlike Accounts and Notifications, which start their own with testcontainers. They run in CI (which provides one), but on a laptop without it they fail instead of skipping. This is being moved to testcontainers.
 
 **Frontend.** Feature logic and screens are well covered. The total is pulled down by code that can't run in the simulated browser tests use, or that isn't worth testing on its own:
 
@@ -170,4 +169,4 @@ Measured on `develop` at the end of Sprint 1, with every test running (596 backe
 - **The service status page** (`features/status`, mostly 0%): a developer page that shows each service's `/health`. Only its API call is tested.
 - **Cross-tab login session branches** (`shared/api/session.ts`, 69% of branches): the code that shares a refresh between tabs (`navigator.locks`, `BroadcastChannel`) has fallbacks for browsers without those APIs, and jsdom only exercises one side of each.
 
-**Next sprint:** tests for the trip validation rules, Playwright for the main rider and driver flows (which would also cover the pages and the map), and the Trips and Routing database tests on testcontainers.
+**Next sprint:** tests for the trip validation rules, and Playwright for the main rider and driver flows (which would also cover the pages and the map).

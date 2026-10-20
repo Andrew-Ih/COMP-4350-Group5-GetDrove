@@ -25,7 +25,7 @@ uv run mypy services/routing/src
 cd services/routing && uv run lint-imports
 ```
 
-The repository and API tests use a real PostgreSQL database with PostGIS (`docker compose up -d postgres`, then `uv run alembic upgrade head` in this folder). OSRM is always mocked in tests.
+The repository and API tests use a real PostgreSQL database with PostGIS. With Docker running, they start their own throwaway one (testcontainers, the `routing_database` fixture in `tests/conftest.py`) with the real migrations applied, so there's nothing to set up; without Docker they're skipped with a message. OSRM is always mocked in tests.
 
 ## Database migrations
 

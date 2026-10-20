@@ -77,9 +77,10 @@ agree any additional fields with consumers before extending this contract.
 
 ### Database tests
 
-Use a dedicated PostgreSQL test database with a `trips` schema owned by its test
-user. Set `TRIPS_DATABASE_URL`, then run `uv run alembic upgrade head` from this
-folder before running tests from the repository root. Tests commit to verify
+With Docker running, the database tests start their own throwaway PostgreSQL
+(testcontainers, the `trips_database` fixture in `tests/conftest.py`), with a `trips`
+user and schema like `infra/postgres/init` and the real migrations applied. There's
+nothing to set up; without Docker they're skipped with a message. Tests commit to verify
 visibility through another connection and clean up their own Trip/outbox rows.
 Routing is mocked; these tests do not exercise a live Routing server or Redis.
 
@@ -100,9 +101,8 @@ public POST idempotent. The outbox makes Trip/event persistence atomic, not the
 Routing write. No compensation API, automatic public-POST retry, pending-Trip
 workflow, or Routing service change is introduced here.
 
-The checked-in Routing compute handler is still a 501 contract stub (#23-#26).
-A deployed Routing implementation is required for a live successful POST; the
-Trips adapter maps its HTTP failures to the existing 503 response.
+Routing computes the route with OSRM (#24). If Routing or OSRM is down, the
+Trips adapter maps the failure to the existing 503 response and nothing is saved.
 
 ## Searching for trips (#97)
 
