@@ -121,11 +121,9 @@ You can also sign up with any `@myumanitoba.ca` address and verify it from the e
 
 Our Sprint 1 retro: **[docs/retros/sprint1.md](docs/retros/sprint1.md)**. In short:
 
-- **Proud of:** _see the retro_
-- **Could have been better:** _see the retro_
-- **Testing in our workflow:** _see the retro_
-
-<!-- TODO: once the retro is agreed, replace the three lines above with a one-sentence summary of each. -->
+- **Proud of:** route matching. Riders only see trips they can actually walk to, measured with real walking times rather than a straight line, and pickup points never give away where the driver lives.
+- **Could have been better:** the price quote work. An unclear task split meant two people built the same endpoint, and a merge into a feature branch skipped CI, costing an extra review round.
+- **Testing in our workflow:** contracts and contract tests came first and unit tests were written alongside the code, but integration tests often came after, sometimes only when a review asked. Next sprint, each story's acceptance-criteria tests go in the same PR as the feature.
 
 ## Known issues
 

@@ -2,10 +2,7 @@
 
 > Back to [Sprint 1](../../sprint1.md)
 
-<!-- DRAFT: written from the sprint's PRs and reviews as a starting point. Go through it at
-     the retro meeting, change anything the team sees differently, then delete this note. -->
-
-**Held:** _date_ · **Facilitator:** _name_ · **Attended:** _names_
+**Reviewed by:** the whole team, October 19, 2026
 
 ## What we're proud of
 
@@ -29,11 +26,9 @@ A smaller one in the same spirit: the Trips and Routing database tests first nee
 - **Git workflow:** mostly followed (feature and task branches off `develop`, squash merges, releases to `main`). Mistakes were PRs opened against the wrong base (GitHub defaults to `main`), and PR titles that didn't follow the commit format, which matters because the title becomes the commit on `develop`.
 - **Reviews:** thorough, and they caught real problems (privacy in logs, duplicated code, missing tests), but some PRs went through several rounds. Running `bash scripts/check.sh` before opening a PR would save a round.
 - **Technical debt:** mid-sprint we agreed to fix problems when they're found instead of leaving "fine for now" notes, which is why the test databases, OSRM in production and HTTPS were all finished before the release.
-- **Working agreement:** _still fits? anything to change?_
 
 ## What we'll change for Sprint 2
 
 1. Every task gets a "done when" before it's assigned, and overlapping tasks are merged or clarified on the board.
 2. Acceptance-criteria tests go in the same PR as the feature.
 3. Check the PR base and title format when opening a PR, and run `scripts/check.sh` first.
-4. _anything else from the meeting_
