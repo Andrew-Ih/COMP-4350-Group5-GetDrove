@@ -14,6 +14,8 @@ from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, TripStatus
 from trips.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("trips_database")
+
 
 @pytest.mark.asyncio
 async def test_add_trip_saves_to_database() -> None:

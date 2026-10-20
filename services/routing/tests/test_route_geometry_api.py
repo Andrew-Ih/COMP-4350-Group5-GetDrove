@@ -18,6 +18,8 @@ from routing.domain.values import LatLng
 from routing.infrastructure.main import create_app
 from routing.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("routing_database")
+
 type API = tuple[FastAPI, TestAuth, AsyncEngine, Route]
 
 ROUTE_PATH = (

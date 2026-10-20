@@ -19,6 +19,8 @@ from routing.domain.values import Corridor, LatLng
 from routing.infrastructure.main import create_app
 from routing.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("routing_database")
+
 type Handler = Callable[[httpx.Request], httpx.Response]
 
 # About 300 m north of the middle of the "near" route below.

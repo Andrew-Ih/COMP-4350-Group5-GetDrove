@@ -20,6 +20,8 @@ from trips.domain.values import Direction, Location
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("trips_database")
+
 type Handler = Callable[[httpx.Request], httpx.Response]
 
 # Well in the future, so other trips in a local database don't get in the way.

@@ -16,6 +16,8 @@ from trips.adapters.persistence.tables import outbox, trips
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
+pytestmark = pytest.mark.usefixtures("trips_database")
+
 type API = tuple[FastAPI, TestAuth, AsyncEngine]
 type Handler = Callable[[httpx.Request], httpx.Response]
 
