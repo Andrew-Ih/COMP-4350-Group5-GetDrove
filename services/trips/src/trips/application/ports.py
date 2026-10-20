@@ -20,6 +20,8 @@ class TripRepository(Protocol):
         left yet, except the given driver's own."""
         ...
 
+    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
+
 
 class TripEvents(Protocol):
     async def trip_posted(self, trip_id: UUID) -> None:
