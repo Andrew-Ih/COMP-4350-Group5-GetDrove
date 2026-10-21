@@ -38,6 +38,14 @@ describe("AppHeader", () => {
     expect(screen.getAllByRole("link", { name: "My trips" })).toHaveLength(2);
   });
 
+  it("links the bell to notifications", () => {
+    renderWithProviders(<AppHeader userName="Priya" />);
+
+    const bell = screen.getByRole("link", { name: "Notifications" });
+    expect(bell).toHaveAttribute("href", "/notifications");
+    expect(bell).not.toHaveAttribute("aria-current");
+  });
+
   it("logs out from the account menu", async () => {
     const fetchSpy = mockFetch({ status: 204 });
     setAccessToken("tok");

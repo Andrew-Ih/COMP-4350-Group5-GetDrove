@@ -53,6 +53,7 @@ export function AppHeader({ userName }: { userName: string }) {
     const active = pathname.startsWith(item.match);
     return { ...item, active };
   });
+  const onNotifications = pathname.startsWith("/notifications");
 
   return (
     <header className="sticky top-0 z-30 border-b border-line bg-surface">
@@ -80,9 +81,17 @@ export function AppHeader({ userName }: { userName: string }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-3 md:gap-6">
-          <button type="button" aria-label="Notifications" className="hidden p-2 md:block">
+          <Link
+            href="/notifications"
+            aria-label="Notifications"
+            aria-current={onNotifications ? "page" : undefined}
+            className={cn(
+              "hidden rounded-full p-2 transition-colors hover:bg-surface-muted hover:text-ink md:block",
+              onNotifications ? "text-ink" : "text-muted",
+            )}
+          >
             <Bell className="size-6" />
-          </button>
+          </Link>
           <div ref={accountMenu} className="relative">
             <button
               type="button"
@@ -137,7 +146,15 @@ export function AppHeader({ userName }: { userName: string }) {
               {link.label}
             </Link>
           ))}
-          <Link href="/notifications" onClick={() => setMenuOpen(false)} className="block border-b border-line py-4 text-lg font-semibold text-muted">
+          <Link
+            href="/notifications"
+            aria-current={onNotifications ? "page" : undefined}
+            onClick={() => setMenuOpen(false)}
+            className={cn(
+              "block border-b border-line py-4 text-lg font-semibold",
+              onNotifications ? "text-ink" : "text-muted",
+            )}
+          >
             Notifications
           </Link>
           <button
