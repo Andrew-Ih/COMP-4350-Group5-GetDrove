@@ -6,9 +6,10 @@ GetDrove, with the same demo password:
 
     SEED_PASSWORD=... uv run python infra/seed/seed_trips.py --site http://localhost
 
-For each driver in demo.json it logs in, skips them if they already have upcoming trips
-(so running it again doesn't pile up copies), and otherwise posts one trip per commute
-day in the next two weeks. Times in demo.json are Winnipeg time; the API wants UTC.
+For each driver in demo.json it logs in, looks at the trips they already have, and posts
+only the commutes in the next two weeks that are missing. So running it again before a
+demo fills the two weeks back up and never posts the same trip twice. Times in demo.json
+are Winnipeg time; the API wants UTC.
 """
 
 import argparse
@@ -16,12 +17,23 @@ import os
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
+from importlib.resources import files
 from zoneinfo import ZoneInfo
 
 import httpx
 from demo_data import DemoData, DemoDataError, Person, TripPlan, load_demo_data
 
-WINNIPEG = ZoneInfo("America/Winnipeg")
+
+def _winnipeg() -> ZoneInfo:
+    """Winnipeg's rules from the tzdata package, not the operating system's time zone files
+    (which ZoneInfo would read first), so every machine agrees. Older system files still
+    move Manitoba to UTC-6 in November 2026; tzdata 2026e (package 2026.5) keeps it on UTC-5.
+    """
+    with files("tzdata.zoneinfo").joinpath("America").joinpath("Winnipeg").open("rb") as f:
+        return ZoneInfo.from_file(f, key="America/Winnipeg")
+
+
+WINNIPEG = _winnipeg()
 DAYS_AHEAD = 14
 WEEKDAY_NUMBERS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4}
 
@@ -30,7 +42,7 @@ WEEKDAY_NUMBERS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4}
 class DriverReport:
     name: str
     posted: int = 0
-    skipped: bool = False
+    already_there: int = 0
     error: str | None = None
 
 
@@ -96,12 +108,16 @@ def _seed_driver(
     if mine.status_code != 200:
         result.error = f"couldn't list their trips ({_problem(mine)})"
         return
-    if mine.json():
-        result.skipped = True
-        return
+    # What they already have, by direction and departure time, so only the gaps get posted.
+    existing = {
+        (trip["direction"], datetime.fromisoformat(trip["departureAt"])) for trip in mine.json()
+    }
 
     for plan in driver.trips:
         for leaves in departures(plan, now, days):
+            if (plan.direction, leaves) in existing:
+                result.already_there += 1
+                continue
             posted = client.post(
                 "/api/trips/",
                 headers=auth,
@@ -153,10 +169,11 @@ def main(argv: list[str] | None = None) -> int:
     for driver in report.drivers:
         if driver.error:
             print(f"FAILED   {driver.name}: {driver.error}")
-        elif driver.skipped:
-            print(f"skipped  {driver.name}: already has upcoming trips")
         else:
-            print(f"posted   {driver.name}: {driver.posted} trips")
+            print(
+                f"posted   {driver.name}: {driver.posted} new trips, "
+                f"{driver.already_there} already there"
+            )
     return 0 if report.ok else 1
 
 

@@ -5,9 +5,8 @@
 #                 Accounts container (no sign-up emails, so no bounces from fake addresses)
 #   2. trips    — logs in as each demo driver and posts their commutes for the next two
 #                 weeks through the live API, so Routing works out the real routes
-# Both skip what's already there, so running it again is safe. A driver gets new trips
-# only once all their trips have gone by, so run it again before a demo to post the next
-# two weeks.
+# Both skip what's already there, so running it again is safe: run it before a demo and
+# it fills the next two weeks back up without posting any trip twice.
 # Needs the DEMO_ACCOUNT_PASSWORD secret (10+ characters) in the production environment.
 # See infra/seed/README.md.
 name: Seed demo data
@@ -81,7 +80,8 @@ jobs:
         uses: astral-sh/setup-uv@v6
 
       - name: Post the demo drivers' trips
-        # Only needs httpx, not the whole workspace.
+        # Only needs httpx, and tzdata for Winnipeg time (2026.5 is IANA 2026e, which keeps
+        # Manitoba on UTC-5), not the whole workspace.
         run: |
-          uv run --no-project --python 3.13 --with httpx \
+          uv run --no-project --python 3.13 --with httpx --with "tzdata>=2026.5" \
             python infra/seed/seed_trips.py --site "$SITE_URL"

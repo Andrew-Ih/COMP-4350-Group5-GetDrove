@@ -54,6 +54,16 @@ def test_a_time_already_past_today_is_left_out() -> None:
     assert leaving == [datetime(2025, 11, 3, 22, 30, tzinfo=UTC)]  # next Monday only
 
 
+def test_winnipeg_stays_on_utc_minus_5_from_november_2026() -> None:
+    """tzdata 2026e: Manitoba no longer goes back to UTC-6 in November. An older system
+    time zone file would give 13:45 for the second Monday; the script must not use it."""
+    friday = datetime(2026, 10, 30, 12, 0, tzinfo=UTC)
+
+    leaving = departures(plan(("mon",), time(7, 45)), friday, days=7)
+
+    assert leaving == [datetime(2026, 11, 2, 12, 45, tzinfo=UTC)]
+
+
 def test_the_number_of_days_can_be_changed() -> None:
     assert len(departures(plan(("mon",), time(7, 45)), MONDAY_MORNING, days=3)) == 1
 
@@ -65,9 +75,11 @@ class FakeApi:
     """Answers like the gateway: login, /trips/mine and posting a trip."""
 
     def __init__(
-        self, *, existing_trips: set[str] = frozenset(), bad_logins: set[str] = frozenset()
-    ):  # type: ignore[assignment]
-        self.existing_trips = existing_trips
+        self,
+        existing_trips: dict[str, list[dict[str, Any]]] | None = None,
+        bad_logins: frozenset[str] = frozenset(),
+    ) -> None:
+        self.existing_trips = existing_trips or {}
         self.bad_logins = bad_logins
         self.posted: list[tuple[str, dict[str, Any]]] = []
         self.refuse_posts = False
@@ -81,7 +93,7 @@ class FakeApi:
         token = request.headers["Authorization"].removeprefix("Bearer token-")
         if request.url.path == "/api/trips/mine":
             assert request.url.params["role"] == "driver"
-            return httpx.Response(200, json=[{"id": "t1"}] if token in self.existing_trips else [])
+            return httpx.Response(200, json=self.existing_trips.get(token, []))
         if request.url.path == "/api/trips/" and request.method == "POST":
             if self.refuse_posts:
                 return httpx.Response(503, json={"code": "routing_unavailable"})
@@ -107,7 +119,7 @@ def test_it_posts_each_drivers_trips_as_that_driver() -> None:
 
     assert report.ok
     [result] = report.drivers
-    assert (result.name, result.posted, result.skipped) == ("Maya Test", 8, False)
+    assert (result.name, result.posted, result.already_there) == ("Maya Test", 8, 0)
     assert {token for token, _ in api.posted} == {maya.email}
     _, first = api.posted[0]
     assert first == {
@@ -118,18 +130,25 @@ def test_it_posts_each_drivers_trips_as_that_driver() -> None:
     }
 
 
-def test_drivers_who_already_have_trips_are_skipped() -> None:
-    maya, tomas = (
-        driver("Maya", plan(("mon",), time(8, 0))),
-        driver("Tomas", plan(("tue",), time(8, 0))),
-    )
-    api = FakeApi(existing_trips={maya.email})
+def test_only_the_missing_departures_are_posted() -> None:
+    """Running it again tops up the two weeks without posting the same trip twice."""
+    maya = driver("Maya", plan(("mon", "wed"), time(8, 0)))
+    already = [  # how /trips/mine returns them
+        {"id": "a", "direction": "to_campus", "departureAt": "2025-10-27T13:00:00Z"},
+        {"id": "b", "direction": "to_campus", "departureAt": "2025-10-29T13:00:00Z"},
+        {"id": "c", "direction": "from_campus", "departureAt": "2025-11-03T14:00:00Z"},
+    ]
+    api = FakeApi(existing_trips={maya.email: already})
 
-    report = run(api, maya, tomas)
+    report = run(api, maya)
 
-    assert [(d.name, d.skipped, d.posted) for d in report.drivers] == [
-        ("Maya Test", True, 0),
-        ("Tomas Test", False, 2),
+    [result] = report.drivers
+    assert (result.posted, result.already_there) == (2, 2)
+    # Mon 3 and Wed 5 November (after the clocks went back). The from_campus trip at the
+    # same time on the 3rd doesn't count: it's the other direction.
+    assert [body["departureAt"] for _, body in api.posted] == [
+        "2025-11-03T14:00:00Z",
+        "2025-11-05T14:00:00Z",
     ]
 
 
@@ -138,7 +157,7 @@ def test_one_driver_failing_doesnt_stop_the_others() -> None:
         driver("Maya", plan(("mon",), time(8, 0))),
         driver("Tomas", plan(("tue",), time(8, 0))),
     )
-    api = FakeApi(bad_logins={maya.email})
+    api = FakeApi(bad_logins=frozenset({maya.email}))
 
     report = run(api, maya, tomas)
 
@@ -204,7 +223,7 @@ def test_main_prints_a_line_per_driver_and_fails_if_any_did(
     report = SeedReport(
         [
             DriverReport("Maya Chen", posted=12),
-            DriverReport("Tomas Rivera", skipped=True),
+            DriverReport("Tomas Rivera", already_there=18),
             DriverReport("Aisha Okafor", error="couldn't log in (401)"),
         ]
     )
@@ -212,8 +231,8 @@ def test_main_prints_a_line_per_driver_and_fails_if_any_did(
 
     assert main(["--site", "http://test"]) == 1
     assert capsys.readouterr().out.splitlines() == [
-        "posted   Maya Chen: 12 trips",
-        "skipped  Tomas Rivera: already has upcoming trips",
+        "posted   Maya Chen: 12 new trips, 0 already there",
+        "posted   Tomas Rivera: 0 new trips, 18 already there",
         "FAILED   Aisha Okafor: couldn't log in (401)",
     ]
 

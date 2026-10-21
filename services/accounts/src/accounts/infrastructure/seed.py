@@ -3,7 +3,7 @@
 Run it where Accounts runs, with demo.json on standard input and the shared demo password
 in SEED_PASSWORD (never committed):
 
-    docker compose -f infra/docker-compose.yml exec -T -e SEED_PASSWORD accounts \\
+    docker compose exec -T -e SEED_PASSWORD accounts \\
         python -m accounts.infrastructure.seed < infra/seed/demo.json
 
 It uses the service's own database settings, writes only Accounts' tables, and sends no

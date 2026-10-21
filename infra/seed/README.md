@@ -39,8 +39,9 @@ Two parts, because accounts and trips are created differently:
    would hurt our email sender's reputation. People who already exist are skipped.
 2. **Trips**: [`seed_trips.py`](seed_trips.py) logs in as each driver and posts their
    commutes for the next two weeks through the API (`POST /api/trips/`), like the app does.
-   That way Routing works out and stores the real route. A driver who already has upcoming
-   trips is skipped, so to post the next two weeks, run it again once they've gone by.
+   That way Routing works out and stores the real route. It compares each driver's plan with
+   the trips they already have and posts only the missing ones, so running it again before a
+   demo fills the next two weeks back up and never posts the same trip twice.
 
 ## Run it locally
 
@@ -50,7 +51,7 @@ PowerShell:
 
 ```powershell
 $env:SEED_PASSWORD = "<a demo password, 10+ characters>"
-Get-Content infra\seed\demo.json -Raw | docker compose -f infra/docker-compose.yml exec -T -e SEED_PASSWORD accounts python -m accounts.infrastructure.seed
+Get-Content infra\seed\demo.json -Raw | docker compose exec -T -e SEED_PASSWORD accounts python -m accounts.infrastructure.seed
 uv run python infra/seed/seed_trips.py --site http://localhost
 ```
 
@@ -58,12 +59,12 @@ macOS / Linux / Git Bash:
 
 ```bash
 export SEED_PASSWORD='<a demo password, 10+ characters>'
-docker compose -f infra/docker-compose.yml exec -T -e SEED_PASSWORD accounts python -m accounts.infrastructure.seed < infra/seed/demo.json
+docker compose exec -T -e SEED_PASSWORD accounts python -m accounts.infrastructure.seed < infra/seed/demo.json
 uv run python infra/seed/seed_trips.py --site http://localhost
 ```
 
-You should see `created`/`exists` for the eight accounts, then `posted   Maya Chen: N trips`
-for each driver. The second time, every driver says `skipped`.
+You should see `created`/`exists` for the eight accounts, then `posted   Maya Chen: N new trips, 0 already there`
+for each driver. Run it again straight away and every driver says `0 new trips`.
 
 ## Run it on the live site
 
@@ -82,4 +83,4 @@ for demos.
   ran with a different password. An account keeps the password it was created with.
 - **`couldn't list their trips (501 not_implemented)`** locally: your Trips container is
   older than the "my trips" feature. Rebuild it:
-  `docker compose -f infra/docker-compose.yml up -d --build trips`.
+  `docker compose up -d --build trips`.
