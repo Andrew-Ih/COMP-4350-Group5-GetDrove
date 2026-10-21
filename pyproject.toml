@@ -90,13 +90,15 @@ explicit_package_bases = true
 mypy_path = [
     "libs/common-web/src", "libs/common-security/src", "libs/events/src",
     "services/accounts/src", "services/trips/src", "services/routing/src",
-    "services/payments/src", "services/notifications/src",
+    "services/payments/src", "services/notifications/src", "infra/seed",
 ]
 # Type-check the source of every package. Run with: uv run mypy
 files = [
     "libs/common-web/src", "libs/common-security/src", "libs/events/src",
     "services/accounts/src", "services/trips/src", "services/routing/src",
     "services/payments/src", "services/notifications/src",
+    # Demo seed scripts (#111); their tests are in infra/seed/tests.
+    "infra/seed/demo_data.py",
 ]
 
 # redis-py's and testcontainers' type information is incomplete.
@@ -114,7 +116,7 @@ warn_required_dynamic_aliases = true
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 addopts = "--import-mode=importlib"
-testpaths = ["libs", "services"]
+testpaths = ["libs", "services", "infra/seed"]
 
 # ---------- coverage ----------
 [tool.coverage.run]

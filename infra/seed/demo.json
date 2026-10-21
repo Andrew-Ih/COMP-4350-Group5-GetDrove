@@ -1,0 +1,70 @@
+{
+  "drivers": [
+    {
+      "email": "getdrove.demo.maya@myumanitoba.ca",
+      "firstName": "Maya",
+      "lastName": "Chen",
+      "home": { "label": "Osborne Village", "lat": 49.8806, "lng": -97.143 },
+      "trips": [
+        { "direction": "to_campus", "weekdays": ["mon", "wed", "fri"], "departAt": "07:45", "seats": 3 },
+        { "direction": "from_campus", "weekdays": ["mon", "wed", "fri"], "departAt": "16:30", "seats": 3 }
+      ]
+    },
+    {
+      "email": "getdrove.demo.tomas@myumanitoba.ca",
+      "firstName": "Tomas",
+      "lastName": "Rivera",
+      "home": { "label": "St. Vital", "lat": 49.842, "lng": -97.108 },
+      "trips": [
+        { "direction": "to_campus", "weekdays": ["mon", "tue", "wed", "thu", "fri"], "departAt": "08:00", "seats": 2 },
+        { "direction": "from_campus", "weekdays": ["mon", "tue", "wed", "thu", "fri"], "departAt": "17:00", "seats": 2 }
+      ]
+    },
+    {
+      "email": "getdrove.demo.aisha@myumanitoba.ca",
+      "firstName": "Aisha",
+      "lastName": "Okafor",
+      "home": { "label": "Transcona", "lat": 49.8955, "lng": -96.985 },
+      "trips": [
+        { "direction": "to_campus", "weekdays": ["tue", "thu"], "departAt": "07:30", "seats": 4 },
+        { "direction": "from_campus", "weekdays": ["tue", "thu"], "departAt": "15:45", "seats": 4 }
+      ]
+    },
+    {
+      "email": "getdrove.demo.liam@myumanitoba.ca",
+      "firstName": "Liam",
+      "lastName": "Fraser",
+      "home": { "label": "River Heights", "lat": 49.863, "lng": -97.18 },
+      "trips": [
+        { "direction": "to_campus", "weekdays": ["mon", "tue", "wed", "thu", "fri"], "departAt": "08:15", "seats": 3 },
+        { "direction": "from_campus", "weekdays": ["tue", "thu"], "departAt": "16:00", "seats": 3 }
+      ]
+    }
+  ],
+  "riders": [
+    {
+      "email": "getdrove.demo.priya@myumanitoba.ca",
+      "firstName": "Priya",
+      "lastName": "Sharma",
+      "home": { "label": "Corydon Ave", "lat": 49.8722, "lng": -97.1561 }
+    },
+    {
+      "email": "getdrove.demo.noah@myumanitoba.ca",
+      "firstName": "Noah",
+      "lastName": "Bergen",
+      "home": { "label": "Pembina Hwy & Grant Ave", "lat": 49.855, "lng": -97.146 }
+    },
+    {
+      "email": "getdrove.demo.emma@myumanitoba.ca",
+      "firstName": "Emma",
+      "lastName": "Tran",
+      "home": { "label": "St. Vital Centre", "lat": 49.829, "lng": -97.102 }
+    },
+    {
+      "email": "getdrove.demo.owen@myumanitoba.ca",
+      "firstName": "Owen",
+      "lastName": "Campbell",
+      "home": { "label": "Garden City (no trips nearby)", "lat": 49.958, "lng": -97.143 }
+    }
+  ]
+}
