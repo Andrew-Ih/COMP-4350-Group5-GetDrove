@@ -2,12 +2,15 @@
 #
 # Runs on every push to main (a release or hotfix) and from the Actions tab
 # ("Run workflow"). Steps:
-#   1. build  — builds the six images and pushes them to GitHub Container Registry,
-#               tagged with the commit SHA
+#   1. build  — builds the eight images (five services, the web app, and OSRM car and
+#               foot with the Winnipeg map built in) and pushes them to GitHub Container
+#               Registry, tagged with the commit SHA
 #   2. deploy — copies the production Compose file to the server, writes its .env from
 #               GitHub Secrets, pulls the images and restarts what changed
 #   3. smoke  — checks the home page and every service's /health through the gateway
 # Roll back by running it by hand with "image_tag" set to an earlier deploy's commit SHA.
+# Get newer map data by running it by hand with "refresh_map" ticked (otherwise the OSRM
+# images reuse the map that's cached).
 # See docs/deployment/deployment.md.
 name: Deploy
 
@@ -20,6 +23,11 @@ on:
         description: "Roll back: commit SHA of images already built (leave empty to build main)"
         required: false
         default: ""
+      refresh_map:
+        description: "Download the latest OpenStreetMap data for OSRM instead of the cached map"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -34,8 +42,13 @@ env:
   REGISTRY: ghcr.io/andrew-ih
   IMAGE_TAG: ${{ inputs.image_tag || github.sha }}
   APP_DIR: /opt/getdrove
-  # The live site. Changes to the domain with HTTPS in #110.
-  SITE_URL: http://34.130.160.109
+  # The live site (#110). The domain points at the server's static IP (34.130.160.109) in
+  # DuckDNS; Traefik gets its HTTPS certificate from Let's Encrypt. To change the domain,
+  # point the new one at the server, change both lines below, and deploy.
+  SITE_DOMAIN: getdrove.duckdns.org
+  SITE_URL: https://getdrove.duckdns.org
+  # Let's Encrypt writes here only if a certificate is about to expire without renewing.
+  ACME_EMAIL: getdrove.noreply@gmail.com
 
 jobs:
   build:
@@ -47,12 +60,16 @@ jobs:
       fail-fast: true
       matrix:
         include:
-          - { image: accounts, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: accounts }
-          - { image: trips, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: trips }
-          - { image: routing, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: routing }
-          - { image: payments, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: payments }
-          - { image: notifications, context: ., dockerfile: infra/docker/python-service.Dockerfile, service: notifications }
-          - { image: web, context: web, dockerfile: web/Dockerfile, service: "" }
+          - { image: accounts, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=accounts }
+          - { image: trips, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=trips }
+          - { image: routing, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=routing }
+          - { image: payments, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=payments }
+          - { image: notifications, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=notifications }
+          - { image: web, context: web, dockerfile: web/Dockerfile, build_args: "" }
+          # OSRM with the Winnipeg map built in (#233). The map download and graph build are
+          # cached, so they only run again when the Dockerfile changes or refresh_map is ticked.
+          - { image: osrm-car, context: infra/osrm, dockerfile: infra/osrm/Dockerfile, build_args: PROFILE=car }
+          - { image: osrm-foot, context: infra/osrm, dockerfile: infra/osrm/Dockerfile, build_args: PROFILE=foot }
     steps:
       - name: Check out the code
         uses: actions/checkout@v4
@@ -72,7 +89,10 @@ jobs:
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
-          build-args: ${{ matrix.service && format('SERVICE={0}', matrix.service) || '' }}
+          # A new MAP_REFRESH value (this run's ID) skips the cached map; other images ignore it.
+          build-args: |
+            ${{ matrix.build_args }}
+            ${{ startsWith(matrix.image, 'osrm-') && format('MAP_REFRESH={0}', inputs.refresh_map && github.run_id || 'cached') || '' }}
           platforms: linux/amd64
           push: true
           tags: ${{ env.REGISTRY }}/getdrove-${{ matrix.image }}:${{ env.IMAGE_TAG }}
@@ -120,10 +140,18 @@ jobs:
           PAYMENTS_DB_PASSWORD: ${{ secrets.PAYMENTS_DB_PASSWORD }}
           NOTIFICATIONS_DB_PASSWORD: ${{ secrets.NOTIFICATIONS_DB_PASSWORD }}
           ACCOUNTS_JWT_PRIVATE_KEY: ${{ secrets.ACCOUNTS_JWT_PRIVATE_KEY }}
+          NOTIFICATIONS_SMTP_USERNAME: ${{ secrets.NOTIFICATIONS_SMTP_USERNAME }}
+          NOTIFICATIONS_SMTP_PASSWORD: ${{ secrets.NOTIFICATIONS_SMTP_PASSWORD }}
+          NOTIFICATIONS_EMAIL_FROM: ${{ secrets.NOTIFICATIONS_EMAIL_FROM }}
         run: |
           for name in POSTGRES_PASSWORD ACCOUNTS_DB_PASSWORD TRIPS_DB_PASSWORD ROUTING_DB_PASSWORD \
-                      PAYMENTS_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY; do
+                      PAYMENTS_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY \
+                      NOTIFICATIONS_SMTP_USERNAME NOTIFICATIONS_SMTP_PASSWORD NOTIFICATIONS_EMAIL_FROM; do
             if [ -z "${!name}" ]; then echo "::error::GitHub secret $name is not set"; exit 1; fi
+          done
+          # Not secrets: the live site's address and certificate contact, set at the top of this file.
+          for name in SITE_DOMAIN SITE_URL ACME_EMAIL; do
+            if [ -z "${!name}" ]; then echo "::error::$name is not set at the top of deploy.yml"; exit 1; fi
           done
           umask 077
           {
@@ -138,6 +166,16 @@ jobs:
             # The PEM key on one line, with \n for each line break; Compose turns them back
             # into line breaks inside double quotes.
             printf 'ACCOUNTS_JWT_PRIVATE_KEY="%s"\n' "$(printf '%s' "$ACCOUNTS_JWT_PRIVATE_KEY" | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }')"
+            # Brevo (#220). Single quotes: Compose keeps the value exactly, with no $ or \
+            # handling, and the From address has spaces and < >.
+            printf "NOTIFICATIONS_SMTP_USERNAME='%s'\n" "$NOTIFICATIONS_SMTP_USERNAME"
+            printf "NOTIFICATIONS_SMTP_PASSWORD='%s'\n" "$NOTIFICATIONS_SMTP_PASSWORD"
+            printf "NOTIFICATIONS_EMAIL_FROM='%s'\n" "$NOTIFICATIONS_EMAIL_FROM"
+            # The live site: its domain and certificate contact for Traefik, and the address
+            # links in emails open.
+            echo "SITE_DOMAIN=$SITE_DOMAIN"
+            echo "SITE_URL=$SITE_URL"
+            echo "ACME_EMAIL=$ACME_EMAIL"
           } > deploy.env
 
       - name: Copy the Compose file, database setup script and .env
@@ -159,7 +197,25 @@ jobs:
           ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml up -d --remove-orphans --wait --wait-timeout 180"
           ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml ps"
           # Keep the disk from filling up with old images (a rollback pulls them again).
+          # OSRM images keep the map, so each is a few hundred MB.
           ssh server "docker image prune -af --filter until=168h" > /dev/null
+
+      - name: OSRM answers with a realistic route
+        # From inside the Routing container, like the service itself calls it: Osborne
+        # Village to University Centre (the same check as infra/osrm/check.sh).
+        run: |
+          ssh server "cd $APP_DIR && docker compose -f docker-compose.prod.yml exec -T routing python -" <<'PY'
+          import httpx
+
+          route = "-97.1438,49.8768;-97.1366,49.8075?overview=false"
+          for name, url in (("car", "http://osrm-car:5000/route/v1/driving/"),
+                            ("foot", "http://osrm-foot:5000/route/v1/foot/")):
+              data = httpx.get(url + route, timeout=10).json()
+              km = data["routes"][0]["distance"] / 1000 if data.get("code") == "Ok" else 0
+              print(f"{name}: {km:.1f} km")
+              if not 7 <= km <= 14:
+                  raise SystemExit(f"OSRM {name} returned {data.get('code')}, {km:.1f} km")
+          PY
 
       - name: Show logs if the deploy failed
         if: failure()
@@ -172,7 +228,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Home page and every service's /health answer through the gateway
+      - name: Home page and every service's /health answer over HTTPS
         env:
           BASE_URL: ${{ env.SITE_URL }}
         run: |
@@ -188,6 +244,13 @@ jobs:
                       /api/payments/health /api/notifications/health /api/accounts/.well-known/jwks.json; do
             check "$path" || failed=1
           done
+          # Plain http must redirect to HTTPS. (curl above already checks the certificate:
+          # it refuses an invalid one.)
+          redirect=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://$SITE_DOMAIN/")
+          case "$redirect" in
+            30[1278]" https://$SITE_DOMAIN/"*) echo "ok   http redirects to https" ;;
+            *) echo "::error::http://$SITE_DOMAIN/ answered '$redirect', expected a redirect to https"; failed=1 ;;
+          esac
           # Internal endpoints must never be reachable from outside.
           status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/routing/internal/routes")
           if [ "$status" != "404" ]; then echo "::error::/internal answered $status, expected 404"; failed=1; fi

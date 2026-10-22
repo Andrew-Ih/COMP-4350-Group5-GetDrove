@@ -1,7 +1,13 @@
 """Accounts errors. Each ``code`` matches contracts/openapi/accounts.json exactly, because
 the frontend checks it. common_web turns them into Problem Details responses."""
 
-from common_web import ConflictError, DomainError, InvalidInputError
+from common_web import (
+    ConflictError,
+    DomainError,
+    ForbiddenError,
+    InvalidInputError,
+    UnauthorizedError,
+)
 
 
 class EmailNotUofMError(InvalidInputError):
@@ -27,3 +33,24 @@ class VerificationTokenExpiredError(DomainError):
     status = 410
     code = "token_expired"
     title = "Verification link expired"
+
+
+class InvalidCredentialsError(UnauthorizedError):
+    """Wrong email or wrong password: one error for both, so it doesn't reveal which (401)."""
+
+    code = "invalid_credentials"
+    title = "Wrong email or password"
+
+
+class EmailNotVerifiedError(ForbiddenError):
+    """Right password, but the email isn't verified yet; the student can resend (403)."""
+
+    code = "email_not_verified"
+    title = "Email not verified"
+
+
+class InvalidRefreshTokenError(UnauthorizedError):
+    """The refresh cookie is missing, unknown, expired or already used: log in again (401)."""
+
+    code = "invalid_refresh_token"
+    title = "Session expired"

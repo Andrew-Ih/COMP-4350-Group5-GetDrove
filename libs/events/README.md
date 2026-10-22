@@ -131,7 +131,7 @@ A handler runs inside the same transaction that records the event as handled. If
 | `max_attempts` | 5 | Deliveries before an event is parked in `failed_events` |
 | `retry_after_ms` | 30 000 | How long a failed or abandoned message waits before it's retried |
 | `batch_size` | 10 | Messages read at a time |
-| `block_ms` | 5 000 | How long to wait for new messages before checking for retries |
+| `block_ms` | 5 000 | How long to wait for new messages before checking for retries. Give the Redis client a longer read timeout (`socket_timeout`), or it races the wait and logs `TimeoutError` while idle; Notifications uses 10 s (`infrastructure/main.py`) |
 
 A new consumer group starts at the **beginning** of each stream, so events sent before the consumer first ran are still handled.
 

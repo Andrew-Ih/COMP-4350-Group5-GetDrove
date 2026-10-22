@@ -3,11 +3,12 @@
 Adapters implement these, and tests use in-memory fakes.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Protocol, Self
 from uuid import UUID
 
 from accounts.domain.email import Email
+from accounts.domain.refresh_token import RefreshToken
 from accounts.domain.user import User
 from accounts.domain.verification import VerificationToken
 from events import EventPublisher
@@ -18,6 +19,38 @@ class Clock(Protocol):
 
     def now(self) -> datetime:
         """The current time, timezone-aware, in UTC."""
+        ...
+
+
+class PasswordHasher(Protocol):
+    """Turns passwords into one-way hashes and checks them (Argon2id, ADR 0020)."""
+
+    def hash(self, password: str) -> str:
+        """A new hash with its own random salt; the same password hashes differently each
+        time."""
+        ...
+
+    def verify(self, password_hash: str, password: str) -> bool:
+        """Whether ``password`` matches ``password_hash``. False for a wrong password or a
+        damaged hash; never raises for those."""
+        ...
+
+    def verify_dummy(self, password: str) -> None:
+        """Takes as long as ``verify`` but checks nothing. Login calls it when there's no
+        account, so response times don't reveal which emails are registered."""
+        ...
+
+
+class AccessTokenIssuer(Protocol):
+    """Makes the short-lived access token other services check (ADR 0006)."""
+
+    @property
+    def lifetime(self) -> timedelta:
+        """How long a token is valid (15 minutes); sent to the client as ``expiresIn``."""
+        ...
+
+    def issue(self, user: User, now: datetime) -> str:
+        """A signed token for ``user``, valid from ``now`` for ``lifetime``."""
         ...
 
 
@@ -63,6 +96,29 @@ class VerificationTokenRepository(Protocol):
         ...
 
 
+class RefreshTokenRepository(Protocol):
+    """Refresh ("stay logged in") tokens. Only hashes are stored. Implementations never
+    commit."""
+
+    async def add(self, token: RefreshToken) -> None:
+        """Saves a new token."""
+        ...
+
+    async def get_by_hash(self, token_hash: str) -> RefreshToken | None:
+        """The token with this hash, or None. Locked until the transaction ends, so the
+        same token can't be swapped twice at once."""
+        ...
+
+    async def save(self, token: RefreshToken) -> None:
+        """Saves changes to a token: that it was revoked, and what replaced it."""
+        ...
+
+    async def revoke_all_for_user(self, user_id: UUID, now: datetime) -> None:
+        """Revokes every one of the user's tokens still in use: ends all their sessions,
+        e.g. when a stolen token is being reused."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """One use case's database work: the repositories and the event publisher share one
     transaction, so changes and the events about them are saved together or not at all.
@@ -76,6 +132,9 @@ class UnitOfWork(Protocol):
 
     @property
     def verification_tokens(self) -> VerificationTokenRepository: ...
+
+    @property
+    def refresh_tokens(self) -> RefreshTokenRepository: ...
 
     @property
     def events(self) -> EventPublisher: ...

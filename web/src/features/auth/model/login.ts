@@ -15,8 +15,8 @@ export const loginSchema = z.object({
 
 export type LoginValues = z.infer<typeof loginSchema>;
 
-/** Where to go after logging in when no page asked for it. Becomes the rider home (/ride). */
-export const AFTER_LOGIN = "/";
+/** Where to go after logging in when no page asked for it: the rider home. */
+export const AFTER_LOGIN = "/ride";
 
 /**
  * The page to return to after logging in, from ?next=. Only paths on this site are

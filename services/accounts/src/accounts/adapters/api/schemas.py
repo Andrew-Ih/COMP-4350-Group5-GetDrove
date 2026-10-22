@@ -126,14 +126,12 @@ class Problem(ApiModel):
     """Every error response (RFC 9457 Problem Details, `application/problem+json`)."""
 
     type: str = "about:blank"
-    title: str = Field(examples=["Conflict"])
-    status: int = Field(examples=[409])
-    detail: str = Field(examples=["An account with this email already exists"])
-    instance: str = Field(examples=["/api/accounts/auth/signup"])
-    code: str = Field(
-        description="Stable error name for the frontend to check.", examples=["email_taken"]
-    )
-    request_id: str | None = Field(default=None, examples=["b1e2c3d4e5f6"])
+    title: str
+    status: int
+    detail: str
+    instance: str
+    code: str = Field(description="Stable error name for the frontend to check.")
+    request_id: str | None = None
     errors: list[InvalidFieldOut] | None = Field(
         default=None, description="Only on 422: the invalid fields."
     )

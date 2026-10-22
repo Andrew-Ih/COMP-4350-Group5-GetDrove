@@ -6,6 +6,8 @@
 # Swagger UI per service:   http://localhost/api/<service>/docs
 # Traefik dashboard:        http://localhost:8080
 # Mailpit (caught emails):  http://localhost:8025
+# OSRM (routing engine):    http://localhost:5050 (car), http://localhost:5051 (foot)
+#                           (the first build downloads the map; see infra/osrm/README.md)
 #
 # Every value below has a local default, so no .env file is needed. To override one,
 # set it in a .env file in the repo root (gitignored). Never put real secrets here.
@@ -93,8 +95,30 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
 
-  # OSRM (routing engine) is added by the OSRM spike (#23), once the Winnipeg map data
-  # can be prepared. Until then Routing uses a stub adapter.
+  # OSRM, the routing engine (#23, #233, ADR 0008): one instance per profile. The image is
+  # built from infra/osrm/Dockerfile with the Winnipeg map inside: the first build downloads
+  # the map (about 200 MB) and takes a few minutes; after that it's cached. The live server
+  # runs the same images, built by deploy.yml. Logging and the health check are set in the
+  # Dockerfile (osrm-routed logs at WARNING, so request URLs with coordinates aren't kept).
+  osrm-car:
+    build:
+      context: ./osrm
+      args:
+        PROFILE: car
+    image: getdrove-osrm-car:local
+    restart: unless-stopped
+    ports:
+      - "${OSRM_CAR_PORT:-5050}:5000" # for the Routing service running outside Docker
+
+  osrm-foot:
+    build:
+      context: ./osrm
+      args:
+        PROFILE: foot
+    image: getdrove-osrm-foot:local
+    restart: unless-stopped
+    ports:
+      - "${OSRM_FOOT_PORT:-5051}:5000"
 
   # ---------------------------------------------------------------- services
   #
@@ -153,6 +177,9 @@ services:
     environment:
       ROUTING_DATABASE_URL: postgresql+asyncpg://routing:${ROUTING_DB_PASSWORD:-routing}@postgres:5432/getdrove
       ROUTING_REDIS_URL: redis://redis:6379/0
+      # OSRM. If it's down, routes can't be computed and Routing answers 503.
+      ROUTING_OSRM_CAR_URL: http://osrm-car:5000
+      ROUTING_OSRM_FOOT_URL: http://osrm-foot:5000
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
@@ -193,6 +220,8 @@ services:
       NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
       NOTIFICATIONS_SMTP_HOST: mailpit
       NOTIFICATIONS_SMTP_PORT: "1025"
+      # Links in emails open the web app through the gateway.
+      NOTIFICATIONS_WEB_BASE_URL: http://localhost
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true

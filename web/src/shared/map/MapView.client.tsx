@@ -4,7 +4,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 import { LocateFixed, Minus, Plus } from "lucide-react";
 import { type LineLayerSpecification, type Map as MapLibreMap, setWorkerUrl } from "maplibre-gl";
-import { type ReactNode, useCallback, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef } from "react";
 import Map, { Layer, Marker, type MapRef, Source } from "react-map-gl/maplibre";
 
 import { cn } from "@/shared/lib/cn";
@@ -44,8 +44,20 @@ function applyTheme(map: MapLibreMap) {
   }
 }
 
-export default function MapView({ routes = [], markers = [], area, fitPadding = 60, className }: MapViewProps) {
+export default function MapView({
+  routes = [],
+  markers = [],
+  area,
+  fitPadding = 60,
+  initialView: startView,
+  fitTo,
+  focus,
+  onPick,
+  onLocate,
+  className,
+}: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
+  const loaded = useRef(false);
 
   const allPoints = useMemo<LngLat[]>(
     () => [...routes.flatMap((r) => r.coordinates), ...markers.map((m) => m.lngLat), ...(area ? [area.center] : [])],
@@ -56,10 +68,32 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
     const map = mapRef.current?.getMap();
     if (!map) return;
     applyTheme(map);
-    if (allPoints.length > 1) {
-      map.fitBounds(boundsOf(allPoints), { padding: fitPadding, duration: 0 });
+    loaded.current = true;
+    const points = fitTo?.points ?? allPoints;
+    if (!startView && points.length > 1) {
+      map.fitBounds(boundsOf(points), { padding: fitPadding, duration: 0 });
     }
-  }, [allPoints, fitPadding]);
+  }, [allPoints, fitPadding, fitTo, startView]);
+
+  // Zoom to fit again only when fitTo's key changes (e.g. new search results), not when a
+  // trip is selected or a route arrives, so the map holds still while the rider compares.
+  const fitKey = fitTo?.key;
+  const fitPoints = useRef(fitTo?.points);
+  useEffect(() => {
+    fitPoints.current = fitTo?.points; // the latest points, read by the effect below
+  });
+  useEffect(() => {
+    const points = fitPoints.current;
+    if (loaded.current && fitKey !== undefined && points && points.length > 1) {
+      mapRef.current?.fitBounds(boundsOf(points), { padding: fitPadding, duration: 600 });
+    }
+  }, [fitKey, fitPadding]);
+
+  useEffect(() => {
+    if (focus) {
+      mapRef.current?.flyTo({ center: focus, zoom: Math.max(mapRef.current.getZoom(), 13.5) });
+    }
+  }, [focus]);
 
   const locate = () => {
     navigator.geolocation?.getCurrentPosition((pos) => {
@@ -68,7 +102,8 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
   };
 
   const initialView =
-    allPoints.length === 1 ? { longitude: allPoints[0]![0], latitude: allPoints[0]![1], zoom: 14 } : WINNIPEG_VIEW;
+    startView ??
+    (allPoints.length === 1 ? { longitude: allPoints[0]![0], latitude: allPoints[0]![1], zoom: 14 } : WINNIPEG_VIEW);
 
   return (
     <div className={cn("relative size-full bg-map-land", className)}>
@@ -77,6 +112,8 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
         initialViewState={initialView}
         mapStyle={STYLE_URL}
         onLoad={onLoad}
+        onClick={onPick ? (event) => onPick([event.lngLat.lng, event.lngLat.lat]) : undefined}
+        cursor={onPick ? "pointer" : undefined}
         attributionControl={{ compact: true }}
         style={{ width: "100%", height: "100%" }}
       >
@@ -134,7 +171,7 @@ export default function MapView({ routes = [], markers = [], area, fitPadding = 
           </MapButton>
         </div>
         <div className="overflow-hidden rounded-md bg-surface shadow-card">
-          <MapButton label="Show my location" onClick={locate}>
+          <MapButton label="Show my location" onClick={onLocate ?? locate}>
             <LocateFixed className="size-5" />
           </MapButton>
         </div>

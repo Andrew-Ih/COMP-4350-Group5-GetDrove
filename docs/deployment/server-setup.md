@@ -22,7 +22,7 @@ This guide records how the production server for GetDrove was set up, so anyone 
 | Server user | `andrew` |
 | App folder | `/opt/getdrove` |
 | Software | Docker Engine, Docker Compose plugin |
-| Domain / HTTPS | Not set up yet (see [Next steps](#next-steps)) |
+| Domain / HTTPS | `getdrove.duckdns.org` (DuckDNS), HTTPS with a Let's Encrypt certificate ([section 9](#9-domain-and-https)) |
 | Owner | Andrew (GitHub Manager) |
 
 **Cost:** about US$58/month for the VM and disk, plus a few dollars for the static IP and snapshots, paid from the trial credit (about US$300 / CA$425 for 90 days, from 2026-10-10 until early January 2027). Remaining credit is shown under **Billing → Overview**. When the trial ends, Google does not start charging unless the account is manually upgraded.
@@ -143,6 +143,23 @@ Add these repository secrets in **GitHub → Settings → Secrets and variables 
 | `DEPLOY_USER` | `andrew` |
 | `DEPLOY_SSH_KEY` | The full **private** key `~/.ssh/getdrove_deploy`, including the `BEGIN`/`END` lines |
 
+## 9. Domain and HTTPS
+
+The live site is **https://getdrove.duckdns.org** (#110).
+
+**The domain.** [DuckDNS](https://www.duckdns.org) gives free subdomains. It's managed from the team's `getdrove.noreply@gmail.com` account:
+
+1. Sign in at duckdns.org with that account, add the subdomain `getdrove`.
+2. Set its **current ip** to the static IP, `34.130.160.109`, and click **update ip**. DuckDNS fills in the IP of the computer you're using, so change it.
+3. Leave **ipv6** empty: the VM has no IPv6 address, and a wrong one sends visitors and Let's Encrypt to the wrong place.
+4. Check from any computer: `nslookup getdrove.duckdns.org` answers `34.130.160.109`, and `nslookup -type=AAAA getdrove.duckdns.org` has no answer.
+
+The IP is static, so this is done once. DuckDNS's token (shown on its page) is only for updating a changing IP; we don't use it, and it isn't stored anywhere.
+
+**HTTPS.** Nothing to do on the server. Traefik (in `docker-compose.prod.yml`) asks Let's Encrypt for a certificate the first time the site is deployed with the domain, proves it controls the domain over port 80, and renews it automatically before it expires (certificates last 90 days). The certificate is kept in the `letsencrypt` Docker volume, so redeploys reuse it. Port 80 then only redirects to HTTPS. Both ports are open because the VM has **Allow HTTP traffic** and **Allow HTTPS traffic** ticked (section 3).
+
+**Changing the domain later** (for example to a real domain): point the new domain's A record at `34.130.160.109`, change `SITE_DOMAIN` and `SITE_URL` at the top of `.github/workflows/deploy.yml`, and release. Traefik gets a certificate for the new domain by itself.
+
 ## Deploying the application
 
 Deployment is automated by GitHub Actions: every merge to `main` (a release or hotfix) builds the images, copies the production Compose file and `.env` to `/opt/getdrove` with the deploy key, runs `docker compose pull && docker compose up -d`, and runs a smoke test. How it works, the secrets it needs and how to roll back: **[Deployment](deployment.md)**.
@@ -168,8 +185,9 @@ Deployment is automated by GitHub Actions: every merge to `main` (a release or h
 | `Permission denied (publickey)` | The key wasn't added, or its last word isn't `andrew`. Add it through **VM → Edit → SSH Keys**. Run SSH commands from your own computer, not from inside the server. |
 | `permission denied` running `docker` | Log out and back in after `usermod -aG docker andrew`. |
 | Site not reachable on port 80/443 | Check **Allow HTTP/HTTPS traffic** is ticked on the VM (**Edit → Networking**). |
+| The browser warns the certificate is invalid, or it's a "TRAEFIK DEFAULT CERT" | Traefik couldn't get a Let's Encrypt certificate. `docker compose -f /opt/getdrove/docker-compose.prod.yml logs traefik` shows why. Usually the domain doesn't point at `34.130.160.109` (check with `nslookup`), port 80 is blocked, or the domain has a wrong IPv6 address. Let's Encrypt allows only 5 failed attempts per hour, so fix the cause before redeploying. |
+| `http://34.130.160.109` gives a 404 | Expected: the site only answers for its domain. Use https://getdrove.duckdns.org. |
 
 ## Next steps
 
-- **Domain and HTTPS:** Let's Encrypt can't issue certificates for a bare IP. Before demos, point a domain at the static IP (a free DuckDNS subdomain, or `34-130-160-109.sslip.io` with no signup) and let Traefik obtain the certificate.
 - **After the term:** stop or delete the VM and release the static IP so nothing is charged, unless the project continues elsewhere.

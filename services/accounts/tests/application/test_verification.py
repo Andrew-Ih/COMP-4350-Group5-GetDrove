@@ -1,9 +1,6 @@
 """The email verification use cases (#5), with in-memory fakes instead of a database."""
 
-from dataclasses import replace
-from datetime import UTC, datetime, timedelta
-from typing import Self
-from uuid import UUID
+from datetime import timedelta
 
 import pytest
 
@@ -15,91 +12,10 @@ from accounts.application.verification import (
 from accounts.domain.email import Email
 from accounts.domain.errors import InvalidVerificationTokenError, VerificationTokenExpiredError
 from accounts.domain.user import User
-from accounts.domain.verification import VerificationToken, hash_token
-from events import EventPayload
+from accounts.domain.verification import hash_token
+from accounts.testing import FIXED_NOW as NOW
+from accounts.testing import FakeClock, FakeUnitOfWork
 from events.catalog import VerificationEmailRequested
-
-NOW = datetime(2026, 10, 15, 9, 0, tzinfo=UTC)
-
-
-# ---------------------------------------------------------------- fakes
-
-
-class FakeClock:
-    def __init__(self, now: datetime = NOW) -> None:
-        self.current = now
-
-    def now(self) -> datetime:
-        return self.current
-
-
-class FakeUsers:
-    """Stores copies, like a database: changing a User does nothing until ``save``."""
-
-    def __init__(self) -> None:
-        self.rows: dict[UUID, User] = {}
-
-    async def add(self, user: User) -> None:
-        self.rows[user.id] = replace(user)
-
-    async def get(self, user_id: UUID) -> User | None:
-        user = self.rows.get(user_id)
-        return replace(user) if user else None
-
-    async def get_by_email(self, email: Email) -> User | None:
-        found = [u for u in self.rows.values() if u.email == email]
-        return replace(found[0]) if found else None
-
-    async def save(self, user: User) -> None:
-        self.rows[user.id] = replace(user)
-
-
-class FakeTokens:
-    def __init__(self) -> None:
-        self.rows: dict[UUID, VerificationToken] = {}
-
-    async def add(self, token: VerificationToken) -> None:
-        self.rows[token.id] = replace(token)
-
-    async def get_by_hash(self, token_hash: str) -> VerificationToken | None:
-        found = [t for t in self.rows.values() if t.token_hash == token_hash]
-        return replace(found[0]) if found else None
-
-    async def save(self, token: VerificationToken) -> None:
-        self.rows[token.id] = replace(token)
-
-    async def consume_active_for_user(self, user_id: UUID, now: datetime) -> None:
-        for token in self.rows.values():
-            if token.user_id == user_id and token.consumed_at is None:
-                token.consumed_at = now
-
-
-class FakeEvents:
-    def __init__(self) -> None:
-        self.published: list[EventPayload] = []
-
-    async def publish(self, event: EventPayload) -> None:
-        self.published.append(event)
-
-
-class FakeUnitOfWork:
-    def __init__(self) -> None:
-        self.users = FakeUsers()
-        self.verification_tokens = FakeTokens()
-        self.events = FakeEvents()
-        self.committed = False
-
-    async def __aenter__(self) -> Self:
-        return self
-
-    async def __aexit__(self, *exc_info: object) -> None:
-        pass
-
-    async def commit(self) -> None:
-        self.committed = True
-
-
-# ---------------------------------------------------------------- helpers
 
 
 @pytest.fixture

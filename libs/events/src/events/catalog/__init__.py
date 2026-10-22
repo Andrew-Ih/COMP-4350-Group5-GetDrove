@@ -9,8 +9,18 @@ the version; renaming or removing a field means a new version.
 """
 
 from events.catalog.accounts import UserRegistered, VerificationEmailRequested
+from events.catalog.trips import TripPosted
 from events.envelope import EventPayload
 
-ALL_EVENTS: list[type[EventPayload]] = [UserRegistered, VerificationEmailRequested]
+ALL_EVENTS: list[type[EventPayload]] = [
+    UserRegistered,
+    VerificationEmailRequested,
+    TripPosted,
+]
 
-__all__ = ["ALL_EVENTS", "UserRegistered", "VerificationEmailRequested"]
+__all__ = [
+    "ALL_EVENTS",
+    "TripPosted",
+    "UserRegistered",
+    "VerificationEmailRequested",
+]

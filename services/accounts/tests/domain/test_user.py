@@ -2,9 +2,12 @@
 
 from datetime import UTC, datetime
 
+import pytest
+
 from accounts.domain.email import Email
 from accounts.domain.errors import EmailTakenError
 from accounts.domain.user import User
+from common_web import InvalidInputError
 
 
 def new_user() -> User:
@@ -39,3 +42,17 @@ def test_admins_are_also_users() -> None:
 def test_email_taken_matches_the_contract() -> None:
     assert EmailTakenError.status == 409
     assert EmailTakenError.code == "email_taken"
+
+
+def test_names_are_trimmed() -> None:
+    user = User.register(Email.parse("ada@myumanitoba.ca"), "hash", " Ada ", "Lovelace\t")
+
+    assert (user.first_name, user.last_name) == ("Ada", "Lovelace")
+
+
+def test_blank_names_are_invalid_input_naming_each_field() -> None:
+    with pytest.raises(InvalidInputError) as caught:
+        User.register(Email.parse("ada@myumanitoba.ca"), "hash", "  ", "\t")
+
+    assert (caught.value.status, caught.value.code) == (422, "invalid_input")
+    assert [e.field for e in caught.value.errors] == ["firstName", "lastName"]
