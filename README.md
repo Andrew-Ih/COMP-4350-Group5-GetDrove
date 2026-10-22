@@ -123,3 +123,5 @@ docker compose up --build
 ```
 
 This starts PostgreSQL + PostGIS, Redis, Mailpit, the Traefik gateway, OSRM (the routing engine), all five services and the web app. The first build downloads the Winnipeg map for OSRM and takes a few minutes; later builds are cached. The web app is at http://localhost, APIs are at http://localhost/api/<service>/ (for example http://localhost/api/trips/docs), caught emails at http://localhost:8025, and the gateway dashboard at http://localhost:8080. See [infra/README.md](infra/README.md) for commands and common problems, and [Local Docker setup](docs/deployment/docker-setup.md) for how it all works.
+
+To fill it with demo riders, drivers and trips, see [Demo seed data](infra/seed/README.md).

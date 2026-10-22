@@ -1,0 +1,87 @@
+# Seeds the live site with the demo accounts and trips in infra/seed/demo.json (#111).
+#
+# Run it from the Actions tab ("Run workflow" on main) after a release is deployed. Steps:
+#   1. accounts — creates the demo riders and drivers, already verified, inside the live
+#                 Accounts container (no sign-up emails, so no bounces from fake addresses)
+#   2. trips    — logs in as each demo driver and posts their commutes for the next two
+#                 weeks through the live API, so Routing works out the real routes
+# Both skip what's already there, so running it again is safe: run it before a demo and
+# it fills the next two weeks back up without posting any trip twice.
+# Needs the DEMO_ACCOUNT_PASSWORD secret (10+ characters) in the production environment.
+# See infra/seed/README.md.
+name: Seed demo data
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Shares the deploy's lock, so seeding never runs while a deploy is restarting services.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  APP_DIR: /opt/getdrove
+  SITE_URL: https://getdrove.duckdns.org
+
+jobs:
+  seed:
+    name: Seed the live site
+    # From main only, so the seed code matches what's deployed.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: production
+      url: ${{ env.SITE_URL }}
+    env:
+      SEED_PASSWORD: ${{ secrets.DEMO_ACCOUNT_PASSWORD }}
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Check the demo password is set
+        run: |
+          if [ -z "$SEED_PASSWORD" ]; then
+            echo "::error::Add the DEMO_ACCOUNT_PASSWORD secret to the production environment."
+            exit 1
+          fi
+
+      - name: Set up SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          cat >> ~/.ssh/config <<CONFIG
+          Host server
+            HostName $DEPLOY_HOST
+            User ${{ secrets.DEPLOY_USER }}
+            IdentityFile ~/.ssh/deploy_key
+            IdentitiesOnly yes
+          CONFIG
+
+      - name: Create the demo accounts
+        # The password goes in as the first line of SSH's input and demo.json follows, so
+        # it's never on a command line (the server's process list would show it). The
+        # server reads that first line, then the rest goes to the seed command.
+        run: |
+          { printf '%s\n' "$SEED_PASSWORD"; cat infra/seed/demo.json; } |
+            ssh server "cd $APP_DIR && read -r SEED_PASSWORD && export SEED_PASSWORD &&
+              docker compose -f docker-compose.prod.yml exec -T -e SEED_PASSWORD accounts \
+                python -m accounts.infrastructure.seed"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Post the demo drivers' trips
+        # Only needs httpx, and tzdata for Winnipeg time (2026.5 is IANA 2026e, which keeps
+        # Manitoba on UTC-5), not the whole workspace.
+        run: |
+          uv run --no-project --python 3.13 --with httpx --with "tzdata>=2026.5" \
+            python infra/seed/seed_trips.py --site "$SITE_URL"
