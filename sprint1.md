@@ -41,10 +41,6 @@ Testing approach, tools and mocking are documented in **[Testing strategy](docs/
 
 **Coverage** (end of Sprint 1, all 596 backend and 178 frontend tests passing): **backend 98%**, **frontend 79% of lines**. The [coverage report](docs/testing/testing-strategy.md#coverage) breaks this down per service and area and explains what's under-tested and why: mainly the Next.js pages and the map, which need a real browser (Playwright, planned for Sprint 2). Every CI run shows both totals on its summary page and attaches the full HTML reports ([latest run on develop](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml?query=branch%3Adevelop)).
 
-<!-- TODO before submission: add docs/testing/coverage-sprint1.png (screenshot of the backend and frontend
-     coverage summary from the latest CI run) and uncomment the line below. -->
-<!-- ![Sprint 1 coverage](docs/testing/coverage-sprint1.png) -->
-
 ### Acceptance criteria evidence
 
 Each user story's acceptance criteria are covered by tests (backend paths are under `services/<service>/tests/`, frontend under `web/src/`):
@@ -100,13 +96,16 @@ Where a criterion is only partly met this sprint, it's listed under [Known issue
 
 **Test accounts:**
 
-<!-- TODO (#111): fill in from the seed data before submission. -->
-| Role | Email | Password |
-|---|---|---|
-| Rider | _from #111_ | _from #111_ |
-| Driver | _from #111_ | _from #111_ |
+Every demo account uses the password **`GetDroveDemo2026`**. They're already verified, and they only hold made-up data.
 
-You can also sign up with any `@myumanitoba.ca` address and verify it from the email.
+| Role | Email | What to try |
+|---|---|---|
+| Rider | `getdrove.demo.priya@myumanitoba.ca` | Tap the map near Corydon Ave and search to campus, arriving around 08:30 on a weekday: the demo drivers' trips show up with a walk to the pickup point and a price |
+| Rider | `getdrove.demo.owen@myumanitoba.ca` | Tap the map in Garden City, far from every route, and do the same search: the "no trips" state |
+| Driver | `getdrove.demo.tomas@myumanitoba.ca` | Drives from St. Vital every weekday (08:00 to campus, 17:00 back); post another trip to see the clash warning |
+| Driver | `getdrove.demo.maya@myumanitoba.ca` | Drives from Osborne Village Mon, Wed, Fri (07:45 to campus, 16:30 back) |
+
+All eight demo people and their weekly commutes are listed in [infra/seed/README.md](infra/seed/README.md). The drivers' trips cover the next two weeks; the "Seed demo data" workflow tops them up. You can also sign up with any `@myumanitoba.ca` address and verify it from the email.
 
 **Documentation:**
 
