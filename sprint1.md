@@ -39,7 +39,7 @@ Testing approach, tools and mocking are documented in **[Testing strategy](docs/
 - **Frontend** (Vitest, React Testing Library, MSW): form and search logic, and each screen as a user uses it, including loading, empty and error states.
 - **Calls between services** (Trips → Routing, Trips → Payments, Routing → OSRM) are tested with fake HTTP responses covering every failure mode.
 
-**Coverage** (end of Sprint 1, all 596 backend and 178 frontend tests passing): **backend 98%**, **frontend 79% of lines**. The [coverage report](docs/testing/testing-strategy.md#coverage) breaks this down per service and area and explains what's under-tested and why: mainly the Next.js pages and the map, which need a real browser (Playwright, planned for Sprint 2). Every CI run shows both totals on its summary page and attaches the full HTML reports ([latest run on develop](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml?query=branch%3Adevelop)).
+**Coverage** (end of Sprint 1, all 596 backend and 178 frontend tests passing): **backend 98%**, **frontend 79% of lines**. The [coverage report](docs/testing/testing-strategy.md#coverage) breaks this down per service and area and explains what's under-tested and why: mainly the Next.js pages and the map, which need a real browser (Playwright, planned for Sprint 2). Every CI run shows both totals on its summary page and attaches the full HTML reports ([latest run on develop](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml?query=branch%3Adevelop)). Sprint 1 coverage screenshots: [Backend coverage](docs/testing/backend-coverage-sprint1.pdf) | [Frontend coverage](docs/testing/frontend-coverage-sprint1.pdf).
 
 ### Acceptance criteria evidence
 
