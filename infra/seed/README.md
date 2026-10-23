@@ -20,7 +20,7 @@ committed. Emails are `getdrove.demo.<first name>@myumanitoba.ca`, for example
 
 | Rider         | Home                    | For showing                      |
 | ------------- | ----------------------- | -------------------------------- |
-| Priya Sharma  | Corydon Ave             | a rider near the drivers' routes |
+| Priya Sharma  | Pembina Hwy, Fort Rouge | a rider on Maya's route (Mon, Wed, Fri) |
 | Noah Bergen   | Pembina Hwy & Grant Ave | a rider near the drivers' routes |
 | Emma Tran     | St. Vital Centre        | a rider near the drivers' routes |
 | Owen Campbell | Garden City             | a rider far from every route     |
