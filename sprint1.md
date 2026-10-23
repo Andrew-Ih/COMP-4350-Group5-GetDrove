@@ -2,7 +2,7 @@
 
 > Back to [README](README.md) · Previous: [Sprint 0](sprint0.md) · Milestone: [Sprint 1](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/milestone/1) · Board: [GetDrove project](https://github.com/users/Andrew-Ih/projects/3)
 
-**Live site:** https://getdrove.duckdns.org · **Release:** `v0.1.0`, tag `sprint-1`
+**Live site:** https://getdrove.duckdns.org · **Release:** `v0.1.1`, tag `sprint-1`
 
 | | |
 |---|---|
@@ -92,7 +92,7 @@ Where a criterion is only partly met this sprint, it's listed under [Known issue
 
 ## Deployment
 
-**Live site:** **https://getdrove.duckdns.org**, on a Google Cloud VM with Docker Compose, HTTPS through Traefik and Let's Encrypt. Verification emails are sent for real through Brevo. The live site updates on every release to `main`; this submission is release `v0.1.0`.
+**Live site:** **https://getdrove.duckdns.org**, on a Google Cloud VM with Docker Compose, HTTPS through Traefik and Let's Encrypt. Verification emails are sent for real through Brevo. The live site updates on every release to `main`; this submission is release `v0.1.1` (the same app as `v0.1.0`, with fixes to this document and the demo data).
 
 **Test accounts:**
 
