@@ -2,7 +2,7 @@
 
 > Back to [README](README.md) · Previous: [Sprint 0](sprint0.md) · Milestone: [Sprint 1](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/milestone/1) · Board: [GetDrove project](https://github.com/users/Andrew-Ih/projects/3)
 
-**Live site:** https://getdrove.duckdns.org · **Release:** `v0.1.0`, tag `sprint-1`
+**Live site:** https://getdrove.duckdns.org · **Release:** `v0.1.1`, tag `sprint-1`
 
 | | |
 |---|---|
@@ -39,7 +39,7 @@ Testing approach, tools and mocking are documented in **[Testing strategy](docs/
 - **Frontend** (Vitest, React Testing Library, MSW): form and search logic, and each screen as a user uses it, including loading, empty and error states.
 - **Calls between services** (Trips → Routing, Trips → Payments, Routing → OSRM) are tested with fake HTTP responses covering every failure mode.
 
-**Coverage** (end of Sprint 1, all 596 backend and 178 frontend tests passing): **backend 98%**, **frontend 79% of lines**. The [coverage report](docs/testing/testing-strategy.md#coverage) breaks this down per service and area and explains what's under-tested and why: mainly the Next.js pages and the map, which need a real browser (Playwright, planned for Sprint 2). Every CI run shows both totals on its summary page and attaches the full HTML reports ([latest run on develop](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml?query=branch%3Adevelop)).
+**Coverage** (end of Sprint 1, all 596 backend and 178 frontend tests passing): **backend 98%**, **frontend 79% of lines**. The [coverage report](docs/testing/testing-strategy.md#coverage) breaks this down per service and area and explains what's under-tested and why: mainly the Next.js pages and the map, which need a real browser (Playwright, planned for Sprint 2). Every CI run shows both totals on its summary page and attaches the full HTML reports ([latest run on develop](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml?query=branch%3Adevelop)). Sprint 1 coverage screenshots: [Backend coverage](docs/testing/backend-coverage-sprint1.pdf) | [Frontend coverage](docs/testing/frontend-coverage-sprint1.pdf).
 
 ### Acceptance criteria evidence
 
@@ -92,7 +92,7 @@ Where a criterion is only partly met this sprint, it's listed under [Known issue
 
 ## Deployment
 
-**Live site:** **https://getdrove.duckdns.org**, on a Google Cloud VM with Docker Compose, HTTPS through Traefik and Let's Encrypt. Verification emails are sent for real through Brevo. The live site updates on every release to `main`; this submission is release `v0.1.0`.
+**Live site:** **https://getdrove.duckdns.org**, on a Google Cloud VM with Docker Compose, HTTPS through Traefik and Let's Encrypt. Verification emails are sent for real through Brevo. The live site updates on every release to `main`; this submission is release `v0.1.1` (the same app as `v0.1.0`, with fixes to this document and the demo data).
 
 **Test accounts:**
 
@@ -100,7 +100,7 @@ Every demo account uses the password **`GetDroveDemo2026`**. They're already ver
 
 | Role | Email | What to try |
 |---|---|---|
-| Rider | `getdrove.demo.priya@myumanitoba.ca` | Tap the map near Corydon Ave and search to campus, arriving around 08:30 on a weekday: the demo drivers' trips show up with a walk to the pickup point and a price |
+| Rider | `getdrove.demo.priya@myumanitoba.ca` | Tap Pembina Highway in Fort Rouge, just south of where it meets Osborne St, and search to campus on a Monday, Wednesday or Friday, arriving by 8:30 AM: Maya's 7:45 trip shows up with its route, a 1-minute walk to the pickup point and the rider's price |
 | Rider | `getdrove.demo.owen@myumanitoba.ca` | Tap the map in Garden City, far from every route, and do the same search: the "no trips" state |
 | Driver | `getdrove.demo.tomas@myumanitoba.ca` | Drives from St. Vital every weekday (08:00 to campus, 17:00 back); post another trip to see the clash warning |
 | Driver | `getdrove.demo.maya@myumanitoba.ca` | Drives from Osborne Village Mon, Wed, Fri (07:45 to campus, 16:30 back) |
@@ -122,6 +122,7 @@ Our Sprint 1 retro: **[docs/retros/sprint1.md](docs/retros/sprint1.md)**. In sho
 
 - **Proud of:** route matching. Riders only see trips they can actually walk to, measured with real walking times rather than a straight line, and pickup points never give away where the driver lives.
 - **Could have been better:** the price quote work. An unclear task split meant two people built the same endpoint, and a merge into a feature branch skipped CI, costing an extra review round.
+- **Found after the release:** choosing a location only works by tapping the map or sharing your location, which is hard for someone who doesn't know the map; typing an address is planned for Sprint 2.
 - **Testing in our workflow:** contracts and contract tests came first and unit tests were written alongside the code, but integration tests often came after, sometimes only when a review asked. Next sprint, each story's acceptance-criteria tests go in the same PR as the feature.
 
 ## Known issues
@@ -139,5 +140,7 @@ Our Sprint 1 retro: **[docs/retros/sprint1.md](docs/retros/sprint1.md)**. In sho
 - No end-to-end browser tests yet (Playwright, Sprint 2), so the pages and the map are only covered by component tests and manual testing.
 
 **Limitations:**
+
+- **Choosing a location.** Riders and drivers pick their area by tapping the map or using their location; there's no way to type an address yet. That's harder for someone who doesn't know the map well or doesn't share their location. Typing an address needs a geocoding service to turn it into a point and check it's in Winnipeg, so it's planned as a Sprint 2 story rather than rushed into Sprint 1.
 
 - **Free domain and email sender.** The site is on a free DuckDNS subdomain, so it depends on DuckDNS staying up. Verification emails are sent through Brevo from a Gmail address; because we can't prove that address to email providers the way we could with our own domain, the emails sometimes land in **junk/spam**. A domain of our own would fix both: Brevo could then send from it with a verified sender.

@@ -14,6 +14,8 @@
 
 A smaller one in the same spirit: the Trips and Routing database tests first needed a Postgres started by hand, unlike the other services, so anyone running the full suite got dozens of failures. That's fixed ([#245](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/245)): every service's tests now start their own database.
 
+**Choosing a location only on the map.** After the release, testing the live site showed that riders and drivers can only pick their area by tapping the map or sharing their location. Someone who doesn't know the map well, or who blocks location access, has no easy way to say where they are, and even we had to hunt for a street to test a search. We should have asked "how does someone who isn't us find their spot?" when designing the rider home and Post a trip screens. Letting people type an address needs a geocoding service to turn it into a point and check it's in Winnipeg, so rather than rush it in before the demo, it's a Sprint 2 story.
+
 ## How testing fit into our workflow
 
 - **Contracts first.** The sprint started with the API contracts (#108) and endpoints that returned 501, so contract tests (routes exist, validate input, document every error) came before any implementation, and the frontend was built and tested against mock APIs typed from the same contracts.
@@ -32,3 +34,4 @@ A smaller one in the same spirit: the Trips and Routing database tests first nee
 1. Every task gets a "done when" before it's assigned, and overlapping tasks are merged or clarified on the board.
 2. Acceptance-criteria tests go in the same PR as the feature.
 3. Check the PR base and title format when opening a PR, and run `scripts/check.sh` first.
+4. Try each new screen as a first-time user on the live site before calling the story done, not only with the data we already know.
