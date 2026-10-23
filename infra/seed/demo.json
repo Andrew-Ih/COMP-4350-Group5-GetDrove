@@ -46,7 +46,7 @@
       "email": "getdrove.demo.priya@myumanitoba.ca",
       "firstName": "Priya",
       "lastName": "Sharma",
-      "home": { "label": "Corydon Ave", "lat": 49.8722, "lng": -97.1561 }
+      "home": { "label": "Pembina Hwy, Fort Rouge", "lat": 49.87, "lng": -97.146 }
     },
     {
       "email": "getdrove.demo.noah@myumanitoba.ca",
