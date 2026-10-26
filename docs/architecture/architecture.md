@@ -70,9 +70,11 @@ flowchart TB
     payments --> stripe
     notify --> brevo
 
-    classDef built fill:#e6f4ea,stroke:#2e8b57,stroke-width:2px
-    classDef partial fill:#fff4e0,stroke:#d9822b,stroke-width:2px
-    classDef later fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray:4 3,color:#555
+    %% Each style sets its own text colour: without it, GitHub's dark theme draws light
+    %% text on these light fills, and the labels are barely visible.
+    classDef built fill:#e6f4ea,stroke:#2e8b57,stroke-width:2px,color:#1a1a1a
+    classDef partial fill:#fff4e0,stroke:#d9822b,stroke-width:2px,color:#1a1a1a
+    classDef later fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray:4 3,color:#444
     class web,traefik,next,accounts,notify,accountsDb,tripsDb,routingDb,payDb,notifyDb,redis,osrm,brevo,tiles built
     class trips,routing,payments partial
     class stripe later
