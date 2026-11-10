@@ -1,0 +1,40 @@
+{
+  "description": "A rider asked for a seat and the request is waiting for the driver (#137).\n\nNot published for a request that was auto-accepted straight away: that one publishes\n``RequestAccepted`` instead. Consumers: Notifications (tells the driver).",
+  "properties": {
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "riderId": {
+      "format": "uuid",
+      "title": "Riderid",
+      "type": "string"
+    },
+    "driverId": {
+      "format": "uuid",
+      "title": "Driverid",
+      "type": "string"
+    },
+    "departureAt": {
+      "format": "date-time",
+      "title": "Departureat",
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestId",
+    "tripId",
+    "riderId",
+    "driverId",
+    "departureAt"
+  ],
+  "title": "SeatRequested",
+  "type": "object",
+  "x-event-version": 1
+}
