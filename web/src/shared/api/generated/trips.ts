@@ -112,7 +112,7 @@ export interface paths {
         get: operations["get_auto_accept_auto_accept_get"];
         /**
          * Set my auto-accept rules
-         * @description A request is accepted automatically when auto-accept is on, its pickup adds at most `maxDetourMinutes`, the rider is rated at least `minRating` (riders with no ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply to new requests only.
+         * @description A request is accepted automatically when auto-accept is on, its pickup adds at most `maxDetourMinutes` (`detourSeconds <= maxDetourMinutes * 60`), the rider is rated at least `minRating` (riders with no ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply to new requests only.
          */
         put: operations["put_auto_accept_auto_accept_put"];
         post?: never;
@@ -319,7 +319,7 @@ export interface components {
             enabled: boolean;
             /**
              * Maxdetourminutes
-             * @description Accept only if the pickup adds at most this much.
+             * @description Accept only if the pickup adds at most this much: a request's `detourSeconds` must be at most `maxDetourMinutes * 60`.
              * @example 5
              */
             maxDetourMinutes: number;
@@ -803,6 +803,8 @@ export interface components {
         TripDetail: {
             /** @description The driver's own end is null unless you're the driver. */
             trip: components["schemas"]["Trip"];
+            /** @description The driver's vehicle, with its plate, so an accepted rider can find their car. Only for the trip's driver and riders with an accepted request on it; null for everyone else (make, model and colour are on the driver's public profile). */
+            vehicle: components["schemas"]["TripVehicle"] | null;
             /**
              * Pickups
              * @description Up to 3 pickup points, best first. Empty if `lat`/`lng` weren't sent or the trip doesn't pass within walking distance of them.
@@ -834,6 +836,29 @@ export interface components {
          * @enum {string}
          */
         TripStatus: "scheduled" | "in_progress" | "completed" | "cancelled";
+        /** TripVehicle */
+        TripVehicle: {
+            /**
+             * Make
+             * @example Honda
+             */
+            make: string;
+            /**
+             * Model
+             * @example Civic
+             */
+            model: string;
+            /**
+             * Colour
+             * @example Blue
+             */
+            colour: string;
+            /**
+             * Plate
+             * @example ABC123
+             */
+            plate: string;
+        };
     };
     responses: never;
     parameters: never;

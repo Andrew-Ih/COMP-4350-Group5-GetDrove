@@ -7,7 +7,7 @@ Paths are relative to the gateway prefix /api/accounts; /internal/... is only re
 inside Docker (http://accounts:8000/internal/...).
 """
 
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
@@ -16,7 +16,6 @@ from accounts.adapters.api.schemas import (
     AdminDriver,
     DocumentKind,
     DriverProfile,
-    DriverStatus,
     InternalContacts,
     InternalUsers,
     Problem,
@@ -128,11 +127,13 @@ async def save_vehicle(body: Vehicle, user: AuthenticatedUser) -> DriverProfile:
 @admin_router.get(
     "",
     summary="Driver applications",
-    description="Applications with the given status, oldest first (default: pending).",
+    description="Applications with the given status, oldest first (default: pending). "
+    "Students who never applied aren't applications, so `none` isn't accepted.",
     responses={**NOT_ADMIN, **INVALID},
 )
 async def list_drivers(
-    admin: Admin, status: Annotated[DriverStatus, Query()] = DriverStatus.PENDING
+    admin: Admin,
+    status: Annotated[Literal["pending", "approved", "rejected"], Query()] = "pending",
 ) -> list[AdminDriver]:
     _not_implemented()
 
@@ -158,9 +159,16 @@ DECISION_ERRORS: Responses = {
 @admin_router.post(
     "/{user_id}/approve",
     summary="Approve a driver",
-    description="They can post trips straight away, without logging in again. Publishes "
-    "`DriverApproved`.",
-    responses=DECISION_ERRORS,
+    description="They can post trips straight away, without logging in again. Only an "
+    "application with both documents and a saved vehicle can be approved, since riders need "
+    "the vehicle to find their driver. Publishes `DriverApproved`.",
+    responses={
+        **DECISION_ERRORS,
+        409: _problem(
+            "The application isn't pending, or the driver hasn't saved a vehicle yet",
+            "driver_not_pending / vehicle_missing",
+        ),
+    },
 )
 async def approve_driver(user_id: UUID, admin: Admin) -> AdminDriver:
     _not_implemented()

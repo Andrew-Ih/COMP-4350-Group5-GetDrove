@@ -188,7 +188,7 @@ class PublicProfile(ApiModel):
 
 
 class InternalUser(ApiModel):
-    """For Trips: names, ratings and no-shows. No email."""
+    """For Trips: names, ratings, no-shows and drivers' vehicles. No email."""
 
     id: UUID
     first_name: str
@@ -196,6 +196,10 @@ class InternalUser(ApiModel):
     rating_count: int = Field(ge=0)
     trip_count: int = Field(ge=0)
     no_show_count: int = Field(ge=0)
+    vehicle: Vehicle | None = Field(
+        description="Approved drivers only, with the plate: Trips shows it to the riders "
+        "accepted on their trips."
+    )
 
 
 class InternalUsers(ApiModel):

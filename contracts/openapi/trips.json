@@ -513,7 +513,7 @@
           "trips"
         ],
         "summary": "Set my auto-accept rules",
-        "description": "A request is accepted automatically when auto-accept is on, its pickup adds at most `maxDetourMinutes`, the rider is rated at least `minRating` (riders with no ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply to new requests only.",
+        "description": "A request is accepted automatically when auto-accept is on, its pickup adds at most `maxDetourMinutes` (`detourSeconds <= maxDetourMinutes * 60`), the rider is rated at least `minRating` (riders with no ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply to new requests only.",
         "operationId": "put_auto_accept_auto_accept_put",
         "requestBody": {
           "content": {
@@ -2004,7 +2004,7 @@
             "maximum": 30.0,
             "minimum": 0.0,
             "title": "Maxdetourminutes",
-            "description": "Accept only if the pickup adds at most this much.",
+            "description": "Accept only if the pickup adds at most this much: a request's `detourSeconds` must be at most `maxDetourMinutes * 60`.",
             "examples": [
               5
             ]
@@ -2943,6 +2943,17 @@
             "$ref": "#/components/schemas/Trip",
             "description": "The driver's own end is null unless you're the driver."
           },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TripVehicle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The driver's vehicle, with its plate, so an accepted rider can find their car. Only for the trip's driver and riders with an accepted request on it; null for everyone else (make, model and colour are on the driver's public profile)."
+          },
           "pickups": {
             "items": {
               "$ref": "#/components/schemas/PickupOption"
@@ -2967,6 +2978,7 @@
         "type": "object",
         "required": [
           "trip",
+          "vehicle",
           "pickups",
           "myRequest"
         ],
@@ -3014,6 +3026,46 @@
           "cancelled"
         ],
         "title": "TripStatus"
+      },
+      "TripVehicle": {
+        "properties": {
+          "make": {
+            "type": "string",
+            "title": "Make",
+            "examples": [
+              "Honda"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "examples": [
+              "Civic"
+            ]
+          },
+          "colour": {
+            "type": "string",
+            "title": "Colour",
+            "examples": [
+              "Blue"
+            ]
+          },
+          "plate": {
+            "type": "string",
+            "title": "Plate",
+            "examples": [
+              "ABC123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "make",
+          "model",
+          "colour",
+          "plate"
+        ],
+        "title": "TripVehicle"
       }
     },
     "securitySchemes": {

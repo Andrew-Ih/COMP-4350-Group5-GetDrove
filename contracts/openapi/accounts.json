@@ -883,7 +883,7 @@
           "admin"
         ],
         "summary": "Driver applications",
-        "description": "Applications with the given status, oldest first (default: pending).",
+        "description": "Applications with the given status, oldest first (default: pending). Students who never applied aren't applications, so `none` isn't accepted.",
         "operationId": "list_drivers_admin_drivers_get",
         "security": [
           {
@@ -896,8 +896,14 @@
             "in": "query",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/DriverStatus",
-              "default": "pending"
+              "enum": [
+                "pending",
+                "approved",
+                "rejected"
+              ],
+              "type": "string",
+              "default": "pending",
+              "title": "Status"
             }
           }
         ],
@@ -1114,7 +1120,7 @@
           "admin"
         ],
         "summary": "Approve a driver",
-        "description": "They can post trips straight away, without logging in again. Publishes `DriverApproved`.",
+        "description": "They can post trips straight away, without logging in again. Only an application with both documents and a saved vehicle can be approved, since riders need the vehicle to find their driver. Publishes `DriverApproved`.",
         "operationId": "approve_driver_admin_drivers__user_id__approve_post",
         "security": [
           {
@@ -1227,7 +1233,7 @@
             }
           },
           "409": {
-            "description": "The application isn't pending (code `driver_not_pending`)",
+            "description": "The application isn't pending, or the driver hasn't saved a vehicle yet (code `driver_not_pending / vehicle_missing`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1237,7 +1243,7 @@
                   "type": "about:blank",
                   "title": "Conflict",
                   "status": 409,
-                  "detail": "The application isn't pending",
+                  "detail": "The application isn't pending, or the driver hasn't saved a vehicle yet",
                   "instance": "/admin/drivers/{user_id}/approve",
                   "code": "driver_not_pending",
                   "requestId": "b1e2c3d4e5f6"
@@ -1957,6 +1963,17 @@
             "type": "integer",
             "minimum": 0.0,
             "title": "Noshowcount"
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Vehicle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Approved drivers only, with the plate: Trips shows it to the riders accepted on their trips."
           }
         },
         "type": "object",
@@ -1966,10 +1983,11 @@
           "rating",
           "ratingCount",
           "tripCount",
-          "noShowCount"
+          "noShowCount",
+          "vehicle"
         ],
         "title": "InternalUser",
-        "description": "For Trips: names, ratings and no-shows. No email."
+        "description": "For Trips: names, ratings, no-shows and drivers' vehicles. No email."
       },
       "InternalUsers": {
         "properties": {

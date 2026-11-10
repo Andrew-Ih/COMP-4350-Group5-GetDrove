@@ -111,7 +111,10 @@ async def create_setup_intent(user: AuthenticatedUser) -> SetupIntent:
 @cards_router.get(
     "/methods",
     summary="My saved cards",
-    description="Brand, last 4 digits and expiry only. An empty list means no card yet.",
+    description="Brand, last 4 digits and expiry only. An empty list means no card yet. "
+    "Read from Stripe, not a copy in our database, so a card is listed as soon as "
+    "`stripe.confirmCardSetup` succeeds: the frontend refetches this right after it and "
+    "shows a saving state until it returns.",
     responses=CARD_ERRORS,
 )
 async def payment_methods(user: AuthenticatedUser) -> list[PaymentMethod]:

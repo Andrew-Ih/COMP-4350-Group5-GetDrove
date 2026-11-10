@@ -189,7 +189,8 @@ async def get_auto_accept(user: AuthenticatedUser) -> AutoAcceptRules:
     "/auto-accept",
     summary="Set my auto-accept rules",
     description="A request is accepted automatically when auto-accept is on, its pickup adds "
-    "at most `maxDetourMinutes`, the rider is rated at least `minRating` (riders with no "
+    "at most `maxDetourMinutes` (`detourSeconds <= maxDetourMinutes * 60`), the rider is "
+    "rated at least `minRating` (riders with no "
     "ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply "
     "to new requests only.",
     responses={**UNAUTHORIZED, **INVALID},

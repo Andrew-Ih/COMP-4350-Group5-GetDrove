@@ -87,7 +87,7 @@ export interface paths {
         };
         /**
          * My saved cards
-         * @description Brand, last 4 digits and expiry only. An empty list means no card yet.
+         * @description Brand, last 4 digits and expiry only. An empty list means no card yet. Read from Stripe, not a copy in our database, so a card is listed as soon as `stripe.confirmCardSetup` succeeds: the frontend refetches this right after it and shows a saving state until it returns.
          */
         get: operations["payment_methods_methods_get"];
         put?: never;
@@ -162,7 +162,7 @@ export interface components {
             expYear: number;
             /**
              * Isdefault
-             * @description The card holds are placed on.
+             * @description The card holds are placed on: the most recently added one. Removing cards and choosing the default aren't part of Sprint 2.
              */
             isDefault: boolean;
         };

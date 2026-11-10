@@ -156,3 +156,23 @@ async def test_internal_lookups_take_1_to_50_ids(path: str) -> None:
     assert none.status_code == 422
     assert too_many.status_code == 422
     assert not_uuid.status_code == 422
+
+
+async def test_admin_list_has_no_none_status(auth: TestAuth) -> None:
+    async with _client(auth, roles=["user", "admin"]) as admin:
+        response = await admin.get("/admin/drivers", params={"status": "none"})
+
+    assert response.status_code == 422
+
+
+def test_approving_documents_a_missing_vehicle() -> None:
+    approve = create_app().openapi()["paths"]["/admin/drivers/{user_id}/approve"]["post"]
+
+    assert "vehicle_missing" in approve["responses"]["409"]["description"]
+
+
+def test_internal_users_include_the_drivers_vehicle() -> None:
+    schemas = create_app().openapi()["components"]["schemas"]
+
+    assert "vehicle" in schemas["InternalUser"]["properties"]
+    assert "email" not in schemas["InternalUser"]["properties"]

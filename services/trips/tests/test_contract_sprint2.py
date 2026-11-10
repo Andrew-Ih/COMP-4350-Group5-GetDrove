@@ -159,3 +159,10 @@ async def test_fixed_paths_are_not_read_as_a_trip_id(client: AsyncClient) -> Non
     for path in ["/auto-accept", "/requests/mine"]:
         response = await client.get(path)
         assert response.status_code == 501, path
+
+
+def test_trip_detail_has_the_vehicle_for_accepted_riders() -> None:
+    schemas = create_app().openapi()["components"]["schemas"]
+
+    assert "vehicle" in schemas["TripDetail"]["properties"]
+    assert "plate" in schemas["TripVehicle"]["properties"]

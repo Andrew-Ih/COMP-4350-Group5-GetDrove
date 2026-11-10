@@ -311,8 +311,20 @@ class DriverRequestView(ApiModel):
 # ---------------------------------------------------------------- trip detail and my trips
 
 
+class TripVehicle(ApiModel):
+    make: str = Field(examples=["Honda"])
+    model: str = Field(examples=["Civic"])
+    colour: str = Field(examples=["Blue"])
+    plate: str = Field(examples=["ABC123"])
+
+
 class TripDetail(ApiModel):
     trip: Trip = Field(description="The driver's own end is null unless you're the driver.")
+    vehicle: TripVehicle | None = Field(
+        description="The driver's vehicle, with its plate, so an accepted rider can find their "
+        "car. Only for the trip's driver and riders with an accepted request on it; null for "
+        "everyone else (make, model and colour are on the driver's public profile)."
+    )
     pickups: list[PickupOption] = Field(
         max_length=3,
         description="Up to 3 pickup points, best first. Empty if `lat`/`lng` weren't sent or "
@@ -334,7 +346,11 @@ class RiderTrip(ApiModel):
 class AutoAcceptRules(ApiModel):
     enabled: bool = Field(description="Applies to new requests only.")
     max_detour_minutes: int = Field(
-        ge=0, le=30, description="Accept only if the pickup adds at most this much.", examples=[5]
+        ge=0,
+        le=30,
+        description="Accept only if the pickup adds at most this much: a request's "
+        "`detourSeconds` must be at most `maxDetourMinutes * 60`.",
+        examples=[5],
     )
     min_rating: float | None = Field(
         ge=1,

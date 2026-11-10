@@ -48,7 +48,10 @@ class PaymentMethod(ApiModel):
     last4: str = Field(min_length=4, max_length=4, examples=["4242"])
     exp_month: int = Field(ge=1, le=12, examples=[12])
     exp_year: int = Field(examples=[2030])
-    is_default: bool = Field(description="The card holds are placed on.")
+    is_default: bool = Field(
+        description="The card holds are placed on: the most recently added one. Removing cards "
+        "and choosing the default aren't part of Sprint 2."
+    )
 
 
 class CardStatus(ApiModel):

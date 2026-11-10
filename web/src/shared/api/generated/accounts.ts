@@ -261,7 +261,7 @@ export interface paths {
         };
         /**
          * Driver applications
-         * @description Applications with the given status, oldest first (default: pending).
+         * @description Applications with the given status, oldest first (default: pending). Students who never applied aren't applications, so `none` isn't accepted.
          */
         get: operations["list_drivers_admin_drivers_get"];
         put?: never;
@@ -300,7 +300,7 @@ export interface paths {
         put?: never;
         /**
          * Approve a driver
-         * @description They can post trips straight away, without logging in again. Publishes `DriverApproved`.
+         * @description They can post trips straight away, without logging in again. Only an application with both documents and a saved vehicle can be approved, since riders need the vehicle to find their driver. Publishes `DriverApproved`.
          */
         post: operations["approve_driver_admin_drivers__user_id__approve_post"];
         delete?: never;
@@ -517,7 +517,7 @@ export interface components {
         };
         /**
          * InternalUser
-         * @description For Trips: names, ratings and no-shows. No email.
+         * @description For Trips: names, ratings, no-shows and drivers' vehicles. No email.
          */
         InternalUser: {
             /**
@@ -535,6 +535,8 @@ export interface components {
             tripCount: number;
             /** Noshowcount */
             noShowCount: number;
+            /** @description Approved drivers only, with the plate: Trips shows it to the riders accepted on their trips. */
+            vehicle: components["schemas"]["Vehicle"] | null;
         };
         /** InternalUsers */
         InternalUsers: {
@@ -1646,7 +1648,7 @@ export interface operations {
     list_drivers_admin_drivers_get: {
         parameters: {
             query?: {
-                status?: components["schemas"]["DriverStatus"];
+                status?: "pending" | "approved" | "rejected";
             };
             header?: never;
             path?: never;
@@ -1922,7 +1924,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The application isn't pending (code `driver_not_pending`) */
+            /** @description The application isn't pending, or the driver hasn't saved a vehicle yet (code `driver_not_pending / vehicle_missing`) */
             409: {
                 headers: {
                     [name: string]: unknown;
@@ -1933,7 +1935,7 @@ export interface operations {
                      *       "type": "about:blank",
                      *       "title": "Conflict",
                      *       "status": 409,
-                     *       "detail": "The application isn't pending",
+                     *       "detail": "The application isn't pending, or the driver hasn't saved a vehicle yet",
                      *       "instance": "/admin/drivers/{user_id}/approve",
                      *       "code": "driver_not_pending",
                      *       "requestId": "b1e2c3d4e5f6"
