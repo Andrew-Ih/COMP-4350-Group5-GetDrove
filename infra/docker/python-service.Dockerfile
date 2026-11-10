@@ -2,10 +2,11 @@
 #   docker build -f infra/docker/python-service.Dockerfile --build-arg SERVICE=trips .
 # (Docker Compose passes SERVICE for each service; run builds from the repo root.)
 
-ARG PYTHON_IMAGE=python:3.13-slim
+# The base image is written out in both FROM lines (not an ARG) so Dependabot can see it
+# and open a PR when there's an update (#179). Change both lines together.
 
 # ---------------------------------------------------------------- build stage
-FROM ${PYTHON_IMAGE} AS build
+FROM python:3.13-slim AS build
 ARG SERVICE
 COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /bin/uv
 
@@ -38,7 +39,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package "${SERVICE}" --no-editable
 
 # ---------------------------------------------------------------- runtime stage
-FROM ${PYTHON_IMAGE} AS runtime
+FROM python:3.13-slim AS runtime
 ARG SERVICE
 ENV SERVICE=${SERVICE} \
     PATH=/app/.venv/bin:$PATH \

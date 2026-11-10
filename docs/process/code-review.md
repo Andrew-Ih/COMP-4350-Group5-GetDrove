@@ -47,6 +47,7 @@ In line with our [working agreement](working-agreement.md), pull requests are re
 **Dependabot** opens pull requests into `develop` every Monday when a dependency has an update (configured in `.github/dependabot.yml`): one grouped PR per ecosystem for minor and patch updates (Python, npm, GitHub Actions), and a separate PR for each major update or Docker base image. Security fixes arrive straight away.
 
 - The GitHub manager triages them each week. A green CI run on a minor or patch PR is enough to merge it.
+- **Security update PRs open against `main`**, because GitHub sends them to the default branch whatever `.github/dependabot.yml` says. Never merge one into `main`: change its base to `develop` first (Edit, next to the PR title), or close it and let the weekly update bring the fix into `develop`. It reaches `main` with the next release, like every other change.
 - A **major** update can break things: read its changelog, and ask the owner of the affected service to review it.
 - Don't let them pile up: close a PR with a comment if we're deliberately staying on a version.
 

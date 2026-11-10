@@ -34,7 +34,10 @@ updates:
       npm-minor-and-patch:
         update-types: [minor, patch]
 
-  # Base images in the Dockerfiles
+  # Base images in the Dockerfiles. Dependabot only sees images written out in FROM lines,
+  # not ones set through an ARG, so the Python and Node images are written out. OSRM's
+  # version stays an ARG on purpose: a new OSRM can change the map format, so it's
+  # upgraded by hand (infra/osrm/README.md); only its Debian map stage is updated here.
   - package-ecosystem: docker
     directories:
       - /infra/docker
