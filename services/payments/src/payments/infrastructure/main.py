@@ -21,6 +21,7 @@ def create_app() -> FastAPI:
     install_security(app)
     app.include_router(health.router)
     app.include_router(payments_router.internal_router)
+    app.include_router(payments_router.cards_router)
 
     def provide_pricing_config() -> PricingConfig:
         settings = get_settings()
