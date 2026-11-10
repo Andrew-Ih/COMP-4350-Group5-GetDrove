@@ -49,3 +49,24 @@ You can also browse each service's contract in Swagger UI: `http://localhost/api
 | `VerificationEmailRequested` event (`libs/events/src/events/catalog/`) | Accounts | Notifications | Written |
 | Compute route, find matches, route geometry | Routing | Trips, frontend (geometry) | Written |
 | Price quote (internal) | Payments | Trips | Written |
+
+## Sprint 2 contracts (#262)
+
+Endpoints return 501 until the task in brackets implements them.
+
+| Contract | Service | Consumers | Status |
+|---|---|---|---|
+| Recurring trips (#17), cancel a trip or series (#132, #18), trip detail with pickup points and price (#140), seat requests: request, accept, decline, cancel, one request, the driver's list (#137–#139), rider's trips `GET /requests/mine` (#130), past trips `?when=past`, auto-accept rules (#42) | Trips | Frontend | Written |
+| Driver status, documents and vehicle (#9, #10, #125), admin approval (#127), public profile (#143) | Accounts | Frontend | Written |
+| Internal user lookups: `/internal/users` (no email) and `/internal/contacts` (email) (#143, #146) | Accounts | Trips, Notifications | Written |
+| Pickup points (#29, #30), detours (#36, #38), `driverId` and `direction` on `/internal/routes` (#135) | Routing | Trips | Written |
+| Card setup and saved cards (#151), internal "has a card" check | Payments | Frontend, Trips | Written |
+| Notifications list, mark read, mark all read (#145) | Notifications | Frontend | Written |
+| `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
+| `DriverApproved`, `DriverRejected` | Accounts | Trips, Notifications | Written |
+| `PaymentHeld`, `PaymentFailed`, `PaymentReleased` | Payments | Trips, Notifications | Written |
+
+Changes to Sprint 1 contracts: `Trip` gains `seriesId`; `GET /api/trips/{tripId}` returns a
+`TripDetail` instead of a `Trip`; `GET /api/trips/mine` only takes `role=driver` (a rider's
+trips are `GET /api/trips/requests/mine`) and gains `when`; `POST /api/trips` can return
+`403 driver_not_approved`; route geometry hides the driver's end from everyone but the driver.
