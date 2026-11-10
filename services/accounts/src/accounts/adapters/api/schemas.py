@@ -1,12 +1,13 @@
-"""Request and response models for the Accounts API (Sprint 1 contract, issue #108).
+"""Request and response models for the Accounts API (contracts: #108, #262).
 
 JSON fields are camelCase. Passwords and tokens are never returned or logged.
 """
 
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 
 
@@ -92,6 +93,125 @@ class User(ApiModel):
         "drivers (Sprint 2).",
         examples=[["user"]],
     )
+
+
+# ---------------------------------------------------------------- drivers (#8)
+
+
+class DriverStatus(StrEnum):
+    NONE = "none"  # never applied
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class DocumentKind(StrEnum):
+    LICENCE = "licence"
+    INSURANCE = "insurance"
+
+
+class Vehicle(ApiModel):
+    make: str = Field(min_length=1, max_length=30, examples=["Honda"])
+    model: str = Field(min_length=1, max_length=30, examples=["Civic"])
+    colour: str = Field(min_length=1, max_length=30, examples=["Blue"])
+    plate: str = Field(
+        pattern=r"^[A-Za-z0-9]{2,8}$",
+        description="2 to 8 letters and digits, no spaces. Stored and returned in uppercase. "
+        "Only shown to the driver, admins, and riders accepted on their trips.",
+        examples=["ABC123"],
+    )
+
+
+class DocumentsUploaded(ApiModel):
+    licence: bool
+    insurance: bool
+
+
+class DriverProfile(ApiModel):
+    """The logged-in user's own driver status."""
+
+    status: DriverStatus
+    rejection_reason: str | None = Field(description="Set when `status` is `rejected`.")
+    documents: DocumentsUploaded
+    vehicle: Vehicle | None
+    submitted_at: AwareDatetime | None = Field(description="When documents were last uploaded.")
+    reviewed_at: AwareDatetime | None = Field(description="When an admin last decided.")
+
+
+class AdminDriver(ApiModel):
+    """A driver application, as an admin sees it."""
+
+    user_id: UUID
+    first_name: str = Field(examples=["Ada"])
+    last_name: str = Field(examples=["Lovelace"])
+    email: str = Field(examples=["ada.lovelace@myumanitoba.ca"])
+    status: DriverStatus
+    vehicle: Vehicle | None
+    documents: DocumentsUploaded
+    submitted_at: AwareDatetime | None
+    reviewed_at: AwareDatetime | None
+    rejection_reason: str | None
+
+
+class RejectDriverRequest(ApiModel):
+    reason: str = Field(
+        min_length=1,
+        max_length=500,
+        description="Shown to the driver, so they know what to fix.",
+        examples=["The insurance document has expired."],
+    )
+
+
+# ---------------------------------------------------------------- profiles (#143)
+
+
+class PublicVehicle(ApiModel):
+    """A vehicle without its plate."""
+
+    make: str = Field(examples=["Honda"])
+    model: str = Field(examples=["Civic"])
+    colour: str = Field(examples=["Blue"])
+
+
+class PublicProfile(ApiModel):
+    """What any logged-in student can see about another."""
+
+    id: UUID
+    first_name: str = Field(examples=["Ada"])
+    rating: float | None = Field(
+        ge=1, le=5, description="Average rating; null if they have no ratings yet."
+    )
+    rating_count: int = Field(ge=0)
+    trip_count: int = Field(ge=0, description="Completed trips, as a driver or rider.")
+    is_driver: bool = Field(description="An approved driver.")
+    vehicle: PublicVehicle | None = Field(description="Approved drivers only.")
+
+
+class InternalUser(ApiModel):
+    """For Trips: names, ratings and no-shows. No email."""
+
+    id: UUID
+    first_name: str
+    rating: float | None = Field(ge=1, le=5)
+    rating_count: int = Field(ge=0)
+    trip_count: int = Field(ge=0)
+    no_show_count: int = Field(ge=0)
+
+
+class InternalUsers(ApiModel):
+    users: list[InternalUser] = Field(description="Unknown IDs are left out.")
+
+
+class InternalContact(ApiModel):
+    """For Notifications only: where to send emails."""
+
+    id: UUID
+    first_name: str
+    email: str
+
+
+class InternalContacts(ApiModel):
+    contacts: list[InternalContact] = Field(description="Unknown IDs are left out.")
 
 
 # ---------------------------------------------------------------- JWKS
