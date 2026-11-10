@@ -1,17 +1,19 @@
-"""Routing API (Sprint 1 contract, issue #108).
+"""Routing API (contracts: Sprint 1 #108, Sprint 2 #262).
 
 - Internal endpoints (/internal/...) are called by Trips inside Docker, e.g.
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
 Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches) and
-#123 (the geometry endpoint).
+#123 (the geometry endpoint). Sprint 2 adds pickup points (#29, #30) and detours (#36, #38),
+which return 501 until implemented, and hides the driver's end of the route from riders
+(#135).
 """
 
-from typing import Any
+from typing import Any, NoReturn
 from uuid import UUID
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from common_security.dependencies import AuthenticatedUser
 from routing.adapters.api.dependencies import (
@@ -20,11 +22,15 @@ from routing.adapters.api.dependencies import (
     MatchRiderService,
 )
 from routing.adapters.api.schemas import (
+    DetourRequest,
+    DetourResponse,
     LineString,
     Match,
     MatchRequest,
     MatchResponse,
     Pickup,
+    PickupPointsRequest,
+    PickupPointsResponse,
     Problem,
     RouteFeature,
     RouteProperties,
@@ -44,6 +50,7 @@ def _problem(description: str, code: str) -> dict[str, Any]:
 
 
 INVALID: Responses = {422: _problem("Invalid input; `errors` lists the fields", "invalid_input")}
+ROUTE_NOT_FOUND: Responses = {404: _problem("No route stored for this trip", "route_not_found")}
 ENGINE_DOWN: Responses = {
     503: _problem(
         "The routing engine (OSRM) is unavailable or too slow", "routing_engine_unavailable"
@@ -101,12 +108,42 @@ async def match_trips(body: MatchRequest, service: MatchRiderService) -> MatchRe
     )
 
 
+def _not_implemented() -> NoReturn:
+    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#262).")
+
+
+@internal_router.post(
+    "/pickup-points",
+    summary="Pickup points for a rider on a trip",
+    description="Called by Trips for the trip detail and when a seat is requested. Returns "
+    "up to `limit` points on the trip's route, shortest walk first, each on a road a car can "
+    "stop on and away from both ends of the route.",
+    responses={**INVALID, **ROUTE_NOT_FOUND, **ENGINE_DOWN},
+)
+async def pickup_points(body: PickupPointsRequest) -> PickupPointsResponse:
+    _not_implemented()
+
+
+@internal_router.post(
+    "/detours",
+    summary="Extra driving time for a new pickup",
+    description="Called by Trips when a seat is requested. Puts the new pickup at the best "
+    "place among the accepted ones (cheapest insertion) and returns the time it adds. "
+    "Target: under 1 second; when the routing engine is slow it fails fast with 503 rather "
+    "than returning a wrong number.",
+    responses={**INVALID, **ROUTE_NOT_FOUND, **ENGINE_DOWN},
+)
+async def detour(body: DetourRequest) -> DetourResponse:
+    _not_implemented()
+
+
 @public_router.get(
     "/trips/{trip_id}/geometry",
     summary="A trip's route for the map",
-    description="The route as a GeoJSON LineString. From Sprint 2, riders get the route "
-    "starting at their pickup point so the driver's start stays private; in Sprint 1 the "
-    "full route is returned.",
+    description="The route as a GeoJSON LineString. The trip's driver gets the full route. "
+    "Anyone else gets it with the driver's end cut off, by the same margin pickup points "
+    "keep from the ends, so the driver's home is never shown (#135; until then the full "
+    "route is returned).",
     responses={
         **INVALID,
         401: _problem("Missing or invalid access token", "unauthorized"),

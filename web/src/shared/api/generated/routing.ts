@@ -58,6 +58,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/internal/pickup-points": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pickup points for a rider on a trip
+         * @description Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route.
+         */
+        post: operations["pickup_points_internal_pickup_points_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/internal/detours": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Extra driving time for a new pickup
+         * @description Called by Trips when a seat is requested. Puts the new pickup at the best place among the accepted ones (cheapest insertion) and returns the time it adds. Target: under 1 second; when the routing engine is slow it fails fast with 503 rather than returning a wrong number.
+         */
+        post: operations["detour_internal_detours_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/trips/{trip_id}/geometry": {
         parameters: {
             query?: never;
@@ -67,7 +107,7 @@ export interface paths {
         };
         /**
          * A trip's route for the map
-         * @description The route as a GeoJSON LineString. From Sprint 2, riders get the route starting at their pickup point so the driver's start stays private; in Sprint 1 the full route is returned.
+         * @description The route as a GeoJSON LineString. The trip's driver gets the full route. Anyone else gets it with the driver's end cut off, by the same margin pickup points keep from the ends, so the driver's home is never shown (#135; until then the full route is returned).
          */
         get: operations["route_geometry_trips__trip_id__geometry_get"];
         put?: never;
@@ -82,6 +122,41 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** DetourRequest */
+        DetourRequest: {
+            /**
+             * Tripid
+             * Format: uuid
+             */
+            tripId: string;
+            /**
+             * Acceptedpickups
+             * @description Pickups of the riders already accepted, in pickup order.
+             */
+            acceptedPickups: components["schemas"]["Point"][];
+            newPickup: components["schemas"]["Point"];
+        };
+        /** DetourResponse */
+        DetourResponse: {
+            /**
+             * Addedseconds
+             * @description Extra driving time for the new pickup, at its best place.
+             * @example 180
+             */
+            addedSeconds: number;
+            /**
+             * Position
+             * @description Where the new pickup goes in the pickup order (0 = first).
+             * @example 1
+             */
+            position: number;
+            /**
+             * Totalseconds
+             * @description Driving time of the whole trip with the new pickup.
+             * @example 1500
+             */
+            totalSeconds: number;
+        };
         /** HealthOut */
         HealthOut: {
             /**
@@ -166,6 +241,58 @@ export interface components {
             /** Lng */
             lng: number;
         };
+        /** PickupPoint */
+        PickupPoint: {
+            /**
+             * Id
+             * @description Opaque ID of this point on the stored route. Trips sends it back when the rider requests a seat.
+             * @example s42
+             */
+            id: string;
+            /**
+             * Label
+             * @example Osborne St & River Ave
+             */
+            label: string;
+            /** Lat */
+            lat: number;
+            /** Lng */
+            lng: number;
+            /**
+             * Walkseconds
+             * @description Walking time from the rider to this point.
+             */
+            walkSeconds: number;
+            /**
+             * Riderdistancemeters
+             * @description Distance along the route from this point to the trip's end (as in `Match.riderDistanceMeters`).
+             */
+            riderDistanceMeters: number;
+        };
+        /** PickupPointsRequest */
+        PickupPointsRequest: {
+            /**
+             * Tripid
+             * Format: uuid
+             */
+            tripId: string;
+            /** @description The rider's location. Used for this answer only, never stored. */
+            rider: components["schemas"]["Point"];
+            /**
+             * Limit
+             * @description How many points to return at most.
+             * @default 3
+             */
+            limit: number;
+        };
+        /** PickupPointsResponse */
+        PickupPointsResponse: {
+            /**
+             * Pickups
+             * @description Best (shortest walk) first. Never on an excluded road and never near either end of the route. Empty if the route doesn't pass within walking distance.
+             */
+            pickups: components["schemas"]["PickupPoint"][];
+        };
         /** Point */
         Point: {
             /**
@@ -242,6 +369,16 @@ export interface components {
             tripId: string;
             origin: components["schemas"]["Point"];
             destination: components["schemas"]["Point"];
+            /**
+             * Driverid
+             * @description The trip's driver, who sees the full route on the map. Sent from Sprint 2 (#135); null for routes stored before.
+             */
+            driverId?: string | null;
+            /**
+             * Direction
+             * @description Which end is the driver's (the origin going to campus, the destination leaving it), so it can be hidden from riders. Null for routes stored before Sprint 2: both ends are then hidden from everyone.
+             */
+            direction?: ("to_campus" | "from_campus") | null;
         };
         /** RouteResponse */
         RouteResponse: {
@@ -421,6 +558,186 @@ export interface operations {
                      *       "status": 503,
                      *       "detail": "The routing engine (OSRM) is unavailable or too slow",
                      *       "instance": "/internal/matches",
+                     *       "code": "routing_engine_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    pickup_points_internal_pickup_points_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PickupPointsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PickupPointsResponse"];
+                };
+            };
+            /** @description No route stored for this trip (code `route_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Not Found",
+                     *       "status": 404,
+                     *       "detail": "No route stored for this trip",
+                     *       "instance": "/internal/pickup-points",
+                     *       "code": "route_not_found",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input; `errors` lists the fields (code `invalid_input`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/internal/pickup-points",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The routing engine (OSRM) is unavailable or too slow (code `routing_engine_unavailable`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The routing engine (OSRM) is unavailable or too slow",
+                     *       "instance": "/internal/pickup-points",
+                     *       "code": "routing_engine_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    detour_internal_detours_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DetourRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DetourResponse"];
+                };
+            };
+            /** @description No route stored for this trip (code `route_not_found`) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Not Found",
+                     *       "status": 404,
+                     *       "detail": "No route stored for this trip",
+                     *       "instance": "/internal/detours",
+                     *       "code": "route_not_found",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input; `errors` lists the fields (code `invalid_input`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/internal/detours",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The routing engine (OSRM) is unavailable or too slow (code `routing_engine_unavailable`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The routing engine (OSRM) is unavailable or too slow",
+                     *       "instance": "/internal/detours",
                      *       "code": "routing_engine_unavailable",
                      *       "requestId": "b1e2c3d4e5f6"
                      *     }
