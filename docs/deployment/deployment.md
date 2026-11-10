@@ -28,6 +28,27 @@ release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflow
 
 Database migrations run automatically: each service container applies its migrations when it starts.
 
+### Continuous delivery on develop
+
+`develop` is our main development branch, so every merged pull request goes through the **Delivery** workflow ([`.github/workflows/delivery.yml`](../../.github/workflows/delivery.yml), [runs](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/delivery.yml)):
+
+```text
+feature/task branch ──PR (CI checks)──▶ develop ──▶ Delivery workflow
+                                                     1. checks   the same checks as on pull requests (ci.yml)
+                                                     2. images   eight images → GitHub Container Registry, tagged with the commit
+                                                     3. summary  the published images, on the run's summary page
+```
+
+| | |
+|---|---|
+| **Trigger** | Every push to `develop` (a merged pull request), or by hand from the Actions tab |
+| **Automated steps** | Lint, strict type checks, architecture rules, every unit and integration test with coverage, the frontend's contract check, tests and production build; then building and publishing all eight images for `linux/amd64` |
+| **Environment updated** | None: it publishes deployable images (`ghcr.io/andrew-ih/getdrove-<name>:<commit SHA>`) but doesn't change the live site, which only changes when a release reaches `main` |
+| **Secrets** | Only GitHub's built-in `GITHUB_TOKEN`, to push to the registry. No server secrets are used |
+| **Success or failure** | A green or red run in Actions, the commit's check mark on GitHub, and the README badge. If any check fails, no images are published |
+
+The image build is shared with the Deploy workflow ([`build-images.yml`](../../.github/workflows/build-images.yml)), so what's published from `develop` is built exactly the way it will be built for a release. Pull requests into `develop` must pass CI before they can be merged (branch protection), so a red `develop` should be rare; if it happens, the author of the merge fixes or reverts it the same day.
+
 The workflow can also be run by hand: **Actions → Deploy → Run workflow** (from `main`). Use this to redeploy without a new release, or to roll back (section 5).
 
 ## 2. What runs on the server

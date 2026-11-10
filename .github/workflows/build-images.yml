@@ -1,0 +1,78 @@
+# Builds GetDrove's eight images and pushes them to GitHub Container Registry (#176).
+#
+# A reusable workflow: it doesn't run on its own. Two workflows call it:
+#   - delivery.yml, on every push to develop (continuous delivery)
+#   - deploy.yml, on every push to main, before deploying (continuous deployment)
+# Every image is built for linux/amd64 (the live server's architecture) and tagged with the
+# commit SHA it was built from: ghcr.io/andrew-ih/getdrove-<name>:<image_tag>.
+# Builds are cached per image, so an unchanged image takes seconds.
+name: Build images
+
+on:
+  workflow_call:
+    inputs:
+      image_tag:
+        description: "Tag for every image (the commit SHA)"
+        type: string
+        required: true
+      refresh_map:
+        description: "Download the latest OpenStreetMap data for OSRM instead of the cached map"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io/andrew-ih
+
+jobs:
+  build:
+    name: Build ${{ matrix.image }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { image: accounts, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=accounts }
+          - { image: trips, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=trips }
+          - { image: routing, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=routing }
+          - { image: payments, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=payments }
+          - { image: notifications, context: ., dockerfile: infra/docker/python-service.Dockerfile, build_args: SERVICE=notifications }
+          - { image: web, context: web, dockerfile: web/Dockerfile, build_args: "" }
+          # OSRM with the Winnipeg map built in (#233). The map download and graph build are
+          # cached, so they only run again when the Dockerfile changes or refresh_map is ticked.
+          - { image: osrm-car, context: infra/osrm, dockerfile: infra/osrm/Dockerfile, build_args: PROFILE=car }
+          - { image: osrm-foot, context: infra/osrm, dockerfile: infra/osrm/Dockerfile, build_args: PROFILE=foot }
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push getdrove-${{ matrix.image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          # A new MAP_REFRESH value (this run's ID) skips the cached map; other images ignore it.
+          build-args: |
+            ${{ matrix.build_args }}
+            ${{ startsWith(matrix.image, 'osrm-') && format('MAP_REFRESH={0}', inputs.refresh_map && github.run_id || 'cached') || '' }}
+          platforms: linux/amd64
+          push: true
+          tags: ${{ env.REGISTRY }}/getdrove-${{ matrix.image }}:${{ inputs.image_tag }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}

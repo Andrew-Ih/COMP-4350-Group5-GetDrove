@@ -1,6 +1,6 @@
 # GetDrove
 
-[![CI](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/ci.yml)
+[![Delivery](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/delivery.yml/badge.svg?branch=develop)](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/delivery.yml) [![Deploy](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/deploy.yml/badge.svg?branch=main)](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/deploy.yml)
 
 **GetDrove gives UofM students a seat that's actually theirs.**
 

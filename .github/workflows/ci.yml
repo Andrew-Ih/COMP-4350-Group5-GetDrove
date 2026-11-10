@@ -1,23 +1,24 @@
 # Continuous integration (issue #106).
-# Runs the backend and frontend checks on pull requests into develop or main, and on every
-# push to develop.
+# Runs the backend and frontend checks on pull requests into develop or main. After a merge,
+# the Delivery workflow (delivery.yml, #176) runs these same checks on develop before it
+# publishes images, so they aren't repeated here.
 # The same checks run locally with: bash scripts/check.sh
 name: CI
 
 on:
   pull_request:
     branches: [develop, main]
-  push:
-    branches: [develop]
+  workflow_call: # used by delivery.yml
   workflow_dispatch: # lets us run it by hand from the Actions tab
 
 # Read-only access is all CI needs.
 permissions:
   contents: read
 
-# A new push to the same branch cancels the run that's still going.
+# A new push to a pull request cancels its run that's still going. Runs for develop (from
+# delivery.yml) each get their own group, so one merge's checks never cancel another's.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
