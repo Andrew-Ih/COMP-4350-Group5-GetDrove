@@ -42,6 +42,16 @@ Comment conventions:
 
 In line with our [working agreement](working-agreement.md), pull requests are reviewed by people. AI tools may not be used to review pull requests. GitHub Copilot may be used by the author as a secondary check on their own code before requesting review.
 
+## Dependency updates and security scanning
+
+**Dependabot** opens pull requests into `develop` every Monday when a dependency has an update (configured in `.github/dependabot.yml`): one grouped PR per ecosystem for minor and patch updates (Python, npm, GitHub Actions), and a separate PR for each major update or Docker base image. Security fixes arrive straight away.
+
+- The GitHub manager triages them each week. A green CI run on a minor or patch PR is enough to merge it.
+- A **major** update can break things: read its changelog, and ask the owner of the affected service to review it.
+- Don't let them pile up: close a PR with a comment if we're deliberately staying on a version.
+
+**CodeQL** (`.github/workflows/codeql.yml`) checks the Python and TypeScript code for security problems on every pull request. In Sprint 2 it's advisory: findings show as annotations on the PR and in the **Security** tab, but don't block merging. If it flags code you changed, fix it or explain in the PR why it's a false positive. It becomes a required check in Sprint 3 (#188).
+
 ## Tone
 
 Review the code, not the person. Explain why you're suggesting a change. The author resolves each comment by fixing it or replying, and re-requests review once done.
