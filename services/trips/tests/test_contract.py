@@ -287,7 +287,8 @@ async def test_my_trips_returns_empty_list() -> None:
 
 
 @pytest.mark.asyncio
-async def test_my_trips_rider_role_not_implemented() -> None:
+async def test_my_trips_is_for_drivers_only() -> None:
+    """#262: a rider's trips moved to GET /requests/mine."""
     auth = TestAuth()
     app = create_app()
     auth.install(app)
@@ -301,4 +302,4 @@ async def test_my_trips_rider_role_not_implemented() -> None:
     ) as client:
         response = await client.get("/mine?role=rider")
 
-    assert response.status_code == 501
+    assert response.status_code == 422

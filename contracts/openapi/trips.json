@@ -74,6 +74,25 @@
               }
             }
           },
+          "403": {
+            "description": "Only approved drivers can post trips (code `driver_not_approved`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only approved drivers can post trips",
+                  "instance": "/",
+                  "code": "driver_not_approved",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
           "422": {
             "description": "Invalid input, including seats outside 1-6, an unroutable place, or a departure in the past (code `invalid_input / departure_in_past`)",
             "content": {
@@ -126,13 +145,132 @@
         ]
       }
     },
+    "/series": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Post a recurring weekday trip",
+        "description": "Creates one trip per matching weekday from the first departure up to `endDate`, all at the same Winnipeg time. Each is its own trip that riders request separately. Days that clash with the driver's other trips are skipped and listed in `skippedDates`.",
+        "operationId": "post_trip_series_series_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostTripSeriesRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TripSeriesResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/series",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only approved drivers can post trips (code `driver_not_approved`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only approved drivers can post trips",
+                  "instance": "/series",
+                  "code": "driver_not_approved",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, including a weekday listed twice, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/series",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The route couldn't be computed right now (code `routing_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "The route couldn't be computed right now",
+                  "instance": "/series",
+                  "code": "routing_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
     "/mine": {
       "get": {
         "tags": [
           "trips"
         ],
-        "summary": "My upcoming trips",
-        "description": "The logged-in user's upcoming trips, soonest first. `role=driver` lists trips they've posted. `role=rider` (trips they've requested) arrives in Sprint 2.",
+        "summary": "My trips as a driver",
+        "description": "Trips the logged-in user has posted, including cancelled ones. A rider's trips are at `GET /requests/mine`.",
         "operationId": "my_trips_mine_get",
         "security": [
           {
@@ -145,14 +283,29 @@
             "in": "query",
             "required": false,
             "schema": {
-              "enum": [
-                "driver",
-                "rider"
-              ],
+              "const": "driver",
               "type": "string",
+              "description": "Kept for older clients; always `driver`.",
               "default": "driver",
               "title": "Role"
-            }
+            },
+            "description": "Kept for older clients; always `driver`."
+          },
+          {
+            "name": "when",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "upcoming",
+                "past"
+              ],
+              "type": "string",
+              "description": "Upcoming (soonest first) or past (most recent first).",
+              "default": "upcoming",
+              "title": "When"
+            },
+            "description": "Upcoming (soonest first) or past (most recent first)."
           }
         ],
         "responses": {
@@ -215,6 +368,224 @@
             }
           }
         }
+      }
+    },
+    "/requests/mine": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "My trips as a rider",
+        "description": "Trips the logged-in user has requested a seat on, each with their request and its status (pending, accepted, declined, cancelled, expired, payment failed). Cancelled trips are included, not removed.",
+        "operationId": "my_requests_requests_mine_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "when",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "upcoming",
+                "past"
+              ],
+              "type": "string",
+              "description": "Upcoming (soonest first) or past (most recent first).",
+              "default": "upcoming",
+              "title": "When"
+            },
+            "description": "Upcoming (soonest first) or past (most recent first)."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RiderTrip"
+                  },
+                  "title": "Response My Requests Requests Mine Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/requests/mine",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/requests/mine",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auto-accept": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "My auto-accept rules",
+        "description": "The driver's rules. If they've never set any: off, 5 minutes, no minimum rating.",
+        "operationId": "get_auto_accept_auto_accept_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoAcceptRules"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/auto-accept",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      },
+      "put": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Set my auto-accept rules",
+        "description": "A request is accepted automatically when auto-accept is on, its pickup adds at most `maxDetourMinutes`, the rider is rated at least `minRating` (riders with no ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply to new requests only.",
+        "operationId": "put_auto_accept_auto_accept_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AutoAcceptRules"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutoAcceptRules"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/auto-accept",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/auto-accept",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
       }
     },
     "/search": {
@@ -359,13 +730,679 @@
         }
       }
     },
+    "/requests/{request_id}": {
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "One seat request",
+        "description": "For the rider who made it or the trip's driver, e.g. to see whether a pending request was accepted.",
+        "operationId": "get_request_requests__request_id__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/requests/{request_id}",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/requests/{request_id}",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not your request or your trip (code `forbidden`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Not your request or your trip",
+                  "instance": "/requests/{request_id}",
+                  "code": "forbidden",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No request with this ID (code `request_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No request with this ID",
+                  "instance": "/requests/{request_id}",
+                  "code": "request_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request_id}/accept": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Accept a request",
+        "description": "The trip's driver gives the rider a seat. Taking the seat is atomic: when two requests race for the last seat, exactly one wins and the other gets `seat_taken`.",
+        "operationId": "accept_request_requests__request_id__accept_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/requests/{request_id}/accept",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/requests/{request_id}/accept",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the trip's driver can accept (code `not_trip_driver`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only the trip's driver can accept",
+                  "instance": "/requests/{request_id}/accept",
+                  "code": "not_trip_driver",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No request with this ID (code `request_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No request with this ID",
+                  "instance": "/requests/{request_id}/accept",
+                  "code": "request_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "No seat left, or the request isn't pending (code `seat_taken / request_not_pending`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "No seat left, or the request isn't pending",
+                  "instance": "/requests/{request_id}/accept",
+                  "code": "seat_taken",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request_id}/decline": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Decline a request",
+        "description": "The trip's driver turns down a pending request, or removes an accepted rider before the trip starts. An accepted rider's seat is freed straight away.",
+        "operationId": "decline_request_requests__request_id__decline_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/requests/{request_id}/decline",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/requests/{request_id}/decline",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the trip's driver can decline (code `not_trip_driver`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only the trip's driver can decline",
+                  "instance": "/requests/{request_id}/decline",
+                  "code": "not_trip_driver",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No request with this ID (code `request_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No request with this ID",
+                  "instance": "/requests/{request_id}/decline",
+                  "code": "request_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only pending or accepted requests on a trip that hasn't started can be declined (code `request_not_decidable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Only pending or accepted requests on a trip that hasn't started can be declined",
+                  "instance": "/requests/{request_id}/decline",
+                  "code": "request_not_decidable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/requests/{request_id}/cancel": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Cancel my request",
+        "description": "The rider withdraws a pending or accepted request before the trip starts. An accepted seat is freed straight away and any hold on their card is released.",
+        "operationId": "cancel_request_requests__request_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "request_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Request Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/requests/{request_id}/cancel",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/requests/{request_id}/cancel",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the rider who made it can cancel it (code `not_your_request`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only the rider who made it can cancel it",
+                  "instance": "/requests/{request_id}/cancel",
+                  "code": "not_your_request",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No request with this ID (code `request_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No request with this ID",
+                  "instance": "/requests/{request_id}/cancel",
+                  "code": "request_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Only pending or accepted requests on a trip that hasn't started can be cancelled (code `request_not_cancellable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Only pending or accepted requests on a trip that hasn't started can be cancelled",
+                  "instance": "/requests/{request_id}/cancel",
+                  "code": "request_not_cancellable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/series/{series_id}/cancel": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Cancel a recurring series",
+        "description": "Cancels every trip in the series that hasn't started. Riders are notified and holds released, as for a single cancellation. Returns the trips cancelled.",
+        "operationId": "cancel_series_series__series_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "series_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Series Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Trip"
+                  },
+                  "title": "Response Cancel Series Series  Series Id  Cancel Post"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/series/{series_id}/cancel",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/series/{series_id}/cancel",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the series' driver can cancel it (code `not_trip_driver`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only the series' driver can cancel it",
+                  "instance": "/series/{series_id}/cancel",
+                  "code": "not_trip_driver",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No series with this ID (code `series_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No series with this ID",
+                  "instance": "/series/{series_id}/cancel",
+                  "code": "series_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/{trip_id}": {
       "get": {
         "tags": [
           "trips"
         ],
         "summary": "Trip detail",
-        "description": "One trip. The driver's own end of the trip is returned only to its driver. The pickup point and cost for a specific rider are added in Sprint 2.",
+        "description": "One trip, with up to 3 pickup points for the rider at `lat`/`lng` (each with its walking time and price) and the caller's own request on it, if any. The driver's own end of the trip is returned only to its driver. Send `lat` and `lng` together or not at all; they're used to find pickup points and never stored.",
         "operationId": "get_trip__trip_id__get",
         "security": [
           {
@@ -382,6 +1419,46 @@
               "format": "uuid",
               "title": "Trip Id"
             }
+          },
+          {
+            "name": "lat",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 90,
+                  "minimum": -90
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rider's latitude.",
+              "title": "Lat"
+            },
+            "description": "Rider's latitude."
+          },
+          {
+            "name": "lng",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 180,
+                  "minimum": -180
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Rider's longitude.",
+              "title": "Lng"
+            },
+            "description": "Rider's longitude."
           }
         ],
         "responses": {
@@ -390,7 +1467,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Trip"
+                  "$ref": "#/components/schemas/TripDetail"
                 }
               }
             }
@@ -415,7 +1492,7 @@
             }
           },
           "422": {
-            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "description": "Invalid input, including only one of `lat` and `lng` (code `invalid_input`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -457,6 +1534,457 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "Pickup points can't be worked out right now (code `routing_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Pickup points can't be worked out right now",
+                  "instance": "/{trip_id}",
+                  "code": "routing_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{trip_id}/cancel": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Cancel a trip",
+        "description": "The driver cancels a trip that hasn't started. It disappears from search but stays in My trips as cancelled; riders are notified and holds released. Cancelling less than an hour before departure is recorded as a late cancellation.",
+        "operationId": "cancel_trip__trip_id__cancel_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trip"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/{trip_id}/cancel",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/{trip_id}/cancel",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the trip's driver can cancel it (code `not_trip_driver`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only the trip's driver can cancel it",
+                  "instance": "/{trip_id}/cancel",
+                  "code": "not_trip_driver",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No trip with this ID (code `trip_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No trip with this ID",
+                  "instance": "/{trip_id}/cancel",
+                  "code": "trip_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The trip has already started, finished or been cancelled (code `trip_not_cancellable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "The trip has already started, finished or been cancelled",
+                  "instance": "/{trip_id}/cancel",
+                  "code": "trip_not_cancellable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/{trip_id}/requests": {
+      "post": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Request a seat",
+        "description": "The rider asks for a seat, picked up at one of the trip detail's pickup points. The price is saved with the request and is what gets charged. The request is `pending` until the driver decides, or `accepted` straight away if it meets the driver's auto-accept rules. The rider needs a saved card first.",
+        "operationId": "request_seat__trip_id__requests_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SeatRequestBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeatRequest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/{trip_id}/requests",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "You can't request a seat on your own trip (code `own_trip`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "You can't request a seat on your own trip",
+                  "instance": "/{trip_id}/requests",
+                  "code": "own_trip",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No trip with this ID (code `trip_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No trip with this ID",
+                  "instance": "/{trip_id}/requests",
+                  "code": "trip_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already on this trip, another request overlaps in time, no seats left, the trip isn't open for requests, or no saved card (code `already_requested / overlapping_request / trip_full / trip_not_open / card_required`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Already on this trip, another request overlaps in time, no seats left, the trip isn't open for requests, or no saved card",
+                  "instance": "/{trip_id}/requests",
+                  "code": "already_requested",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, or the pickup point isn't available from where you are (code `invalid_input / pickup_not_available`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/{trip_id}/requests",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The pickup or detour can't be worked out right now (code `routing_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "The pickup or detour can't be worked out right now",
+                  "instance": "/{trip_id}/requests",
+                  "code": "routing_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "trips"
+        ],
+        "summary": "Requests on my trip",
+        "description": "For the trip's driver: pending requests first, then accepted ones, each with the rider's rating and no-shows, their pickup point and the detour it adds.",
+        "operationId": "trip_requests__trip_id__requests_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "trip_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Trip Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DriverRequestView"
+                  },
+                  "title": "Response Trip Requests  Trip Id  Requests Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/{trip_id}/requests",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/{trip_id}/requests",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "seatsTotal",
+                      "message": "Input should be less than or equal to 6"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only the trip's driver can see its requests (code `not_trip_driver`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only the trip's driver can see its requests",
+                  "instance": "/{trip_id}/requests",
+                  "code": "not_trip_driver",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No trip with this ID (code `trip_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No trip with this ID",
+                  "instance": "/{trip_id}/requests",
+                  "code": "trip_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
           }
         }
       }
@@ -464,6 +1992,49 @@
   },
   "components": {
     "schemas": {
+      "AutoAcceptRules": {
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "title": "Enabled",
+            "description": "Applies to new requests only."
+          },
+          "maxDetourMinutes": {
+            "type": "integer",
+            "maximum": 30.0,
+            "minimum": 0.0,
+            "title": "Maxdetourminutes",
+            "description": "Accept only if the pickup adds at most this much.",
+            "examples": [
+              5
+            ]
+          },
+          "minRating": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minrating",
+            "description": "Accept only riders rated at least this. Null: any rating. Riders with no ratings yet always pass.",
+            "examples": [
+              4.0
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "enabled",
+          "maxDetourMinutes",
+          "minRating"
+        ],
+        "title": "AutoAcceptRules"
+      },
       "Cost": {
         "properties": {
           "amountCents": {
@@ -504,6 +2075,116 @@
         ],
         "title": "Direction",
         "description": "Every trip goes to the Fort Garry campus or leaves from it."
+      },
+      "DriverPickup": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "Osborne St & River Ave"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "lat",
+          "lng"
+        ],
+        "title": "DriverPickup"
+      },
+      "DriverRequestView": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "rider": {
+            "$ref": "#/components/schemas/RiderSummary"
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/DriverPickup",
+            "description": "Only the pickup point, never where the rider is."
+          },
+          "pickupOrder": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pickuporder",
+            "description": "Place in the pickup order (1 = first). Accepted requests only."
+          },
+          "detourSeconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 0.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detourseconds",
+            "description": "Extra driving time this pickup adds. Null if it couldn't be worked out: show an error state, not a number."
+          },
+          "cost": {
+            "$ref": "#/components/schemas/Cost"
+          },
+          "autoAccepted": {
+            "type": "boolean",
+            "title": "Autoaccepted"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidedat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "rider",
+          "pickup",
+          "pickupOrder",
+          "detourSeconds",
+          "cost",
+          "autoAccepted",
+          "createdAt",
+          "decidedAt"
+        ],
+        "title": "DriverRequestView",
+        "description": "A request on one of the driver's trips, with what they need to decide."
       },
       "HealthOut": {
         "properties": {
@@ -581,6 +2262,61 @@
         ],
         "title": "Pickup",
         "description": "Where the rider would be picked up, on the driver's route."
+      },
+      "PickupOption": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Opaque ID from Routing. Send it back when requesting a seat.",
+            "examples": [
+              "s42"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "Osborne St & River Ave"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "walkSeconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Walkseconds",
+            "description": "Walking time from the rider to this point."
+          },
+          "cost": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Cost"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "This rider's share if picked up here. Null if it can't be priced right now."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "lat",
+          "lng",
+          "walkSeconds",
+          "cost"
+        ],
+        "title": "PickupOption",
+        "description": "A point on the driver's route where this rider could be picked up."
       },
       "Place": {
         "properties": {
@@ -672,6 +2408,98 @@
           }
         ]
       },
+      "PostTripSeriesRequest": {
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/Direction",
+            "description": "to_campus: the driver starts at `place` and ends at campus. from_campus: the driver starts at campus and ends at `place`."
+          },
+          "place": {
+            "$ref": "#/components/schemas/Place",
+            "description": "The driver's end of the trip (usually near home). Never shown to riders."
+          },
+          "departureAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Departureat",
+            "description": "When the driver leaves. Must be in the future.",
+            "examples": [
+              "2026-10-20T13:10:00Z"
+            ]
+          },
+          "seatsTotal": {
+            "type": "integer",
+            "maximum": 6.0,
+            "minimum": 1.0,
+            "title": "Seatstotal",
+            "description": "Seats offered to riders.",
+            "examples": [
+              3
+            ]
+          },
+          "weekdays": {
+            "items": {
+              "type": "string",
+              "enum": [
+                "mon",
+                "tue",
+                "wed",
+                "thu",
+                "fri"
+              ]
+            },
+            "type": "array",
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Weekdays",
+            "description": "The weekdays it repeats on. Each one at most once.",
+            "examples": [
+              [
+                "mon",
+                "wed",
+                "fri"
+              ]
+            ]
+          },
+          "endDate": {
+            "type": "string",
+            "format": "date",
+            "title": "Enddate",
+            "description": "The last day a trip can be on (Winnipeg date). After the first departure and at most 16 weeks after it.",
+            "examples": [
+              "2026-12-11"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "direction",
+          "place",
+          "departureAt",
+          "seatsTotal",
+          "weekdays",
+          "endDate"
+        ],
+        "title": "PostTripSeriesRequest",
+        "examples": [
+          {
+            "departureAt": "2026-11-16T13:10:00Z",
+            "direction": "to_campus",
+            "endDate": "2026-12-11",
+            "place": {
+              "label": "Wolseley Ave & Arlington St",
+              "lat": 49.8794,
+              "lng": -97.1663
+            },
+            "seatsTotal": 3,
+            "weekdays": [
+              "mon",
+              "wed",
+              "fri"
+            ]
+          }
+        ]
+      },
       "Problem": {
         "properties": {
           "type": {
@@ -738,6 +2566,116 @@
         "title": "Problem",
         "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
       },
+      "RequestPickup": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "examples": [
+              "Osborne St & River Ave"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat"
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng"
+          },
+          "walkSeconds": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Walkseconds"
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "lat",
+          "lng",
+          "walkSeconds"
+        ],
+        "title": "RequestPickup"
+      },
+      "RequestStatus": {
+        "type": "string",
+        "enum": [
+          "pending",
+          "accepted",
+          "declined",
+          "cancelled",
+          "expired",
+          "payment_failed"
+        ],
+        "title": "RequestStatus"
+      },
+      "RiderSummary": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "firstName": {
+            "type": "string",
+            "title": "Firstname",
+            "examples": [
+              "Priya"
+            ]
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating",
+            "description": "Average rating; null if they have no ratings yet."
+          },
+          "ratingCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ratingcount"
+          },
+          "noShowCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Noshowcount"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "firstName",
+          "rating",
+          "ratingCount",
+          "noShowCount"
+        ],
+        "title": "RiderSummary"
+      },
+      "RiderTrip": {
+        "properties": {
+          "trip": {
+            "$ref": "#/components/schemas/Trip",
+            "description": "The driver's end is null (private)."
+          },
+          "request": {
+            "$ref": "#/components/schemas/SeatRequest"
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip",
+          "request"
+        ],
+        "title": "RiderTrip"
+      },
       "SearchResult": {
         "properties": {
           "trip": {
@@ -766,6 +2704,109 @@
           "cost"
         ],
         "title": "SearchResult"
+      },
+      "SeatRequest": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "tripId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Tripid"
+          },
+          "riderId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Riderid"
+          },
+          "status": {
+            "$ref": "#/components/schemas/RequestStatus"
+          },
+          "pickup": {
+            "$ref": "#/components/schemas/RequestPickup"
+          },
+          "cost": {
+            "$ref": "#/components/schemas/Cost",
+            "description": "Saved when the request was made: this is what gets held and charged."
+          },
+          "autoAccepted": {
+            "type": "boolean",
+            "title": "Autoaccepted"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "decidedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decidedat",
+            "description": "When it was accepted, declined, cancelled or expired."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "tripId",
+          "riderId",
+          "status",
+          "pickup",
+          "cost",
+          "autoAccepted",
+          "createdAt",
+          "decidedAt"
+        ],
+        "title": "SeatRequest",
+        "description": "A rider's request for a seat, as the rider sees it."
+      },
+      "SeatRequestBody": {
+        "properties": {
+          "lat": {
+            "type": "number",
+            "maximum": 90.0,
+            "minimum": -90.0,
+            "title": "Lat",
+            "description": "The rider's location. Used to check the pickup, never stored."
+          },
+          "lng": {
+            "type": "number",
+            "maximum": 180.0,
+            "minimum": -180.0,
+            "title": "Lng"
+          },
+          "pickupId": {
+            "type": "string",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Pickupid",
+            "description": "One of the trip detail's `pickups`."
+          }
+        },
+        "type": "object",
+        "required": [
+          "lat",
+          "lng",
+          "pickupId"
+        ],
+        "title": "SeatRequestBody",
+        "examples": [
+          {
+            "lat": 49.8722,
+            "lng": -97.1561,
+            "pickupId": "s42"
+          }
+        ]
       },
       "Trip": {
         "properties": {
@@ -840,6 +2881,19 @@
           },
           "status": {
             "$ref": "#/components/schemas/TripStatus"
+          },
+          "seriesId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seriesid",
+            "description": "The recurring series this trip belongs to, if any."
           }
         },
         "type": "object",
@@ -882,6 +2936,74 @@
             "status": "scheduled"
           }
         ]
+      },
+      "TripDetail": {
+        "properties": {
+          "trip": {
+            "$ref": "#/components/schemas/Trip",
+            "description": "The driver's own end is null unless you're the driver."
+          },
+          "pickups": {
+            "items": {
+              "$ref": "#/components/schemas/PickupOption"
+            },
+            "type": "array",
+            "maxItems": 3,
+            "title": "Pickups",
+            "description": "Up to 3 pickup points, best first. Empty if `lat`/`lng` weren't sent or the trip doesn't pass within walking distance of them."
+          },
+          "myRequest": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SeatRequest"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Your pending or accepted request on this trip, if you have one."
+          }
+        },
+        "type": "object",
+        "required": [
+          "trip",
+          "pickups",
+          "myRequest"
+        ],
+        "title": "TripDetail"
+      },
+      "TripSeriesResult": {
+        "properties": {
+          "seriesId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Seriesid"
+          },
+          "trips": {
+            "items": {
+              "$ref": "#/components/schemas/Trip"
+            },
+            "type": "array",
+            "title": "Trips",
+            "description": "The trips created, one per matching day."
+          },
+          "skippedDates": {
+            "items": {
+              "type": "string",
+              "format": "date"
+            },
+            "type": "array",
+            "title": "Skippeddates",
+            "description": "Days left out because they clash with the driver's other trips."
+          }
+        },
+        "type": "object",
+        "required": [
+          "seriesId",
+          "trips",
+          "skippedDates"
+        ],
+        "title": "TripSeriesResult"
       },
       "TripStatus": {
         "type": "string",
