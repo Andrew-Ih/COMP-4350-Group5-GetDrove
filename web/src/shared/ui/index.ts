@@ -5,6 +5,7 @@ export { BottomSheet, type BottomSheetProps } from "./BottomSheet";
 export { Button, type ButtonProps, buttonStyles } from "./Button";
 export { Card, type CardProps } from "./Card";
 export { Eyebrow } from "./Eyebrow";
+export { HeaderBellContext } from "./HeaderBell";
 export { Logo } from "./Logo";
 export { MapLayout } from "./MapLayout";
 export { PrivacyNote } from "./PrivacyNote";
