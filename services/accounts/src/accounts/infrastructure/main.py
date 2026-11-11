@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from accounts.adapters.api import auth_router, health
+from accounts.adapters.api import auth_router, drivers_router, health
 from accounts.adapters.persistence.tables import outbox
 from accounts.adapters.security.signing_key import load_signing_key
 from accounts.infrastructure.settings import get_settings
@@ -63,6 +63,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.auth_router)
     app.include_router(auth_router.users_router)
     app.include_router(auth_router.keys_router)
+    app.include_router(drivers_router.driver_router)
+    app.include_router(drivers_router.admin_router)
+    app.include_router(drivers_router.profiles_router)
+    app.include_router(drivers_router.internal_router)
     return app
 
 

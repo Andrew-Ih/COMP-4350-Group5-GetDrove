@@ -1,0 +1,61 @@
+# Continuous delivery (#176): every push to develop (our main development branch, so every
+# merged pull request) is tested and packaged automatically.
+#   1. checks — the same backend and frontend checks as on pull requests (ci.yml): lint,
+#               types, architecture rules, every unit and integration test, coverage, and the
+#               frontend's contract check and production build
+#   2. images — only if every check passed: builds the eight images and pushes them to
+#               GitHub Container Registry, tagged with the commit SHA (build-images.yml)
+#   3. summary — lists the published images on the run's summary page
+# Nothing is deployed: the live site only changes when a release reaches main (deploy.yml).
+# See docs/deployment/deployment.md.
+name: Delivery
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch: # rerun for the latest develop from the Actions tab
+
+permissions:
+  contents: read
+  packages: write
+
+# Every merge gets its own images: a new push waits for the previous run instead of
+# cancelling it.
+concurrency:
+  group: delivery-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+
+  images:
+    name: Images
+    needs: checks
+    if: github.ref == 'refs/heads/develop'
+    uses: ./.github/workflows/build-images.yml
+    with:
+      image_tag: ${{ github.sha }}
+
+  summary:
+    name: Summary
+    needs: images
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: List the published images
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          {
+            echo "### Images published for \`${SHA:0:7}\`"
+            echo
+            echo "Every check passed, so these were pushed to GitHub Container Registry:"
+            echo
+            for image in accounts trips routing payments notifications web osrm-car osrm-foot; do
+              echo "- \`ghcr.io/andrew-ih/getdrove-$image:$SHA\`"
+            done
+            echo
+            echo "The live site changes only when a release reaches \`main\` (Deploy workflow)."
+          } >> "$GITHUB_STEP_SUMMARY"

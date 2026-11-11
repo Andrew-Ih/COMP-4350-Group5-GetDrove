@@ -17,7 +17,7 @@ from common_security.dependencies import install_security
 from common_web.app import install
 from events import stream_name
 from events.consumer import StreamConsumer
-from notifications.adapters.api import health
+from notifications.adapters.api import health, notifications_router
 from notifications.adapters.email.smtp_sender import SmtpEmailSender, SmtpSettings
 from notifications.adapters.events.handlers import register_handlers
 from notifications.adapters.persistence.tables import consumer as consumer_tables
@@ -101,6 +101,7 @@ def create_app() -> FastAPI:
     app.state.engine = engine
     app.state.sessions = sessions
     app.include_router(health.router)
+    app.include_router(notifications_router.router)
     return app
 
 

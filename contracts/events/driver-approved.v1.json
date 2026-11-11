@@ -1,0 +1,16 @@
+{
+  "description": "An admin approved a driver (#127). They can post trips straight away, without\nlogging in again.\n\nPublished on the ``events.accounts`` stream. Consumers: Trips (its list of approved\ndrivers, #11), Notifications (tells the driver).",
+  "properties": {
+    "userId": {
+      "format": "uuid",
+      "title": "Userid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "userId"
+  ],
+  "title": "DriverApproved",
+  "type": "object",
+  "x-event-version": 1
+}

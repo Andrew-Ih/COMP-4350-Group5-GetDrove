@@ -1,0 +1,64 @@
+{
+  "description": "The driver accepted a request, or auto-accept did (#138, #43).\n\nConsumers: Payments (holds ``amountCents`` on the rider's card, #70), Notifications\n(tells the rider and schedules their reminder, #146, #148).",
+  "properties": {
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "riderId": {
+      "format": "uuid",
+      "title": "Riderid",
+      "type": "string"
+    },
+    "driverId": {
+      "format": "uuid",
+      "title": "Driverid",
+      "type": "string"
+    },
+    "departureAt": {
+      "format": "date-time",
+      "title": "Departureat",
+      "type": "string"
+    },
+    "pickupLabel": {
+      "description": "Where the rider is picked up, for the reminder.",
+      "title": "Pickuplabel",
+      "type": "string"
+    },
+    "amountCents": {
+      "description": "The rider's share saved when they requested (#69). Never recalculated.",
+      "minimum": 0,
+      "title": "Amountcents",
+      "type": "integer"
+    },
+    "currency": {
+      "const": "CAD",
+      "default": "CAD",
+      "title": "Currency",
+      "type": "string"
+    },
+    "autoAccepted": {
+      "title": "Autoaccepted",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "requestId",
+    "tripId",
+    "riderId",
+    "driverId",
+    "departureAt",
+    "pickupLabel",
+    "amountCents",
+    "autoAccepted"
+  ],
+  "title": "RequestAccepted",
+  "type": "object",
+  "x-event-version": 1
+}
