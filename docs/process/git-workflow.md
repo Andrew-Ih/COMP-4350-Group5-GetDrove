@@ -101,12 +101,12 @@ The **Update branch** button on a pull request doesn't work for feature branches
 
 ## Finishing a story
 
-When all of a story's tasks are merged into its feature branch:
+When all of a story's tasks are merged into its feature branch, anyone who worked on the story (usually whoever merged its last task) finishes it:
 
 1. Bring the feature branch up to date with `develop` (above).
-2. The GitHub Manager opens a pull request from the feature branch into `develop`. It's reviewed like any other and the checks must pass.
+2. Open a pull request from the feature branch into `develop`. It's reviewed like any other and the checks must pass.
 3. Merge it with **Create a merge commit**, so each task's commit stays visible in `develop`'s history.
-4. The GitHub Manager deletes the feature branch.
+4. Let the GitHub Manager know in Discord, who deletes the feature branch (feature branches are protected from deletion).
 
 ## Making a release
 
