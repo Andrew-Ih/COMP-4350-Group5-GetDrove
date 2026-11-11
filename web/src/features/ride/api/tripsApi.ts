@@ -27,3 +27,21 @@ export function getTrip(tripId: string, rider?: { lat: number; lng: number }) {
 export function getProfile(userId: string) {
   return unwrap(accountsApi.GET("/users/{user_id}/profile", { params: { path: { user_id: userId } } }));
 }
+
+/**
+ * POST /api/trips/{id}/requests: asks for a seat, picked up at one of the trip detail's
+ * pickup points. The rider's location is sent to check the pickup and is never stored.
+ */
+export function requestSeat(tripId: string, body: { lat: number; lng: number; pickupId: string }) {
+  return unwrap(tripsApi.POST("/{trip_id}/requests", { params: { path: { trip_id: tripId } }, body }));
+}
+
+/** GET /api/trips/requests/{id}: one request, to see whether the driver has decided. */
+export function getSeatRequest(requestId: string) {
+  return unwrap(tripsApi.GET("/requests/{request_id}", { params: { path: { request_id: requestId } } }));
+}
+
+/** POST /api/trips/requests/{id}/cancel: the rider withdraws a pending or accepted request. */
+export function cancelSeatRequest(requestId: string) {
+  return unwrap(tripsApi.POST("/requests/{request_id}/cancel", { params: { path: { request_id: requestId } } }));
+}
