@@ -38,7 +38,7 @@ Provisional owners, based on each member's individual goals. The team will confi
 
 ## Integrating contributions
 
-All work is integrated through pull requests into `develop`, reviewed by at least one teammate, with CI checks passing. At the end of each iteration, `develop` is released to `main` through a release branch. See the [Git workflow](git-workflow.md) and [code review practices](code-review.md).
+All work is integrated through pull requests, reviewed by at least one teammate, with CI checks passing: each task into its user story's feature branch, and each finished story into `develop`. Work that isn't part of a story goes straight into `develop`. At the end of each iteration, `develop` is released to `main` through a release branch. See the [Git workflow](git-workflow.md) and [code review practices](code-review.md).
 
 ## Adapting assignments
 
@@ -71,7 +71,7 @@ Board columns and what they mean:
 | Todo | Scheduled for the current iteration and ready to be picked up |
 | In Progress | Someone is assigned and actively working on it |
 | In Review | A pull request is open and waiting for review |
-| Done | Merged into `develop` and meets the Definition of Done |
+| Done | Merged (a task into its story's feature branch, anything else into `develop`) and meets the Definition of Done |
 
 Rules:
 
@@ -80,7 +80,7 @@ Rules:
 - When you open a pull request for it, move the issue to In Review. If changes are requested, it stays in In Review until the pull request is merged.
 - Don't work on something that has no issue. If it's needed, create the issue first.
 - Small stories with no tasks are worked on directly; larger ones are worked on task by task.
-- When all of a story's acceptance criteria are checked off, close the story.
+- When all of a story's acceptance criteria are checked off and its feature branch is merged into `develop`, close the story.
 
 ## Estimation
 
@@ -90,9 +90,7 @@ Each issue is sized S, M, or L in the project's Size field: S is under half a da
 
 In our working agreement, a task is done when the team approves it by consensus. In practice, that approval is given through the review process, and an issue is done when:
 
-An issue is done when:
-
-- [ ] The code is merged into `develop` through an approved pull request
+- [ ] The code is merged through an approved pull request: a task into its story's feature branch, a story (or work outside a story) into `develop`
 - [ ] All acceptance criteria (for stories) are met and checked off
 - [ ] Tests are written and passing
 - [ ] Linting and formatting pass
