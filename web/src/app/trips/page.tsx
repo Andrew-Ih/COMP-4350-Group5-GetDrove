@@ -1,21 +1,20 @@
-import { CalendarDays } from "lucide-react";
 import type { Metadata } from "next";
 
 import { RequireAuth } from "@/features/auth";
-import { ComingSoon } from "@/features/coming-soon";
+import { MyTrips } from "@/features/my-trips";
 
 export const metadata: Metadata = { title: "My trips · GetDrove" };
 
-/** /trips: a placeholder until the My trips screen lands (#131, Sprint 2). */
-export default function MyTripsPage() {
+/** /trips, or /trips?role=driver to open on the trips the student is driving. */
+export default async function MyTripsPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const { role } = await searchParams;
   return (
     <RequireAuth>
-      <ComingSoon
-        title="My trips"
-        description="Your upcoming and past trips, as a driver and as a rider, will show up here."
-        icon={<CalendarDays className="size-7" />}
-        sprint={2}
-      />
+      <MyTrips initialRole={role === "driver" ? "driver" : "rider"} />
     </RequireAuth>
   );
 }
