@@ -1,0 +1,28 @@
+{
+  "description": "A hold was cancelled because the ride won't happen (#72). No consumers yet.",
+  "properties": {
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "riderId": {
+      "format": "uuid",
+      "title": "Riderid",
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestId",
+    "tripId",
+    "riderId"
+  ],
+  "title": "PaymentReleased",
+  "type": "object",
+  "x-event-version": 1
+}

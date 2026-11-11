@@ -1,13 +1,15 @@
 """Request and response models for the Trips API: the contract the frontend and other
-services build against (issue #108).
+services build against (issues #108, #262).
 
 JSON fields are camelCase; times are ISO 8601 with a timezone; money is in cents.
 """
 
+from datetime import date
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
 
 from trips.domain.values import Direction, TripStatus
@@ -83,6 +85,9 @@ class Trip(ApiModel):
     seats_total: int = Field(ge=1, le=6)
     seats_available: int = Field(ge=0, le=6)
     status: TripStatus
+    series_id: UUID | None = Field(
+        default=None, description="The recurring series this trip belongs to, if any."
+    )
 
     model_config = ConfigDict(
         json_schema_extra={
@@ -140,6 +145,219 @@ class SearchResult(ApiModel):
     cost: Cost | None = Field(
         description="The rider's estimated share. Null if the price can't be computed right "
         "now; the trip is still shown."
+    )
+
+
+# ---------------------------------------------------------------- recurring trips (#15)
+
+Weekday = Literal["mon", "tue", "wed", "thu", "fri"]
+
+
+class PostTripSeriesRequest(PostTripRequest):
+    weekdays: list[Weekday] = Field(
+        min_length=1,
+        max_length=5,
+        description="The weekdays it repeats on. Each one at most once.",
+        examples=[["mon", "wed", "fri"]],
+    )
+    end_date: date = Field(
+        description="The last day a trip can be on (Winnipeg date). After the first "
+        "departure and at most 16 weeks after it.",
+        examples=["2026-12-11"],
+    )
+
+    @field_validator("weekdays")
+    @classmethod
+    def _each_weekday_once(cls, weekdays: list[Weekday]) -> list[Weekday]:
+        if len(set(weekdays)) != len(weekdays):
+            raise ValueError("Each weekday can only be listed once")
+        return weekdays
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "direction": "to_campus",
+                    "place": {
+                        "label": "Wolseley Ave & Arlington St",
+                        "lat": 49.8794,
+                        "lng": -97.1663,
+                    },
+                    "departureAt": "2026-11-16T13:10:00Z",
+                    "seatsTotal": 3,
+                    "weekdays": ["mon", "wed", "fri"],
+                    "endDate": "2026-12-11",
+                }
+            ]
+        }
+    )
+
+
+class TripSeriesResult(ApiModel):
+    series_id: UUID
+    trips: list[Trip] = Field(description="The trips created, one per matching day.")
+    skipped_dates: list[date] = Field(
+        description="Days left out because they clash with the driver's other trips."
+    )
+
+
+# ---------------------------------------------------------------- pickup options (#28)
+
+
+class PickupOption(ApiModel):
+    """A point on the driver's route where this rider could be picked up."""
+
+    id: str = Field(
+        description="Opaque ID from Routing. Send it back when requesting a seat.",
+        examples=["s42"],
+    )
+    label: str = Field(examples=["Osborne St & River Ave"])
+    lat: float
+    lng: float
+    walk_seconds: int = Field(ge=0, description="Walking time from the rider to this point.")
+    cost: Cost | None = Field(
+        description="This rider's share if picked up here. Null if it can't be priced right now."
+    )
+
+
+# ---------------------------------------------------------------- seat requests (#34)
+
+
+class RequestStatus(StrEnum):
+    PENDING = "pending"
+    ACCEPTED = "accepted"
+    DECLINED = "declined"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+    PAYMENT_FAILED = "payment_failed"
+
+
+class RequestPickup(ApiModel):
+    label: str = Field(examples=["Osborne St & River Ave"])
+    lat: float
+    lng: float
+    walk_seconds: int = Field(ge=0)
+
+
+class SeatRequest(ApiModel):
+    """A rider's request for a seat, as the rider sees it."""
+
+    id: UUID
+    trip_id: UUID
+    rider_id: UUID
+    status: RequestStatus
+    pickup: RequestPickup
+    cost: Cost = Field(
+        description="Saved when the request was made: this is what gets held and charged."
+    )
+    auto_accepted: bool
+    created_at: AwareDatetime
+    decided_at: AwareDatetime | None = Field(
+        description="When it was accepted, declined, cancelled or expired."
+    )
+
+
+class SeatRequestBody(ApiModel):
+    lat: float = Field(
+        ge=-90, le=90, description="The rider's location. Used to check the pickup, never stored."
+    )
+    lng: float = Field(ge=-180, le=180)
+    pickup_id: str = Field(
+        min_length=1, max_length=64, description="One of the trip detail's `pickups`."
+    )
+
+    model_config = ConfigDict(
+        json_schema_extra={"examples": [{"lat": 49.8722, "lng": -97.1561, "pickupId": "s42"}]}
+    )
+
+
+class RiderSummary(ApiModel):
+    id: UUID
+    first_name: str = Field(examples=["Priya"])
+    rating: float | None = Field(
+        ge=1, le=5, description="Average rating; null if they have no ratings yet."
+    )
+    rating_count: int = Field(ge=0)
+    no_show_count: int = Field(ge=0)
+
+
+class DriverPickup(ApiModel):
+    label: str = Field(examples=["Osborne St & River Ave"])
+    lat: float
+    lng: float
+
+
+class DriverRequestView(ApiModel):
+    """A request on one of the driver's trips, with what they need to decide."""
+
+    id: UUID
+    status: RequestStatus
+    rider: RiderSummary
+    pickup: DriverPickup = Field(description="Only the pickup point, never where the rider is.")
+    pickup_order: int | None = Field(
+        ge=1, description="Place in the pickup order (1 = first). Accepted requests only."
+    )
+    detour_seconds: int | None = Field(
+        ge=0,
+        description="Extra driving time this pickup adds. Null if it couldn't be worked out: "
+        "show an error state, not a number.",
+    )
+    cost: Cost
+    auto_accepted: bool
+    created_at: AwareDatetime
+    decided_at: AwareDatetime | None
+
+
+# ---------------------------------------------------------------- trip detail and my trips
+
+
+class TripVehicle(ApiModel):
+    make: str = Field(examples=["Honda"])
+    model: str = Field(examples=["Civic"])
+    colour: str = Field(examples=["Blue"])
+    plate: str = Field(examples=["ABC123"])
+
+
+class TripDetail(ApiModel):
+    trip: Trip = Field(description="The driver's own end is null unless you're the driver.")
+    vehicle: TripVehicle | None = Field(
+        description="The driver's vehicle, with its plate, so an accepted rider can find their "
+        "car. Only for the trip's driver and riders with an accepted request on it; null for "
+        "everyone else (make, model and colour are on the driver's public profile)."
+    )
+    pickups: list[PickupOption] = Field(
+        max_length=3,
+        description="Up to 3 pickup points, best first. Empty if `lat`/`lng` weren't sent or "
+        "the trip doesn't pass within walking distance of them.",
+    )
+    my_request: SeatRequest | None = Field(
+        description="Your pending or accepted request on this trip, if you have one."
+    )
+
+
+class RiderTrip(ApiModel):
+    trip: Trip = Field(description="The driver's end is null (private).")
+    request: SeatRequest
+
+
+# ---------------------------------------------------------------- auto-accept (#41)
+
+
+class AutoAcceptRules(ApiModel):
+    enabled: bool = Field(description="Applies to new requests only.")
+    max_detour_minutes: int = Field(
+        ge=0,
+        le=30,
+        description="Accept only if the pickup adds at most this much: a request's "
+        "`detourSeconds` must be at most `maxDetourMinutes * 60`.",
+        examples=[5],
+    )
+    min_rating: float | None = Field(
+        ge=1,
+        le=5,
+        description="Accept only riders rated at least this. Null: any rating. Riders with no "
+        "ratings yet always pass.",
+        examples=[4.0],
     )
 
 

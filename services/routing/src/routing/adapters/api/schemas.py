@@ -1,4 +1,4 @@
-"""Request and response models for the Routing API (Sprint 1 contract, issue #108)."""
+"""Request and response models for the Routing API (contracts: #108, #262)."""
 
 from typing import Literal
 from uuid import UUID
@@ -25,6 +25,17 @@ class RouteRequest(ApiModel):
     trip_id: UUID
     origin: Point
     destination: Point
+    driver_id: UUID | None = Field(
+        default=None,
+        description="The trip's driver, who sees the full route on the map. Sent from Sprint "
+        "2 (#135); null for routes stored before.",
+    )
+    direction: Literal["to_campus", "from_campus"] | None = Field(
+        default=None,
+        description="Which end is the driver's (the origin going to campus, the destination "
+        "leaving it), so it can be hidden from riders. Null for routes stored before Sprint "
+        "2: both ends are then hidden from everyone.",
+    )
 
 
 class RouteResponse(ApiModel):
@@ -69,6 +80,68 @@ class Match(ApiModel):
 class MatchResponse(ApiModel):
     matches: list[Match] = Field(
         description="Only trips whose route passes within walking distance."
+    )
+
+
+# ---------------------------------------------------------------- pickup points (#29, #30)
+
+
+class PickupPointsRequest(ApiModel):
+    trip_id: UUID
+    rider: Point = Field(
+        description="The rider's location. Used for this answer only, never stored."
+    )
+    limit: int = Field(default=3, ge=1, le=5, description="How many points to return at most.")
+
+
+class PickupPoint(ApiModel):
+    id: str = Field(
+        description="Opaque ID of this point on the stored route. Trips sends it back when "
+        "the rider requests a seat.",
+        examples=["s42"],
+    )
+    label: str = Field(examples=["Osborne St & River Ave"])
+    lat: float
+    lng: float
+    walk_seconds: int = Field(ge=0, description="Walking time from the rider to this point.")
+    rider_distance_meters: int = Field(
+        ge=0,
+        description="Distance along the route from this point to the trip's end (as in "
+        "`Match.riderDistanceMeters`).",
+    )
+
+
+class PickupPointsResponse(ApiModel):
+    pickups: list[PickupPoint] = Field(
+        description="Best (shortest walk) first. Never on an excluded road and never near "
+        "either end of the route. Empty if the route doesn't pass within walking distance."
+    )
+
+
+# ---------------------------------------------------------------- detours (#36, #38)
+
+
+class DetourRequest(ApiModel):
+    trip_id: UUID
+    accepted_pickups: list[Point] = Field(
+        max_length=6, description="Pickups of the riders already accepted, in pickup order."
+    )
+    new_pickup: Point
+
+
+class DetourResponse(ApiModel):
+    added_seconds: int = Field(
+        ge=0,
+        description="Extra driving time for the new pickup, at its best place.",
+        examples=[180],
+    )
+    position: int = Field(
+        ge=0,
+        description="Where the new pickup goes in the pickup order (0 = first).",
+        examples=[1],
+    )
+    total_seconds: int = Field(
+        ge=0, description="Driving time of the whole trip with the new pickup.", examples=[1500]
     )
 
 

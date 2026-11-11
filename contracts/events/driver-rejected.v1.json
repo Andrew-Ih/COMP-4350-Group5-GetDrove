@@ -1,0 +1,22 @@
+{
+  "description": "An admin rejected a driver's documents (#127). They can upload new ones.\n\nPublished on the ``events.accounts`` stream. Consumers: Trips (removes them from its\nlist of approved drivers), Notifications (tells the driver why).",
+  "properties": {
+    "userId": {
+      "format": "uuid",
+      "title": "Userid",
+      "type": "string"
+    },
+    "reason": {
+      "description": "Shown to the driver, so they know what to fix.",
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "userId",
+    "reason"
+  ],
+  "title": "DriverRejected",
+  "type": "object",
+  "x-event-version": 1
+}
