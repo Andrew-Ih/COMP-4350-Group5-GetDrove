@@ -20,6 +20,13 @@ const METERS_PER_SECOND = 10; // about 36 km/h, city driving
 const postedTrips: Trips["schemas"]["Trip"][] = [];
 const posted = new Map<string, Routing["schemas"]["RouteFeature"]>();
 
+/** A trip posted in this session, and its route, or undefined. */
+export function findPosted(tripId: string) {
+  const trip = postedTrips.find((t) => t.id === tripId);
+  const route = posted.get(tripId);
+  return trip && route ? { trip, route } : undefined;
+}
+
 /** Forgets the trips posted so far (for tests). */
 export function resetPostedTrips() {
   postedTrips.length = 0;

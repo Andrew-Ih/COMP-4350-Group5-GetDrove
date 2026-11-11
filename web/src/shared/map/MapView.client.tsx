@@ -203,6 +203,14 @@ function MarkerIcon({ kind, label }: Pick<MapMarker, "kind" | "label">) {
     you: <span className="block size-6 rounded-full border-[5px] border-[#c9cbc7] bg-ink" />,
     // White circle with a black border: another stop on a route.
     stop: <span className="block size-6 rounded-full border-[5px] border-ink bg-white" />,
+    // Green circle with a white tick: an accepted rider's pickup.
+    accepted: (
+      <span className="flex size-7 items-center justify-center rounded-full border-2 border-white bg-brand shadow-card">
+        <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+          <path d="M2.5 7.5l3 3 6-7" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </span>
+    ),
   }[kind];
 
   // The label sits beside the shape without moving it, so the shape stays exactly on the point.

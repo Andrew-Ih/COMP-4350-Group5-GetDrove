@@ -5,6 +5,7 @@ import type { components as Routing } from "@/shared/api/generated/routing";
 
 import { driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from "./data";
 import { driveHandlers } from "./drive";
+import { requestHandlers } from "./requests";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
 
 type Problem = Accounts["schemas"]["Problem"];
@@ -50,6 +51,7 @@ function tomorrowAt830(): string {
 }
 export const handlers = [
   ...driveHandlers, // posting a trip (#96): see drive.ts
+  ...requestHandlers, // the driver's requests on a trip (#142), with a demo trip: see requests.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
     const body = (await request.json()) as Accounts["schemas"]["SignupRequest"];

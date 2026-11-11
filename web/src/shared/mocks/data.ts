@@ -194,3 +194,8 @@ export function tripDetailFor(tripId: string, rider: { lat: number; lng: number 
 export const myTrips = [
   trip("55555555-5555-4555-8555-555555555555", "2026-10-20T12:35:00Z", "2026-10-20T12:57:00Z", 3),
 ] satisfies Trips["schemas"]["Trip"][];
+
+/** Whether a trip is one of the other drivers' trips that searches return. */
+export function isSearchTrip(tripId: string): boolean {
+  return OFFERS.some((o) => o.id === tripId);
+}
