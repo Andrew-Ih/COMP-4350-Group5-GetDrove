@@ -89,6 +89,12 @@ All secrets live in **GitHub → Settings → Secrets and variables → Actions*
 
 The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed. Links in emails use `SITE_URL` from the top of `deploy.yml`, which isn't a secret.
 
+**Variables** (same page, the **Variables** tab) hold settings that aren't secret:
+
+| Variable | What it is |
+|---|---|
+| `STRIPE_PUBLISHABLE_KEY` | Stripe's publishable **test** key (`pk_test_...`) for the Add card form. It's built into the web image, since the browser needs it; it's public by design. The secret key belongs to the Payments service only. Without it, the Add card screen says card payments aren't set up |
+
 **Creating them.** With the [GitHub CLI](https://cli.github.com/) logged in to the repository, each value goes straight into GitHub without being shown or saved on your computer:
 
 ```bash

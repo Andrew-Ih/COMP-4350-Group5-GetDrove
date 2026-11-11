@@ -67,9 +67,11 @@ jobs:
           context: ${{ matrix.context }}
           file: ${{ matrix.dockerfile }}
           # A new MAP_REFRESH value (this run's ID) skips the cached map; other images ignore it.
+          # The web image gets Stripe's publishable key (a repository variable, not a secret).
           build-args: |
             ${{ matrix.build_args }}
             ${{ startsWith(matrix.image, 'osrm-') && format('MAP_REFRESH={0}', inputs.refresh_map && github.run_id || 'cached') || '' }}
+            ${{ matrix.image == 'web' && format('NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY={0}', vars.STRIPE_PUBLISHABLE_KEY) || '' }}
           platforms: linux/amd64
           push: true
           tags: ${{ env.REGISTRY }}/getdrove-${{ matrix.image }}:${{ inputs.image_tag }}
