@@ -6,12 +6,18 @@ import type { MapMarker, MapRoute } from "@/shared/map";
 import { mockApi, problem, renderWithProviders } from "@/shared/testing/render";
 
 import { defaultWhen, type SearchQuery, toSearchTime } from "../model/search";
-import type { DriverProfile, PickupOption, TripDetail as Detail } from "../model/tripDetail";
+import type { DriverProfile, PickupOption, SeatRequest, TripDetail as Detail } from "../model/tripDetail";
 import { TripDetail } from "./TripDetail";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
   usePathname: () => "/ride/trip/t1",
+}));
+
+// Checks a pending request every 50 ms instead of every 10 s, so tests don't wait.
+vi.mock("../model/tripDetail", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../model/tripDetail")>()),
+  REQUEST_POLL_MS: 50,
 }));
 
 // The real map needs WebGL. This stand-in lists what it was asked to draw.
@@ -103,14 +109,45 @@ const ROUTE = {
 
 type Answer = { status: number; body?: unknown };
 
-function api(trip: Answer = { status: 200, body: detail() }, profile: Answer = { status: 200, body: priya }) {
+/** Answers in order, repeating the last one: e.g. the trip before and after a request. */
+function inTurn(...answers: Answer[]) {
+  let i = 0;
+  return () => answers[Math.min(i++, answers.length - 1)]!;
+}
+
+function api(
+  trip: Answer | (() => Answer) = { status: 200, body: detail() },
+  profile: Answer = { status: 200, body: priya },
+  more: Record<string, Answer | (() => Answer)> = {},
+) {
   return mockApi({
     "/accounts/me": { status: 200, body: maya },
     [`/trips/${TRIP_ID}`]: trip,
     "/profile": profile,
     "/geometry": ROUTE,
+    ...more,
   });
 }
+
+function seatRequest(status: SeatRequest["status"], changes: Partial<SeatRequest> = {}): SeatRequest {
+  return {
+    id: "r1",
+    tripId: TRIP_ID,
+    riderId: "1",
+    status,
+    pickup: { label: "Osborne St & River Ave", lat: 49.877, lng: -97.141, walkSeconds: 240 },
+    cost: { amountCents: 420, currency: "CAD", explanation: "Based on 9.2 km of a 14 km trip" },
+    autoAccepted: false,
+    createdAt: at("06:00"),
+    decidedAt: status === "pending" ? null : at("06:01"),
+    ...changes,
+  };
+}
+
+const requestSent = (fetchSpy: ReturnType<typeof api>) =>
+  fetchSpy.mock.calls
+    .map(([input]) => input)
+    .find((input): input is Request => input instanceof Request && input.method === "POST" && input.url.endsWith(`/trips/${TRIP_ID}/requests`));
 
 const urlsOf = (fetchSpy: ReturnType<typeof api>) =>
   fetchSpy.mock.calls.map(([input]) => new URL(input instanceof Request ? input.url : String(input)));
@@ -194,11 +231,133 @@ describe("TripDetail", () => {
     expect(screen.queryByRole("button", { name: "Choose a different pickup point" })).not.toBeInTheDocument();
   });
 
-  it("shows the request button, not yet active (the request flow is #141)", async () => {
-    api();
+  it("asks for a seat with the chosen pickup and the rider's location, then waits for the driver", async () => {
+    const fetchSpy = api(undefined, undefined, { [`/trips/${TRIP_ID}/requests`]: { status: 201, body: seatRequest("pending") } });
     renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
 
-    expect(await screen.findByRole("button", { name: /Request seat · \$4\.20/ })).toBeDisabled();
+    await userEvent.click(await screen.findByRole("button", { name: "Choose a different pickup point" }));
+    await userEvent.click(within(screen.getByRole("radiogroup", { name: "Points near you" })).getAllByRole("radio")[1]!);
+    await userEvent.click(screen.getByRole("button", { name: /Request seat · \$4\.00/ }));
+
+    expect(await screen.findByText("Request sent")).toBeInTheDocument();
+    expect(await requestSent(fetchSpy)!.json()).toEqual({ lat: 49.8768, lng: -97.1438, pickupId: "s2" });
+    expect(screen.getByRole("button", { name: "Cancel request" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Choose a different pickup point" })).not.toBeInTheDocument();
+  });
+
+  it("shows when the driver accepts the pending request, with the car", async () => {
+    const accepted = { ...detail({ myRequest: seatRequest("accepted"), vehicle: { make: "Honda", model: "Civic", colour: "Grey", plate: "ABC123" } }) };
+    api(inTurn({ status: 200, body: detail({ myRequest: seatRequest("pending") }) }, { status: 200, body: accepted }), undefined, {
+      "/requests/r1": { status: 200, body: seatRequest("accepted") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    expect(await screen.findByText("Request sent")).toBeInTheDocument();
+    expect(await screen.findByText("You're in")).toBeInTheDocument();
+    expect(await screen.findByText(/Look for a Grey Honda Civic, plate ABC123/)).toBeInTheDocument();
+  });
+
+  it("shows when the driver declines, and lets the rider ask again", async () => {
+    api(inTurn({ status: 200, body: detail({ myRequest: seatRequest("pending") }) }, { status: 200, body: detail() }), undefined, {
+      "/requests/r1": { status: 200, body: seatRequest("declined") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    expect(await screen.findByText("Priya declined your request")).toBeInTheDocument();
+    expect(screen.getByText(/You weren't charged/)).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /Request seat/ })).toBeEnabled();
+  });
+
+  it("says when the payment hold failed, with a way to update the card", async () => {
+    api({ status: 200, body: detail({ myRequest: seatRequest("pending") }) }, undefined, {
+      "/requests/r1": { status: 200, body: seatRequest("payment_failed") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    expect(await screen.findByText("Your payment didn't go through")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Update your card" })).toHaveAttribute("href", "/account/card");
+  });
+
+  it.each([
+    ["trip_full", 409, "Sorry, that seat was just taken", "All trips"],
+    ["overlapping_request", 409, "You already have a ride around this time", "Go to My trips"],
+    ["card_required", 409, "Add a card first", "Add a card"],
+    ["already_requested", 409, "You've already asked for a seat on this trip", undefined],
+    ["trip_not_open", 409, "This trip isn't taking requests anymore", "All trips"],
+    ["pickup_not_available", 422, "That pickup point isn't available anymore", undefined],
+    ["routing_unavailable", 503, "We couldn't confirm your pickup", undefined],
+  ])("explains %s when asking for a seat fails", async (code, status, title, link) => {
+    api(undefined, undefined, { [`/trips/${TRIP_ID}/requests`]: { status, body: problem(status, code, "No") } });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Request seat/ }));
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(title);
+    if (link) expect(within(alert).getByRole("link", { name: link })).toBeInTheDocument();
+  });
+
+  it("sends the rider to add a card and back to this trip", async () => {
+    api(undefined, undefined, { [`/trips/${TRIP_ID}/requests`]: { status: 409, body: problem(409, "card_required", "No card") } });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Request seat/ }));
+
+    expect((await screen.findByRole("link", { name: "Add a card" })).getAttribute("href")).toMatch(/^\/account\/card\?next=%2F/);
+  });
+
+  it("shows the trip as full after the last seat was taken", async () => {
+    api(inTurn({ status: 200, body: detail() }, { status: 200, body: detail({}, { seatsAvailable: 0 }) }), undefined, {
+      [`/trips/${TRIP_ID}/requests`]: { status: 409, body: problem(409, "trip_full", "No seats left") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Request seat/ }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Sorry, that seat was just taken");
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Request seat/ })).not.toBeInTheDocument());
+    expect(screen.getByText("0 of 3 seats left · departs 7:48 AM tomorrow")).toBeInTheDocument();
+  });
+
+  it("cancels a pending request", async () => {
+    api({ status: 200, body: detail({ myRequest: seatRequest("pending") }) }, undefined, {
+      "/requests/r1/cancel": { status: 200, body: seatRequest("cancelled") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel request" }));
+
+    expect(await screen.findByText("Request cancelled")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Request seat/ })).toBeInTheDocument();
+  });
+
+  it("asks before cancelling an accepted seat", async () => {
+    api({ status: 200, body: detail({ myRequest: seatRequest("accepted") }) }, undefined, {
+      "/requests/r1/cancel": { status: 200, body: seatRequest("cancelled") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel my seat" }));
+    const confirm = screen.getByRole("group", { name: "Cancel your seat?" });
+    expect(confirm).toHaveTextContent("Priya will be told");
+
+    await userEvent.click(within(confirm).getByRole("button", { name: "Keep my seat" }));
+    expect(screen.queryByRole("group", { name: "Cancel your seat?" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Cancel my seat" }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel seat" }));
+    expect(await screen.findByText("Request cancelled")).toBeInTheDocument();
+  });
+
+  it("explains when a request can't be cancelled anymore", async () => {
+    api({ status: 200, body: detail({ myRequest: seatRequest("pending") }) }, undefined, {
+      "/requests/r1/cancel": { status: 409, body: problem(409, "request_not_cancellable", "No") },
+    });
+    renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel request" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("This request can't be cancelled anymore");
   });
 
   it("says when a pickup point can't be priced", async () => {
@@ -206,7 +365,7 @@ describe("TripDetail", () => {
     renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
 
     expect(await screen.findByText("The price can't be worked out right now.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Request seat" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Request seat" })).toBeInTheDocument();
   });
 
   it("puts the campus first and the point near the rider last on a trip home", async () => {

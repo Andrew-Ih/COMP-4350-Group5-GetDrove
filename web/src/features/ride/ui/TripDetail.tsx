@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowLeft, Footprints } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Clock, Footprints, XCircle } from "lucide-react";
 import Link from "next/link";
-import { type ReactNode, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
 import type { ApiError } from "@/shared/api";
@@ -10,14 +11,19 @@ import { cn } from "@/shared/lib/cn";
 import { CAMPUS, type LngLat, type MapMarker, type MapRoute, MapView } from "@/shared/map";
 import { AppHeader, Avatar, Button, buttonStyles, Eyebrow, MapLayout, PrivacyNote, Spinner } from "@/shared/ui";
 
-import { useProfile, useRoute, useTripDetail } from "../hooks/useTripDetail";
+import { useCancelSeatRequest, useProfile, useRequestSeat, useRoute, useSeatRequest, useTripDetail } from "../hooks/useTripDetail";
 import { formatClock, formatMoney, formatWalk, routeCoordinates } from "../model/results";
 import { AREA_RADIUS_METERS, type SearchQuery, toQueryString } from "../model/search";
 import {
   availability,
+  cancelRequestError,
   type DriverProfile,
   driverLine,
+  isActive,
   type PickupOption,
+  requestOutcome,
+  requestSeatError,
+  type SeatRequest,
   seatsAndDeparture,
   type TripDetail as Detail,
 } from "../model/tripDetail";
@@ -28,6 +34,10 @@ import {
  * pickup points (#136). `search` is the search the rider came from: its location is used
  * to find pickup points, and "All trips" goes back to its results. Without it, the trip
  * shows without pickup points.
+ *
+ * Requesting a seat (#141): the request is sent with the chosen pickup, then checked every
+ * few seconds while it's pending, so the screen shows when the driver accepts or declines.
+ * The rider can cancel a pending or accepted request.
  */
 export function TripDetail({ tripId, search }: { tripId: string; search: SearchQuery | undefined }) {
   const me = useCurrentUser();
@@ -39,11 +49,29 @@ export function TripDetail({ tripId, search }: { tripId: string; search: SearchQ
 
   const pickups = useMemo(() => detail.data?.pickups ?? [], [detail.data]);
   const [chosenId, setChosenId] = useState<string>();
+
+  // The rider's request: the one just sent, or the one the trip detail came with. It's
+  // checked again while pending; a declined or cancelled one stays on screen until another is sent.
+  const [sentId, setSentId] = useState<string>();
+  const myRequest = detail.data?.myRequest ?? undefined;
+  const seatRequest = useSeatRequest(sentId ?? myRequest?.id, myRequest);
+  const current = seatRequest.data ?? myRequest;
+  const active = isActive(current) ? current : undefined;
+
+  // When the driver decides, fetch the trip again for the seats left and, once accepted, the car.
+  const queryClient = useQueryClient();
+  const lastStatus = useRef(current?.status);
+  useEffect(() => {
+    if (lastStatus.current === "pending" && current?.status && current.status !== "pending") {
+      void queryClient.invalidateQueries({ queryKey: ["trips", "detail", tripId] });
+    }
+    lastStatus.current = current?.status;
+  }, [current?.status, queryClient, tripId]);
+
   // Once the rider has asked for a seat, their request's pickup point and price are the ones that count.
-  const request = detail.data?.myRequest;
   const pickup = useMemo<PickupOption | undefined>(
-    () => (request ? { ...request.pickup, id: "my-request", cost: request.cost } : (pickups.find((p) => p.id === chosenId) ?? pickups[0])),
-    [request, pickups, chosenId],
+    () => (active ? { ...active.pickup, id: "my-request", cost: active.cost } : (pickups.find((p) => p.id === chosenId) ?? pickups[0])),
+    [active, pickups, chosenId],
   );
 
   const you = useMemo<LngLat | undefined>(() => (rider ? [rider.lng, rider.lat] : undefined), [rider]);
@@ -56,13 +84,13 @@ export function TripDetail({ tripId, search }: { tripId: string; search: SearchQ
     ];
     // The other points as plain dots: they're often close together, so their labels would
     // overlap. The panel lists them by name.
-    for (const option of request ? [] : pickups) {
+    for (const option of active ? [] : pickups) {
       if (option.id !== pickup?.id) list.push({ id: `option-${option.id}`, lngLat: [option.lng, option.lat], kind: "stop" });
     }
     if (pickup) list.push({ id: "pickup", lngLat: [pickup.lng, pickup.lat], kind: "pickup", label: pickup.label });
     if (you) list.push({ id: "you", lngLat: you, kind: "you", label: "You" });
     return list;
-  }, [campus, request, pickups, pickup, you]);
+  }, [campus, active, pickups, pickup, you]);
 
   const mapRoutes = useMemo<MapRoute[]>(() => {
     const list: MapRoute[] = [];
@@ -110,11 +138,14 @@ export function TripDetail({ tripId, search }: { tripId: string; search: SearchQ
 
             {detail.status === "success" && (
               <Trip
+                tripId={tripId}
                 detail={detail.data}
                 profile={profile.data}
                 pickup={pickup}
                 onChoosePickup={setChosenId}
-                hasSearch={Boolean(search)}
+                rider={rider}
+                request={current}
+                onSent={(request) => setSentId(request.id)}
                 back={back}
               />
             )}
@@ -128,21 +159,27 @@ export function TripDetail({ tripId, search }: { tripId: string; search: SearchQ
 type Back = { href: string; label: string };
 
 function Trip({
+  tripId,
   detail,
   profile,
   pickup,
   onChoosePickup,
-  hasSearch,
+  rider,
+  request,
+  onSent,
   back,
 }: {
+  tripId: string;
   detail: Detail;
   profile: DriverProfile | undefined;
   pickup: PickupOption | undefined;
   onChoosePickup: (id: string) => void;
-  hasSearch: boolean;
+  rider: { lat: number; lng: number } | undefined;
+  request: SeatRequest | undefined;
+  onSent: (request: SeatRequest) => void;
   back: Back;
 }) {
-  const { trip, vehicle, pickups, myRequest } = detail;
+  const { trip, vehicle, pickups } = detail;
   const [choosing, setChoosing] = useState(false);
   const state = availability(trip);
   const name = profile?.firstName;
@@ -164,7 +201,7 @@ function Trip({
     <NearYouStop
       pickup={pickup}
       toCampus={toCampus}
-      canChoose={pickups.length > 1 && !myRequest}
+      canChoose={pickups.length > 1 && !isActive(request)}
       choosing={choosing}
       onToggle={() => setChoosing((open) => !open)}
     />
@@ -214,10 +251,20 @@ function Trip({
             />
           )}
           <Share pickup={pickup} />
-          <RequestArea state={state} detail={detail} pickup={pickup} name={name} />
+          <RequestArea
+            tripId={tripId}
+            state={state}
+            vehicle={vehicle}
+            pickup={pickup}
+            rider={rider}
+            request={request}
+            onSent={onSent}
+            name={name}
+            back={back}
+          />
         </>
       ) : (
-        <NoPickup hasSearch={hasSearch} back={back} />
+        <NoPickup hasSearch={Boolean(rider)} back={back} />
       )}
     </>
   );
@@ -313,50 +360,122 @@ function Share({ pickup }: { pickup: PickupOption }) {
   );
 }
 
+/** Errors after which the trip can't be requested: the way forward is another trip. */
+const LEAVE_CODES = new Set(["trip_full", "trip_not_open", "trip_not_found"]);
+
 function RequestArea({
+  tripId,
   state,
-  detail,
+  vehicle,
   pickup,
+  rider,
+  request,
+  onSent,
   name,
+  back,
 }: {
+  tripId: string;
   state: "open" | "full";
-  detail: Detail;
+  vehicle: Detail["vehicle"];
   pickup: PickupOption;
+  rider: { lat: number; lng: number } | undefined;
+  request: SeatRequest | undefined;
+  onSent: (request: SeatRequest) => void;
   name: string | undefined;
+  back: Back;
 }) {
+  const send = useRequestSeat(tripId, onSent);
+  const cancel = useCancelSeatRequest(tripId);
+  const [confirming, setConfirming] = useState(false);
   const driver = name ?? "The driver";
-  const request = detail.myRequest;
+  const cancelError = cancel.error && (
+    <p role="alert" className="text-sm font-semibold">
+      {cancelRequestError(cancel.error.code)}
+    </p>
+  );
 
   if (request?.status === "accepted") {
     return (
-      <Notice title="You're in">
-        Be at {request.pickup.label} a few minutes early.
-        {detail.vehicle
-          ? ` Look for a ${detail.vehicle.colour} ${detail.vehicle.make} ${detail.vehicle.model}, plate ${detail.vehicle.plate}.`
-          : ""}
-      </Notice>
+      <div className="mt-8 space-y-3">
+        <Notice title="You're in" tone="success">
+          Be at {request.pickup.label} a few minutes early.
+          {vehicle ? ` Look for a ${vehicle.colour} ${vehicle.make} ${vehicle.model}, plate ${vehicle.plate}.` : ""}
+        </Notice>
+        {confirming ? (
+          <div role="group" aria-label="Cancel your seat?" className="space-y-3 rounded-lg border-2 border-line p-4">
+            <p className="font-semibold">Cancel your seat? {driver} will be told, and the seat goes back to other riders.</p>
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="secondary" size="md" onClick={() => setConfirming(false)}>
+                Keep my seat
+              </Button>
+              <Button variant="dark" size="md" loading={cancel.isPending} onClick={() => cancel.mutate(request.id)}>
+                Cancel seat
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <Button variant="secondary" size="md" fullWidth onClick={() => setConfirming(true)}>
+            Cancel my seat
+          </Button>
+        )}
+        {cancelError}
+      </div>
     );
   }
+
   if (request?.status === "pending") {
-    return <Notice title="Request sent">Waiting for {name ?? "the driver"} to accept. You&apos;re only charged if they do.</Notice>;
+    return (
+      <div className="mt-8 space-y-3">
+        <Notice title="Request sent" tone="waiting">
+          Waiting for {name ?? "the driver"} to accept. This page updates when they decide, and you&apos;re only charged if
+          they accept.
+        </Notice>
+        <Button variant="secondary" size="md" fullWidth loading={cancel.isPending} onClick={() => cancel.mutate(request.id)}>
+          Cancel request
+        </Button>
+        {cancelError}
+      </div>
+    );
   }
-  if (state === "full") {
-    return <Notice title="No seats left">{driver}&apos;s trip is full. Go back to see other trips.</Notice>;
-  }
+
+  const outcome = request ? requestOutcome(request, name) : undefined;
+  const here = typeof window === "undefined" ? `/ride/trip/${tripId}` : `${window.location.pathname}${window.location.search}`;
+  const error = send.error ? requestSeatError(send.error.code, here) : undefined;
+  const errorLink = error?.link ?? (send.error && LEAVE_CODES.has(send.error.code) ? back : undefined);
 
   return (
     <div className="mt-8 space-y-4">
-      {/* Sending the request is #141; until then the button shows what it will do. */}
-      <Button fullWidth disabled aria-describedby="request-soon">
-        Request seat{pickup.cost ? ` · ${formatMoney(pickup.cost.amountCents)}` : ""}
-      </Button>
-      <p id="request-soon" className="text-sm text-ink-soft">
-        Requesting a seat is coming soon.
-      </p>
-      <PrivacyNote>
-        {driver} will see this pickup point, never your address. You&apos;re only charged if{" "}
-        {name ? `${name} accepts` : "they accept"}.
-      </PrivacyNote>
+      {outcome && (
+        <Notice title={outcome.title} link={outcome.link} tone={request?.status === "cancelled" ? "neutral" : "ended"}>
+          {outcome.text}
+        </Notice>
+      )}
+      {error && (
+        <div role="alert" className="rounded-lg border-2 border-ink px-5 py-4">
+          <p className="font-bold">{error.title}</p>
+          <p className="text-ink-soft">{error.text}</p>
+          {errorLink && (
+            <Link href={errorLink.href} className="mt-2 inline-block font-bold underline underline-offset-4">
+              {errorLink.label}
+            </Link>
+          )}
+        </div>
+      )}
+      {state === "full" ? (
+        !error && <Notice title="No seats left">{driver}&apos;s trip is full. Go back to see other trips.</Notice>
+      ) : (
+        rider && (
+          <>
+            <Button fullWidth loading={send.isPending} onClick={() => send.mutate({ ...rider, pickupId: pickup.id })}>
+              Request seat{pickup.cost ? ` · ${formatMoney(pickup.cost.amountCents)}` : ""}
+            </Button>
+            <PrivacyNote>
+              {driver} will see this pickup point, never your address. You&apos;re only charged if{" "}
+              {name ? `${name} accepts` : "they accept"}.
+            </PrivacyNote>
+          </>
+        )
+      )}
     </div>
   );
 }
@@ -374,11 +493,42 @@ function NoPickup({ hasSearch, back }: { hasSearch: boolean; back: Back }) {
   );
 }
 
-function Notice({ title, children }: { title: string; children: ReactNode }) {
+/**
+ * How a request's state looks, so a change (e.g. waiting → accepted) is easy to notice:
+ * success is green with a tick, waiting has a clock, ended (declined, expired, payment
+ * failed) has a cross.
+ */
+const NOTICE_TONES = {
+  success: { box: "border-brand bg-brand-tint", title: "text-brand", icon: CheckCircle2 },
+  waiting: { box: "border-line bg-surface-muted", title: "", icon: Clock },
+  ended: { box: "border-line-strong", title: "", icon: XCircle },
+  neutral: { box: "border-line", title: "", icon: undefined },
+} as const;
+
+function Notice({
+  title,
+  children,
+  link,
+  tone = "neutral",
+}: {
+  title: string;
+  children: ReactNode;
+  link?: { href: string; label: string };
+  tone?: keyof typeof NOTICE_TONES;
+}) {
+  const { box, title: titleClass, icon: Icon } = NOTICE_TONES[tone];
   return (
-    <div role="status" className="mt-8 rounded-lg border-2 border-line px-5 py-4">
-      <p className="font-bold">{title}</p>
-      <p className="text-ink-soft">{children}</p>
+    <div role="status" className={cn("flex gap-3 rounded-lg border-2 px-5 py-4", box)}>
+      {Icon && <Icon aria-hidden="true" className={cn("mt-0.5 size-6 shrink-0", tone === "success" ? "text-brand" : "text-ink")} />}
+      <div className="min-w-0">
+        <p className={cn("text-lg font-bold", titleClass)}>{title}</p>
+        <p className="text-ink-soft">{children}</p>
+        {link && (
+          <Link href={link.href} className="mt-2 inline-block font-bold underline underline-offset-4">
+            {link.label}
+          </Link>
+        )}
+      </div>
     </div>
   );
 }

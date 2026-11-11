@@ -7,6 +7,7 @@ import { driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from ".
 import { driveHandlers } from "./drive";
 import { requestHandlers } from "./requests";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
+import { riderRequestHandlers, withMyRequest } from "./riderRequests";
 
 type Problem = Accounts["schemas"]["Problem"];
 
@@ -53,6 +54,7 @@ export const handlers = [
   ...driveHandlers, // posting a trip (#96): see drive.ts
   ...requestHandlers, // the driver's requests on a trip (#142), with a demo trip: see requests.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
+  ...riderRequestHandlers, // a rider asking for a seat (#141): see riderRequests.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
     const body = (await request.json()) as Accounts["schemas"]["SignupRequest"];
     await delay(); // realistic in the browser, none in tests
@@ -164,6 +166,6 @@ export const handlers = [
     const found = tripDetailFor(tripId, rider, lastSearch ?? { direction: "to_campus", time: tomorrowAt830() });
     if (!found) return problem(404, "trip_not_found", "No trip with this ID", instance);
     routes.set(tripId, found.route); // so its route shows after a reload too
-    return HttpResponse.json(found.detail);
+    return HttpResponse.json(withMyRequest(found.detail)); // with the rider's own request, if any
   }),
 ];
