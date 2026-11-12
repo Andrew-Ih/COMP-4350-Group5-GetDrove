@@ -257,6 +257,11 @@ class SeatRequest(ApiModel):
     )
 
 
+# How many rejected pickup points the trip detail can be asked to leave out (#136); passed
+# on to Routing, which has the same limit.
+MAX_EXCLUDED_PICKUPS = 20
+
+
 class SeatRequestBody(ApiModel):
     lat: float = Field(
         ge=-90, le=90, description="The rider's location. Used to check the pickup, never stored."

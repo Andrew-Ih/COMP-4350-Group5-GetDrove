@@ -119,7 +119,8 @@ def _not_implemented() -> NoReturn:
     summary="Pickup points for a rider on a trip",
     description="Called by Trips for the trip detail and when a seat is requested. Returns "
     "up to `limit` points on the trip's route, shortest walk first, each on a road a car can "
-    "stop on and away from both ends of the route.",
+    "stop on and away from both ends of the route. Points in `exclude` (ones the rider "
+    "rejected) are never returned.",
     responses={**INVALID, **ROUTE_NOT_FOUND, **ENGINE_DOWN},
 )
 async def pickup_points(
