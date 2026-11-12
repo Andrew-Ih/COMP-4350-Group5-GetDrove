@@ -5,11 +5,11 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from routing.application.match_rider import (
+from routing.application.match_rider import MatchRider
+from routing.application.pickups import (
     DEFAULT_PICKUP_LABEL,
     PRIVATE_END_METERS,
     SAMPLES_PER_TRIP,
-    MatchRider,
 )
 from routing.domain.errors import RoutingEngineUnavailableError
 from routing.domain.values import (
@@ -249,3 +249,34 @@ async def test_a_rider_only_near_an_end_does_not_match() -> None:
 
     assert await use_case.execute(RIDER, [trip]) == []
     assert walking.calls == []
+
+
+# ---------------------------------------------------------------- excluded roads (#29)
+
+
+async def test_search_skips_points_on_excluded_roads() -> None:
+    """Search offers the same point the pickup points endpoint would offer first (#30)."""
+    trip = uuid4()
+    on_bishop_grandin, beside_it = hit(trip, 1, distance=50), hit(trip, 4, distance=250)
+    use_case, *_ = match_rider(
+        [on_bishop_grandin, beside_it],
+        {on_bishop_grandin.sample.point: walk(60), beside_it.sample.point: walk(240)},
+        names={
+            on_bishop_grandin.sample.point: "Abinojii Mikanah",
+            beside_it.sample.point: "Pembina Highway",
+        },
+    )
+
+    [match] = await use_case.execute(RIDER, [trip])
+
+    assert (match.pickup, match.pickup_label) == (beside_it.sample.point, "Pembina Highway")
+
+
+async def test_a_trip_only_on_excluded_roads_near_the_rider_does_not_match() -> None:
+    trip = uuid4()
+    sample = hit(trip, 1)
+    use_case, *_ = match_rider(
+        [sample], {sample.sample.point: walk(60)}, names={sample.sample.point: "Perimeter Highway"}
+    )
+
+    assert await use_case.execute(RIDER, [trip]) == []

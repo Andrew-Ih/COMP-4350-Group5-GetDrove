@@ -57,6 +57,17 @@ class Walk:
 
 
 @dataclass(frozen=True)
+class PickupCandidate:
+    """A place on a trip's route where the driver can pick this rider up (#29)."""
+
+    id: str  # which sample of the stored route it is (see domain.pickups.pickup_id)
+    point: LatLng
+    label: str
+    walk_seconds: int
+    rider_distance_meters: int  # along the route, from this point to the trip's end
+
+
+@dataclass(frozen=True)
 class RiderMatch:
     """A trip the rider can walk to, with the best place on its route to be picked up (#26)."""
 

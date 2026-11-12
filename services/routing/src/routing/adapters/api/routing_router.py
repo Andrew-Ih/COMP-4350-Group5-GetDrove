@@ -5,7 +5,7 @@
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
 Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches) and
-#123 (the geometry endpoint). Sprint 2 adds pickup points (#29, #30) and detours (#36, #38),
+#123 (the geometry endpoint). Sprint 2 adds pickup points (#29) and detours (#36, #38),
 which return 501 until implemented, and hides the driver's end of the route from riders
 (#135).
 """
@@ -20,6 +20,7 @@ from routing.adapters.api.dependencies import (
     ComputeRouteService,
     GetRouteService,
     MatchRiderService,
+    SuggestPickupsService,
 )
 from routing.adapters.api.schemas import (
     DetourRequest,
@@ -29,6 +30,7 @@ from routing.adapters.api.schemas import (
     MatchRequest,
     MatchResponse,
     Pickup,
+    PickupPoint,
     PickupPointsRequest,
     PickupPointsResponse,
     Problem,
@@ -120,8 +122,28 @@ def _not_implemented() -> NoReturn:
     "stop on and away from both ends of the route.",
     responses={**INVALID, **ROUTE_NOT_FOUND, **ENGINE_DOWN},
 )
-async def pickup_points(body: PickupPointsRequest) -> PickupPointsResponse:
-    _not_implemented()
+async def pickup_points(
+    body: PickupPointsRequest, service: SuggestPickupsService
+) -> PickupPointsResponse:
+    pickups = await service.execute(
+        trip_id=body.trip_id,
+        rider=LatLng(lat=body.rider.lat, lng=body.rider.lng),
+        limit=body.limit,
+    )
+
+    return PickupPointsResponse(
+        pickups=[
+            PickupPoint(
+                id=pickup.id,
+                label=pickup.label,
+                lat=pickup.point.lat,
+                lng=pickup.point.lng,
+                walk_seconds=pickup.walk_seconds,
+                rider_distance_meters=pickup.rider_distance_meters,
+            )
+            for pickup in pickups
+        ]
+    )
 
 
 @internal_router.post(
