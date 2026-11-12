@@ -251,7 +251,7 @@ export interface paths {
         };
         /**
          * Trip detail
-         * @description One trip, with up to 3 pickup points for the rider at `lat`/`lng` (each with its walking time and price) and the caller's own request on it, if any. The driver's own end of the trip is returned only to its driver. Send `lat` and `lng` together or not at all; they're used to find pickup points and never stored.
+         * @description One trip, with up to 3 pickup points for the rider at `lat`/`lng` (each with its walking time and price) and the caller's own request on it, if any. The driver's own end of the trip is returned only to its driver. Send `lat` and `lng` together or not at all; they're used to find pickup points and never stored. `exclude` leaves out pickup points the rider rejected (#136), so the next best come back instead; it's ignored without `lat` and `lng`.
          */
         get: operations["get_trip__trip_id__get"];
         put?: never;
@@ -2059,6 +2059,8 @@ export interface operations {
                 lat?: number | null;
                 /** @description Rider's longitude. */
                 lng?: number | null;
+                /** @description IDs of pickup points the rider rejected, repeated: `?exclude=s42&exclude=s45`. At most 20. */
+                exclude?: string[] | null;
             };
             header?: never;
             path: {
