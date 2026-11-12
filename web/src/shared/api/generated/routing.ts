@@ -69,7 +69,7 @@ export interface paths {
         put?: never;
         /**
          * Pickup points for a rider on a trip
-         * @description Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route.
+         * @description Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route. Points in `exclude` (ones the rider rejected) are never returned.
          */
         post: operations["pickup_points_internal_pickup_points_post"];
         delete?: never;
@@ -284,6 +284,15 @@ export interface components {
              * @default 3
              */
             limit: number;
+            /**
+             * Exclude
+             * @description IDs of points the rider rejected (#136). They're never returned, so the next best come back instead. At most 20.
+             * @example [
+             *       "s42",
+             *       "s45"
+             *     ]
+             */
+            exclude?: string[];
         };
         /** PickupPointsResponse */
         PickupPointsResponse: {
