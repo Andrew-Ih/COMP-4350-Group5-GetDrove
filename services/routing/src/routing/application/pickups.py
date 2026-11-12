@@ -18,6 +18,7 @@ direction, and works out how far the rider actually rides.
 The rider's location is used for the calculation only, never stored or logged.
 """
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from routing.application.ports import RoutingEngine, WalkingEngine
@@ -69,11 +70,19 @@ async def walkable(
     return sorted(reachable, key=lambda pair: (pair[1].seconds, -pair[0].sample.offset_meters))
 
 
-async def choose(reachable: Reachable, driving: RoutingEngine, limit: int) -> list[PickupCandidate]:
+async def choose(
+    reachable: Reachable, driving: RoutingEngine, limit: int, exclude: Sequence[str] = ()
+) -> list[PickupCandidate]:
     """Up to ``limit`` pickup points from one trip's reachable samples (shortest walk first):
-    never on an excluded road, and spread out along the route."""
+    never one the rider rejected (``exclude``, by ID), never on an excluded road, and spread
+    out along the route, away from the ones offered and the ones rejected."""
+    rejected = set(exclude)
     chosen: list[PickupCandidate] = []
-    offsets: list[int] = []
+    # A rejected point keeps its 200 m: the next suggestion is a different spot, not the
+    # sample next door (which is what the rider just said no to).
+    offsets = [
+        hit.sample.offset_meters for hit, _ in reachable if pickup_id(hit.sample.seq) in rejected
+    ]
     for hit, walk in reachable:
         if len(chosen) == limit:
             break

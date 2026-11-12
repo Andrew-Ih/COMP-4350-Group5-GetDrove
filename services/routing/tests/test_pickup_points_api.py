@@ -182,6 +182,32 @@ async def test_limit_caps_the_number_of_points(api: API) -> None:
     assert len(response.json()["pickups"]) == 1
 
 
+async def test_rejected_points_are_never_returned_again(api: API) -> None:
+    """#29 / #136: the rider rejects the suggestions; asking again with their IDs in
+    `exclude` brings different points, never the rejected ones."""
+    first = (await call(api, "/internal/pickup-points", pickups_request(api), foot())).json()
+    rejected = [p["id"] for p in first["pickups"]]
+
+    body = pickups_request(api, exclude=rejected)
+    response = await call(api, "/internal/pickup-points", body, foot())
+
+    assert response.status_code == 200, response.text
+    again = response.json()["pickups"]
+    assert again  # the route still has other points within walking distance
+    assert not {p["id"] for p in again} & set(rejected)
+    walks = [p["walkSeconds"] for p in again]
+    assert walks == sorted(walks)
+
+
+async def test_exclude_with_unknown_ids_changes_nothing(api: API) -> None:
+    plain = (await call(api, "/internal/pickup-points", pickups_request(api), foot())).json()
+
+    body = pickups_request(api, exclude=["s9999"])
+    with_unknown = (await call(api, "/internal/pickup-points", body, foot())).json()
+
+    assert with_unknown == plain
+
+
 async def test_points_on_excluded_roads_are_never_returned(api: API) -> None:
     on_bishop_grandin = car("Abinojii Mikanah")  # its name on the map since 2022
 

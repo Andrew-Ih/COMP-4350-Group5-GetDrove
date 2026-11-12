@@ -201,3 +201,56 @@ async def test_walking_engine_down_is_an_error() -> None:
 
     with pytest.raises(RoutingEngineUnavailableError):
         await use_case.execute(TRIP, RIDER, limit=3)
+
+
+# ---------------------------------------------------------------- rejected points (#29, #136)
+
+
+async def test_rejected_points_are_never_returned_and_the_next_best_come_back() -> None:
+    hits = [hit(seq) for seq in (10, 13, 16, 19, 22)]
+    use_case, *_ = suggest(hits, {10: 100, 13: 200, 16: 300, 19: 400, 22: 500})
+
+    first = await use_case.execute(TRIP, RIDER, limit=2)
+    after_rejecting = await use_case.execute(TRIP, RIDER, limit=2, exclude=["s10", "s13"])
+
+    assert [p.id for p in first] == ["s10", "s13"]
+    assert [p.id for p in after_rejecting] == ["s16", "s19"]
+
+
+async def test_points_near_a_rejected_one_are_not_offered_instead() -> None:
+    """Choosing a different point gives a different spot: not the sample 100 m along, which
+    is what the rider just said no to. Found when trying it on a real route: rejecting s38
+    brought back s37 and s39."""
+    hits = [hit(10), hit(11), hit(12), hit(15)]
+    use_case, _, driving = suggest(hits, {10: 100, 11: 110, 12: 120, 15: 400})
+
+    pickups = await use_case.execute(TRIP, RIDER, limit=2, exclude=["s10"])
+
+    assert [p.id for p in pickups] == ["s12", "s15"]  # s11 is within 200 m of s10
+    assert driving.asked == [12, 15]  # neither s10 nor s11 cost a road name lookup
+
+
+async def test_rejected_points_cost_no_road_name_lookup() -> None:
+    hits = [hit(10), hit(13)]
+    use_case, _, driving = suggest(hits, {10: 100, 13: 200})
+
+    await use_case.execute(TRIP, RIDER, limit=1, exclude=["s10"])
+
+    assert driving.asked == [13]
+
+
+async def test_unknown_rejected_ids_are_ignored() -> None:
+    """IDs from another trip, or from before the route was computed again, match nothing."""
+    hits = [hit(10), hit(13)]
+    use_case, *_ = suggest(hits, {10: 100, 13: 200})
+
+    pickups = await use_case.execute(TRIP, RIDER, limit=2, exclude=["s999", "not-a-sample"])
+
+    assert [p.id for p in pickups] == ["s10", "s13"]
+
+
+async def test_rejecting_every_point_leaves_none() -> None:
+    hits = [hit(10), hit(13)]
+    use_case, *_ = suggest(hits, {10: 100, 13: 200})
+
+    assert await use_case.execute(TRIP, RIDER, limit=3, exclude=["s10", "s13"]) == []

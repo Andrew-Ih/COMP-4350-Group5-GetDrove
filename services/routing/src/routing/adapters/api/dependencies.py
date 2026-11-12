@@ -128,7 +128,9 @@ class SuggestPickupsQuery:
         self.corridor = corridor
         self.max_walk_seconds = max_walk_seconds
 
-    async def execute(self, *, trip_id: UUID, rider: LatLng, limit: int) -> list[PickupCandidate]:
+    async def execute(
+        self, *, trip_id: UUID, rider: LatLng, limit: int, exclude: Sequence[str]
+    ) -> list[PickupCandidate]:
         async with self.session_factory() as session:
             use_case = SuggestPickups(
                 SQLAlchemyRouteRepository(session),
@@ -137,7 +139,7 @@ class SuggestPickupsQuery:
                 self.corridor,
                 self.max_walk_seconds,
             )
-            return await use_case.execute(trip_id, rider, limit)
+            return await use_case.execute(trip_id, rider, limit, exclude)
 
 
 def get_suggest_pickups(request: Request) -> SuggestPickupsQuery:
