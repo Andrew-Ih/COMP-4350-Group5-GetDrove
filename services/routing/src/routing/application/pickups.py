@@ -81,6 +81,8 @@ async def choose(reachable: Reachable, driving: RoutingEngine, limit: int) -> li
         if any(abs(offset - other) < MIN_PICKUP_SPACING_METERS for other in offsets):
             continue
         # Asked one at a time, in order: usually the first is fine, so it's one request.
+        # This fails open: road_name is None both for an unnamed road and when the car
+        # profile is down, so then excluded roads aren't recognised (see the README).
         name = await driving.road_name(hit.sample.point)
         if name is not None and is_excluded_road(name):
             continue

@@ -6,7 +6,7 @@
 
 Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches) and
 #123 (the geometry endpoint). Sprint 2 adds pickup points (#29) and detours (#36, #38),
-which returns 501 until implemented, and hides the driver's end of the route from riders
+which return 501 until implemented, and hides the driver's end of the route from riders
 (#135).
 """
 
