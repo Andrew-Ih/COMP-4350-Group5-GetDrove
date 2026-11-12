@@ -12,8 +12,9 @@ from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.application.compute_route import ComputeRoute
 from routing.application.get_route import GetRoute
 from routing.application.match_rider import MatchRider
+from routing.application.suggest_pickups import SuggestPickups
 from routing.domain.entities import Route
-from routing.domain.values import Corridor, LatLng, RiderMatch
+from routing.domain.values import Corridor, LatLng, PickupCandidate, RiderMatch
 
 
 class ComputeRouteCommand:
@@ -108,3 +109,46 @@ def get_match_rider(request: Request) -> MatchRiderQuery:
 
 
 MatchRiderService = Annotated[MatchRiderQuery, Depends(get_match_rider)]
+
+
+class SuggestPickupsQuery:
+    """Finds a rider's pickup points on one trip, reading its route in its own session."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        walking: OSRMWalkingEngine,
+        driving: OSRMRoutingEngine,
+        corridor: Corridor,
+        max_walk_seconds: int,
+    ) -> None:
+        self.session_factory = session_factory
+        self.walking = walking
+        self.driving = driving
+        self.corridor = corridor
+        self.max_walk_seconds = max_walk_seconds
+
+    async def execute(self, *, trip_id: UUID, rider: LatLng, limit: int) -> list[PickupCandidate]:
+        async with self.session_factory() as session:
+            use_case = SuggestPickups(
+                SQLAlchemyRouteRepository(session),
+                self.walking,
+                self.driving,
+                self.corridor,
+                self.max_walk_seconds,
+            )
+            return await use_case.execute(trip_id, rider, limit)
+
+
+def get_suggest_pickups(request: Request) -> SuggestPickupsQuery:
+    state = request.app.state
+    return SuggestPickupsQuery(
+        session_factory=state.session_factory,
+        walking=OSRMWalkingEngine(state.osrm_foot_client),
+        driving=OSRMRoutingEngine(state.osrm_car_client),
+        corridor=state.corridor,
+        max_walk_seconds=state.max_walk_seconds,
+    )
+
+
+SuggestPickupsService = Annotated[SuggestPickupsQuery, Depends(get_suggest_pickups)]

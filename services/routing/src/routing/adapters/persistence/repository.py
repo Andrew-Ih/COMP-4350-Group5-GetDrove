@@ -87,6 +87,12 @@ class SQLAlchemyRouteRepository:
             duration_seconds=row["duration_seconds"],
         )
 
+    async def has_route(self, trip_id: UUID) -> bool:
+        stored = await self.session.scalar(
+            select(func.count()).select_from(routes).where(routes.c.trip_id == trip_id)
+        )
+        return bool(stored)
+
     async def samples_in_corridor(
         self, rider: LatLng, trip_ids: Sequence[UUID], corridor: Corridor
     ) -> list[CorridorHit]:
