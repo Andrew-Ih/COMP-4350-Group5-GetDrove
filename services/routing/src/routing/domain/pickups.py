@@ -14,6 +14,11 @@ EXCLUDED_ROADS = frozenset(
     }
 )
 
+# Nothing within this straight-line distance of either end of a route is shown to riders:
+# not a pickup point (#29), not the route on the map (#135). One end is campus; the other is
+# the driver's own place, usually near home.
+PRIVATE_END_METERS = 300
+
 # Pickup points offered for one trip are at least this far apart along the route, so
 # "choose a different point" (#136) offers a different spot, not the next 100 m sample.
 MIN_PICKUP_SPACING_METERS = 200

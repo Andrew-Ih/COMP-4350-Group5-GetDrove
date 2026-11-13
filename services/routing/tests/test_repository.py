@@ -13,7 +13,7 @@ from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.adapters.persistence.tables import route_samples, routes
 from routing.domain.corridor import distance_meters, sample_route
 from routing.domain.entities import Route
-from routing.domain.values import Corridor, LatLng
+from routing.domain.values import Corridor, Direction, LatLng
 from routing.infrastructure.settings import get_settings
 
 pytestmark = pytest.mark.usefixtures("routing_database")
@@ -115,6 +115,25 @@ async def test_save_again_replaces_the_route(session: AsyncSession) -> None:
     assert row["wkt"] == "LINESTRING(-97.1366 49.8075,-97.15 49.82)"
     assert row["distance_meters"] == 6500
     assert row["duration_seconds"] == 960
+
+
+@pytest.mark.parametrize("direction", [Direction.TO_CAMPUS, Direction.FROM_CAMPUS, None])
+async def test_get_returns_the_driver_and_direction(
+    session: AsyncSession, direction: Direction | None
+) -> None:
+    driver = uuid4() if direction else None
+    route = Route(
+        trip_id=uuid4(),
+        path=(HOME, CAMPUS),
+        distance_meters=6000,
+        duration_seconds=900,
+        driver_id=driver,
+        direction=direction,
+    )
+
+    await save(session, route)
+
+    assert await SQLAlchemyRouteRepository(session).get(route.trip_id) == route
 
 
 async def test_get_returns_the_route_as_saved(session: AsyncSession) -> None:

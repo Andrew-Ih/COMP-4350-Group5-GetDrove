@@ -14,7 +14,7 @@ from routing.application.get_route import GetRoute
 from routing.application.match_rider import MatchRider
 from routing.application.suggest_pickups import SuggestPickups
 from routing.domain.entities import Route
-from routing.domain.values import Corridor, LatLng, PickupCandidate, RiderMatch
+from routing.domain.values import Corridor, Direction, LatLng, PickupCandidate, RiderMatch
 
 
 class ComputeRouteCommand:
@@ -28,7 +28,15 @@ class ComputeRouteCommand:
         self.session_factory = session_factory
         self.engine = engine
 
-    async def execute(self, *, trip_id: UUID, origin: LatLng, destination: LatLng) -> Route:
+    async def execute(
+        self,
+        *,
+        trip_id: UUID,
+        origin: LatLng,
+        destination: LatLng,
+        driver_id: UUID | None,
+        direction: Direction | None,
+    ) -> Route:
         async with self.session_factory() as session:
             use_case = ComputeRoute(self.engine, SQLAlchemyRouteRepository(session))
 
@@ -37,6 +45,8 @@ class ComputeRouteCommand:
                     trip_id=trip_id,
                     origin=origin,
                     destination=destination,
+                    driver_id=driver_id,
+                    direction=direction,
                 )
 
 
@@ -56,9 +66,9 @@ class GetRouteQuery:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
 
-    async def execute(self, trip_id: UUID) -> Route:
+    async def execute(self, trip_id: UUID, viewer_id: UUID) -> Route:
         async with self.session_factory() as session:
-            return await GetRoute(SQLAlchemyRouteRepository(session)).execute(trip_id)
+            return await GetRoute(SQLAlchemyRouteRepository(session)).execute(trip_id, viewer_id)
 
 
 def get_get_route(request: Request) -> GetRouteQuery:

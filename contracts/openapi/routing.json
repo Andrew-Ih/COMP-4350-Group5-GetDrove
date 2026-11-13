@@ -374,7 +374,7 @@
           "routes"
         ],
         "summary": "A trip's route for the map",
-        "description": "The route as a GeoJSON LineString. The trip's driver gets the full route. Anyone else gets it with the driver's end cut off, by the same margin pickup points keep from the ends, so the driver's home is never shown (#135; until then the full route is returned).",
+        "description": "The route as a GeoJSON LineString. The trip's driver gets the full route. Anyone else gets it with the driver's end cut off, by the same margin pickup points keep from the ends (300 m in a straight line), so the driver's home is never shown. Routes stored before Sprint 2 have no driver or direction: both ends are cut off for everyone (#135).",
         "operationId": "route_geometry_trips__trip_id__geometry_get",
         "security": [
           {

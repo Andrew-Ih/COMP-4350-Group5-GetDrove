@@ -1,7 +1,16 @@
 """Value types for the Routing domain."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from uuid import UUID
+
+
+class Direction(StrEnum):
+    """Which way a trip goes, and so which end of its route is the driver's own (#135):
+    the start going to campus, the end leaving it."""
+
+    TO_CAMPUS = "to_campus"
+    FROM_CAMPUS = "from_campus"
 
 
 @dataclass(frozen=True)

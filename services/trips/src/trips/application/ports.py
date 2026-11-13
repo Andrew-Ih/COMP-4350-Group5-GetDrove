@@ -7,7 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from trips.domain.entities import Trip
-from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
+from trips.domain.values import Direction, Location, Point, Quote, SearchWindow, TripMatch
 
 
 class TripRepository(Protocol):
@@ -41,7 +41,12 @@ class RoutingService(Protocol):
         trip_id: UUID,
         origin: Location,
         destination: Location,
-    ) -> RouteEstimate: ...
+        driver_id: UUID,
+        direction: Direction,
+    ) -> RouteEstimate:
+        """``driver_id`` and ``direction`` let Routing show the whole route to the driver
+        only, and hide the driver's own end from everyone else (#135)."""
+        ...
 
     async def match(self, rider: Point, trip_ids: Sequence[UUID]) -> list[TripMatch]:
         """The trips the rider can walk to, with a pickup point for each. Raise
