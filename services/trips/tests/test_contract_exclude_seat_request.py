@@ -8,18 +8,38 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
+from trips.adapters.api.dependencies import get_request_seat
 from trips.adapters.api.schemas import MAX_EXCLUDED_PICKUPS, SeatRequestBody
+from trips.application.request_seat import RequestSeatCommand
+from trips.domain.request_errors import TripNotFoundError
 from trips.infrastructure.main import create_app
 
 ID = "5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11"
 BODY: dict[str, Any] = {"lat": 49.8722, "lng": -97.1561, "pickupId": "s50"}
 
 
+class RecordingService:
+    """Stands in for the seat request use case: records what the endpoint passed on."""
+
+    def __init__(self) -> None:
+        self.commands: list[RequestSeatCommand] = []
+
+    async def execute(self, command: RequestSeatCommand) -> None:
+        self.commands.append(command)
+        raise TripNotFoundError()
+
+
 @pytest.fixture
-async def client() -> AsyncClient:
+def service() -> RecordingService:
+    return RecordingService()
+
+
+@pytest.fixture
+async def client(service: RecordingService) -> AsyncClient:
     auth = TestAuth()
     app = create_app()
     auth.install(app)
+    app.dependency_overrides[get_request_seat] = lambda: service
     return AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
     )
@@ -34,18 +54,21 @@ async def client() -> AsyncClient:
         [],
     ],
 )
-async def test_valid_exclude_lists_reach_the_not_yet_implemented_handler(
-    client: AsyncClient, exclude: list[str]
+async def test_valid_exclude_lists_are_passed_on(
+    client: AsyncClient, service: RecordingService, exclude: list[str]
 ) -> None:
     response = await client.post(f"/{ID}/requests", json={**BODY, "exclude": exclude})
 
-    assert response.status_code == 501, response.text
+    assert response.status_code == 404, response.text
+    [command] = service.commands
+    assert command.exclude == tuple(exclude)
 
 
-async def test_exclude_is_optional(client: AsyncClient) -> None:
+async def test_exclude_is_optional(client: AsyncClient, service: RecordingService) -> None:
     response = await client.post(f"/{ID}/requests", json=BODY)
 
-    assert response.status_code == 501, response.text
+    assert response.status_code == 404, response.text
+    assert service.commands[0].exclude == ()
     assert SeatRequestBody.model_validate(BODY).exclude == []
 
 
@@ -57,11 +80,14 @@ async def test_exclude_is_optional(client: AsyncClient) -> None:
         ["s" * 65],
     ],
 )
-async def test_invalid_exclude_lists_are_rejected(client: AsyncClient, exclude: list[str]) -> None:
+async def test_invalid_exclude_lists_are_rejected(
+    client: AsyncClient, service: RecordingService, exclude: list[str]
+) -> None:
     response = await client.post(f"/{ID}/requests", json={**BODY, "exclude": exclude})
 
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_input"
+    assert service.commands == []
 
 
 def test_spec_documents_exclude_as_an_optional_list() -> None:

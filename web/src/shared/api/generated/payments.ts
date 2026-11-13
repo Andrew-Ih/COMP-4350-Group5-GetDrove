@@ -137,7 +137,7 @@ export interface components {
             /**
              * Id
              * @description Stripe's payment method ID.
-             * @example pm_1Nx�
+             * @example pm_1Nx…
              */
             id: string;
             /**
@@ -229,7 +229,7 @@ export interface components {
             /**
              * Clientsecret
              * @description Pass to Stripe Elements (`stripe.confirmCardSetup`). Card details go straight to Stripe and never reach our servers.
-             * @example seti_1Nx�_secret_�
+             * @example seti_1Nx…_secret_…
              */
             clientSecret: string;
         };
