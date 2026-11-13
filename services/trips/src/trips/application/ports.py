@@ -7,6 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from trips.domain.entities import Trip
+from trips.domain.seat_request import SeatRequest
 from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
 
 
@@ -21,6 +22,8 @@ class TripRepository(Protocol):
         ...
 
     async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
+
+    async def get(self, trip_id: UUID) -> Trip | None: ...
 
 
 class TripEvents(Protocol):
@@ -54,3 +57,34 @@ class PricingService(Protocol):
         """The rider's share for riding this far. Raise PricingUnavailableError if Payments
         can't answer."""
         ...
+
+
+class RiderCardService(Protocol):
+    async def has_card(self, rider_id: UUID) -> bool:
+        """Return saved-card status.
+
+        Raise CardStatusUnavailableError if the status cannot be determined.
+        """
+        ...
+
+
+class SeatRequestRepository(Protocol):
+    async def add(self, request: SeatRequest) -> None: ...
+
+    async def get(self, request_id: UUID) -> SeatRequest | None: ...
+
+    async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
+        """The rider's pending or accepted request on this trip, if any."""
+        ...
+
+    async def has_overlapping_active_request(
+        self, rider_id: UUID, starts_at: datetime, ends_at: datetime
+    ) -> bool:
+        """Whether a pending or accepted request is on a trip overlapping this time."""
+        ...
+
+    async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]: ...
+
+
+class SeatRequestEvents(Protocol):
+    async def seat_requested(self, request: SeatRequest, trip: Trip) -> None: ...

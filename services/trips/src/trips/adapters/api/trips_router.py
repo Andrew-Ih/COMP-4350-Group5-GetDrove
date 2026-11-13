@@ -7,6 +7,7 @@ Paths here are relative to the gateway prefix /api/trips. Fixed paths (/mine, /s
 a trip ID.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
@@ -17,6 +18,7 @@ from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
     PostTripService,
+    RequestSeatService,
     SearchTripsService,
     UpcomingTripsService,
 )
@@ -29,6 +31,8 @@ from trips.adapters.api.schemas import (
     PostTripRequest,
     PostTripSeriesRequest,
     Problem,
+    RequestPickup,
+    RequestStatus,
     RiderTrip,
     SearchResult,
     SeatRequest,
@@ -37,7 +41,9 @@ from trips.adapters.api.schemas import (
     TripDetail,
     TripSeriesResult,
 )
+from trips.application.request_seat import RequestSeatCommand
 from trips.domain.entities import Trip as TripEntity
+from trips.domain.seat_request import SeatRequest as SeatRequestEntity
 from trips.domain.values import Direction, Location, Point
 
 router = APIRouter(tags=["trips"])
@@ -348,6 +354,28 @@ def _place(location: Location) -> Place:
     return Place(label=location.label, lat=location.lat, lng=location.lng)
 
 
+def _seat_request_response(request: SeatRequestEntity) -> SeatRequest:
+    return SeatRequest(
+        id=request.id,
+        trip_id=request.trip_id,
+        rider_id=request.rider_id,
+        status=RequestStatus(request.status.value),
+        pickup=RequestPickup(
+            label=request.pickup.label,
+            lat=request.pickup.lat,
+            lng=request.pickup.lng,
+            walk_seconds=request.walk_seconds,
+        ),
+        cost=Cost(
+            amount_cents=request.cost.amount_cents,
+            explanation=request.cost.explanation,
+        ),
+        auto_accepted=request.auto_accepted,
+        created_at=request.created_at,
+        decided_at=request.decided_at,
+    )
+
+
 def _for_rider(trip: TripEntity) -> Trip:
     """A trip as someone other than its driver sees it: the driver's own end (near their
     home) is null. Only the campus end is shown."""
@@ -459,9 +487,21 @@ async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
     },
 )
 async def request_seat(
-    trip_id: UUID, body: SeatRequestBody, user: AuthenticatedUser
+    trip_id: UUID,
+    body: SeatRequestBody,
+    user: AuthenticatedUser,
+    service: RequestSeatService,
 ) -> SeatRequest:
-    _not_implemented()
+    request = await service.execute(
+        RequestSeatCommand(
+            trip_id=trip_id,
+            rider_id=user.id,
+            rider=Point(lat=body.lat, lng=body.lng),
+            pickup_id=body.pickup_id,
+            now=datetime.now(UTC),
+        )
+    )
+    return _seat_request_response(request)
 
 
 @router.get(

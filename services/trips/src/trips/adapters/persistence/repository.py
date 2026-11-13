@@ -85,3 +85,8 @@ class SQLAlchemyTripRepository:
             .order_by(trips.c.departure_at, trips.c.id)
         )
         return [_trip(row) for row in result.mappings()]
+
+    async def get(self, trip_id: UUID) -> Trip | None:
+        result = await self.session.execute(select(trips).where(trips.c.id == trip_id))
+        row = result.mappings().one_or_none()
+        return _trip(row) if row is not None else None
