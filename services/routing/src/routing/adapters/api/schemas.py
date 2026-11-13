@@ -1,9 +1,9 @@
 """Request and response models for the Routing API (contracts: #108, #262)."""
 
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from pydantic.alias_generators import to_camel
 
 
@@ -86,12 +86,24 @@ class MatchResponse(ApiModel):
 # ---------------------------------------------------------------- pickup points (#29, #30)
 
 
+# A pickup point's opaque ID (see PickupPoint.id), and how many a request can exclude.
+PickupPointId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
+MAX_EXCLUDED_PICKUPS = 20
+
+
 class PickupPointsRequest(ApiModel):
     trip_id: UUID
     rider: Point = Field(
         description="The rider's location. Used for this answer only, never stored."
     )
     limit: int = Field(default=3, ge=1, le=5, description="How many points to return at most.")
+    exclude: list[PickupPointId] = Field(
+        default_factory=list,
+        max_length=MAX_EXCLUDED_PICKUPS,
+        description="IDs of points the rider rejected (#136). They're never returned, so the "
+        "next best come back instead. At most 20.",
+        examples=[["s42", "s45"]],
+    )
 
 
 class PickupPoint(ApiModel):
