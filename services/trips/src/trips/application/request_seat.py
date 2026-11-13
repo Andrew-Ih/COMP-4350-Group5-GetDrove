@@ -25,7 +25,7 @@ class RequestSeatCommand:
     rider: Point
     pickup_id: str
     now: datetime
-
+    exclude: tuple[str, ...] = ()
 
 class RequestSeat:
     def __init__(

@@ -41,6 +41,7 @@ class HTTPRequestRoutingService:
         trip_id: UUID,
         rider: Point,
         pickup_id: str,
+        exclude: Sequence[str] = ()
     ) -> SelectedPickup:
         try:
             response = await self.client.post(
@@ -49,6 +50,7 @@ class HTTPRequestRoutingService:
                     "tripId": str(trip_id),
                     "rider": {"lat": rider.lat, "lng": rider.lng},
                     "limit": 3,
+                    "exclude": list(exclude),
                 },
             )
             response.raise_for_status()

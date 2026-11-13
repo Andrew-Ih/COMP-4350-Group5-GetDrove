@@ -139,3 +139,4 @@ def trips_database() -> Iterator[str]:
                 os.environ.pop("TRIPS_DATABASE_URL", None)
             else:
                 os.environ["TRIPS_DATABASE_URL"] = previous
+

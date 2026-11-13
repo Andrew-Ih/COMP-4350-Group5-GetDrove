@@ -265,6 +265,7 @@ class SeatRequestBody(ApiModel):
     pickup_id: str = Field(
         min_length=1, max_length=64, description="One of the trip detail's `pickups`."
     )
+    exclude: list[str] = Field(default_factory=list, max_length=20, description="...")
 
     model_config = ConfigDict(
         json_schema_extra={"examples": [{"lat": 49.8722, "lng": -97.1561, "pickupId": "s42"}]}

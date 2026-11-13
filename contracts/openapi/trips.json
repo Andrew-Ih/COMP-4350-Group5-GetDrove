@@ -2791,6 +2791,15 @@
             "minLength": 1,
             "title": "Pickupid",
             "description": "One of the trip detail's `pickups`."
+          },
+          "exclude": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Exclude",
+            "description": "..."
           }
         },
         "type": "object",

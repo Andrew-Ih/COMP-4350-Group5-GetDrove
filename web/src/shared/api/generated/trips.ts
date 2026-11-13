@@ -726,6 +726,11 @@ export interface components {
              * @description One of the trip detail's `pickups`.
              */
             pickupId: string;
+            /**
+             * Exclude
+             * @description ...
+             */
+            exclude?: string[];
         };
         /**
          * Trip

@@ -499,6 +499,7 @@ async def request_seat(
             rider=Point(lat=body.lat, lng=body.lng),
             pickup_id=body.pickup_id,
             now=datetime.now(UTC),
+            exclude=tuple(body.exclude),
         )
     )
     return _seat_request_response(request)

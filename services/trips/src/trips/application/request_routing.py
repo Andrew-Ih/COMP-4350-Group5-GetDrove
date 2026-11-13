@@ -30,8 +30,12 @@ class RequestRoutingService(Protocol):
         trip_id: UUID,
         rider: Point,
         pickup_id: str,
+        exclude: Sequence[str] = (),
     ) -> SelectedPickup:
-        """Validate the selected ID against Routing's current pickup options."""
+        """Validate the selected ID against Routing's current pickup options.
+
+        ``exclude`` lists pickup IDs Routing should leave out when it builds the options.
+        """
         ...
 
     async def estimate_detour(
