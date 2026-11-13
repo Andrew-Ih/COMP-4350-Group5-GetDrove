@@ -4,6 +4,7 @@ Called by Trips for the trip detail and when a seat is requested. The first poin
 same one search offered for this trip and spot (both use ``routing.application.pickups``).
 """
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from routing.application.pickups import choose, offerable, walkable
@@ -27,10 +28,14 @@ class SuggestPickups:
         self.corridor = corridor
         self.max_walk_seconds = max_walk_seconds
 
-    async def execute(self, trip_id: UUID, rider: LatLng, limit: int) -> list[PickupCandidate]:
+    async def execute(
+        self, trip_id: UUID, rider: LatLng, limit: int, exclude: Sequence[str] = ()
+    ) -> list[PickupCandidate]:
+        """``exclude``: IDs of points the rider rejected (#136). They're never returned, so
+        the next best come back instead; unknown IDs are ignored."""
         if not await self.repository.has_route(trip_id):
             raise RouteNotFoundError()
 
         hits = offerable(await self.repository.samples_in_corridor(rider, [trip_id], self.corridor))
         reachable = await walkable(rider, hits, self.walking, self.max_walk_seconds)
-        return await choose(reachable, self.driving, limit)
+        return await choose(reachable, self.driving, limit, exclude)

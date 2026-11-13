@@ -102,7 +102,9 @@ A rider who's only near an end of a route, only near excluded roads, or can't wa
 - `id`: which sample of the stored route it is (e.g. `s42`). Trips sends it back when the rider requests a seat.
 - `label`, `lat`, `lng`, `walkSeconds`, and `riderDistanceMeters` (as in matches).
 
-An empty list means the route doesn't pass within walking distance. 404 `route_not_found` if the trip has no stored route (checked before calling OSRM), 503 `routing_engine_unavailable` if the foot profile is down.
+**Rejected points:** `exclude` takes up to 20 IDs of points the rider turned down ("choose a different pickup point", #136). They're never returned, so the next best come back instead. Rejected points still count for the 200 m spacing, so the next suggestion is a different spot, not the sample next door. Unknown IDs are ignored. Rejecting every point leaves an empty list.
+
+An empty list means the route doesn't pass within walking distance (or every point there was rejected). 404 `route_not_found` if the trip has no stored route (checked before calling OSRM), 503 `routing_engine_unavailable` if the foot profile is down.
 
 ### A trip's route for the map (#123)
 

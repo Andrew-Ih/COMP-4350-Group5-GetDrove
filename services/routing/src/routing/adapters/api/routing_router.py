@@ -130,6 +130,7 @@ async def pickup_points(
         trip_id=body.trip_id,
         rider=LatLng(lat=body.rider.lat, lng=body.rider.lng),
         limit=body.limit,
+        exclude=body.exclude,
     )
 
     return PickupPointsResponse(
