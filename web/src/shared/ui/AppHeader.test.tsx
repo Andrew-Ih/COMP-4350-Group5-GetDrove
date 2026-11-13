@@ -46,6 +46,14 @@ describe("AppHeader", () => {
     expect(bell).not.toHaveAttribute("aria-current");
   });
 
+  it("links to the driver status from the account menu", async () => {
+    renderWithProviders(<AppHeader userName="Priya" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+
+    expect(screen.getByRole("menuitem", { name: "Driver status" })).toHaveAttribute("href", "/account/driver");
+  });
+
   it("logs out from the account menu", async () => {
     const fetchSpy = mockFetch({ status: 204 });
     setAccessToken("tok");

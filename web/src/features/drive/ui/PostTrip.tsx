@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
+import { DRIVER_HREF } from "@/features/driver";
 import {
   AREA_RADIUS_METERS,
   type Direction,
@@ -45,7 +46,9 @@ const POSITION_ERRORS: Record<PositionError, string> = {
 };
 
 /** What went wrong when posting, in words, keyed on the contract's error codes. */
-function postProblem(error: ApiError): FormProblem | { field: "session"; message: string } {
+type PostProblem = FormProblem | { field: "session" | "approval"; message: string };
+
+function postProblem(error: ApiError): PostProblem {
   const departure = error.problem.errors?.find((e) => e.field === "departureAt");
   if (error.code === "departure_in_past" || departure) {
     return { field: "departure", message: "Choose a departure time in the future." };
@@ -61,6 +64,9 @@ function postProblem(error: ApiError): FormProblem | { field: "session"; message
   }
   if (error.code === "unauthorized") {
     return { field: "session", message: "Your session has ended. Log in again to post your trip." };
+  }
+  if (error.code === "driver_not_approved") {
+    return { field: "approval", message: "Only approved drivers can post trips." };
   }
   return { field: "place", message: error.message };
 }
@@ -81,7 +87,7 @@ export function PostTrip() {
   const [focus, setFocus] = useState<LngLat>();
   const [when, setWhen] = useState(() => defaultDeparture("to_campus"));
   const [seats, setSeats] = useState(DEFAULT_SEATS);
-  const [problem, setProblem] = useState<FormProblem | { field: "session"; message: string }>();
+  const [problem, setProblem] = useState<PostProblem>();
 
   const choose = useCallback((picked: LngLat, moveMap: boolean) => {
     if (!isInServiceArea(picked)) {
@@ -247,6 +253,11 @@ export function PostTrip() {
                 {problem?.field === "session" && (
                   <Link href="/login?next=%2Fdrive%2Fnew" className="ml-1 underline">
                     Log in
+                  </Link>
+                )}
+                {problem?.field === "approval" && (
+                  <Link href={DRIVER_HREF} className="ml-1 underline">
+                    Apply to drive
                   </Link>
                 )}
               </div>

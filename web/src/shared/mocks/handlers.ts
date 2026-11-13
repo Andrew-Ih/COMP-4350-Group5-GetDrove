@@ -5,6 +5,7 @@ import type { components as Routing } from "@/shared/api/generated/routing";
 
 import { maya, myTrips, searchResultsFor } from "./data";
 import { driveHandlers } from "./drive";
+import { driverHandlers } from "./driver";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
 
 type Problem = Accounts["schemas"]["Problem"];
@@ -37,6 +38,7 @@ function problem(status: number, code: string, detail: string, instance: string,
 const routes = new Map<string, Routing["schemas"]["RouteFeature"]>();
 export const handlers = [
   ...driveHandlers, // posting a trip (#96): see drive.ts
+  ...driverHandlers, // applying to drive (#12, #126): see driver.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
     const body = (await request.json()) as Accounts["schemas"]["SignupRequest"];
