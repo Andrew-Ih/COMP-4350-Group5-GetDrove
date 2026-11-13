@@ -41,3 +41,45 @@ async def test_customer_and_setup_intent(stripe_mock_url: str) -> None:
     assert customer.startswith("cus_")
     assert intent.id.startswith("seti_")
     assert intent.client_secret
+
+
+async def test_card_endpoints_against_stripe_mock(
+    stripe_mock_url: str, payments_database: str
+) -> None:
+    from httpx import ASGITransport, AsyncClient
+    from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+
+    from common_security.testing import TestAuth
+    from payments.adapters.api.cards import CardOperations, get_card_operations
+    from payments.infrastructure.main import create_app
+
+    engine = create_async_engine(payments_database, hide_parameters=True)
+    try:
+        gateway = create_payment_gateway(
+            Settings(
+                _env_file=None,
+                stripe_secret_key=SecretStr("sk_test_mock"),
+                stripe_api_base=stripe_mock_url,
+            )
+        )
+        operations = CardOperations(async_sessionmaker(engine, expire_on_commit=False), gateway)
+        app = create_app()
+        app.dependency_overrides[get_card_operations] = lambda: operations
+        auth = TestAuth()
+        auth.install(app)
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
+            setup = await client.post("/setup-intent", headers=auth.headers())
+            assert setup.status_code == 201
+            assert setup.json()["clientSecret"].startswith("seti_")
+            methods = await client.get("/methods", headers=auth.headers())
+            assert methods.status_code == 200
+            assert methods.json()
+            assert all(
+                set(card) == {"id", "brand", "last4", "expMonth", "expYear", "isDefault"}
+                for card in methods.json()
+            )
+            assert sum(card["isDefault"] for card in methods.json()) == 1
+            status = await client.get(f"/internal/customers/{auth.user_id}/card")
+            assert status.json() == {"userId": str(auth.user_id), "hasCard": True}
+    finally:
+        await engine.dispose()

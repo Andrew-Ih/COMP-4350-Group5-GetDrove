@@ -1,5 +1,4 @@
-"""The Sprint 2 Payments contract (#262): saved cards exist, need a token, and return 501
-until #151 implements them."""
+"""The Sprint 2 Payments contract (#262): saved cards exist and need a token."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -19,24 +18,20 @@ def test_spec_documents_the_sprint_2_endpoints() -> None:
 
 
 @pytest.mark.parametrize(("method", "path"), [("POST", "/setup-intent"), ("GET", "/methods")])
-async def test_card_endpoints_need_a_token_then_return_501(method: str, path: str) -> None:
+async def test_card_endpoints_need_a_token(method: str, path: str) -> None:
     auth = TestAuth()
     app = create_app()
     auth.install(app)
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         anonymous = await client.request(method, path)
-        logged_in = await client.request(method, path, headers=auth.headers())
 
     assert anonymous.status_code == 401
-    assert logged_in.status_code == 501
 
 
 async def test_card_status_takes_a_user_id() -> None:
     async with AsyncClient(
         transport=ASGITransport(app=create_app()), base_url="http://test"
     ) as client:
-        valid = await client.get(f"/internal/customers/{USER}/card")
         invalid = await client.get("/internal/customers/not-a-uuid/card")
 
-    assert valid.status_code == 501
     assert invalid.status_code == 422

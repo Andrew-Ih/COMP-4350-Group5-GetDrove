@@ -97,7 +97,9 @@ def test_reject_live_keys_and_missing_configuration(monkeypatch: pytest.MonkeyPa
         create_payment_gateway(Settings(_env_file=None))
 
 
-@pytest.mark.parametrize("operation", ["customer", "setup", "authorize", "capture", "cancel"])
+@pytest.mark.parametrize(
+    "operation", ["customer", "setup", "authorize", "capture", "cancel", "list_cards"]
+)
 @pytest.mark.parametrize(
     ("status", "error_type", "code", "expected"),
     [
@@ -131,6 +133,8 @@ async def test_gateway_translates_sdk_errors(
         )
         with pytest.raises(expected) as caught:
             match operation:
+                case "list_cards":
+                    await gateway.list_cards(customer_id="cus_test")
                 case "customer":
                     await gateway.create_customer(user_id="user-1", idempotency_key="customer-1")
                 case "setup":
@@ -151,3 +155,48 @@ async def test_gateway_translates_sdk_errors(
                     await gateway.cancel(payment_intent_id="pi_test", idempotency_key="cancel-1")
         assert type(caught.value) is expected
         assert caught.value.__cause__ is not None
+
+
+async def test_list_cards_follows_pages_and_returns_only_safe_fields() -> None:
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        page = 2 if "starting_after" in request.url.params else 1
+        method = {
+            "id": f"pm_{page}",
+            "object": "payment_method",
+            "created": page,
+            "type": "card",
+            "card": {
+                "brand": "visa",
+                "last4": "4242",
+                "exp_month": 12,
+                "exp_year": 2030,
+                "fingerprint": "provider-only",
+            },
+        }
+        return httpx.Response(
+            200,
+            json={
+                "object": "list",
+                "url": "/v1/payment_methods",
+                "data": [method],
+                "has_more": page == 1,
+            },
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        gateway = StripePaymentGateway(
+            StripeClient(
+                "sk_test_mock",
+                http_client=HTTPXClient(_lib=SimpleNamespace(AsyncClient=lambda **kwargs: http)),
+            )
+        )
+        cards = await gateway.list_cards(customer_id="cus_owner")
+    assert [card.id for card in cards] == ["pm_1", "pm_2"]
+    assert len(requests) == 2
+    assert all(request.url.params["customer"] == "cus_owner" for request in requests)
+    assert all(request.url.params["type"] == "card" for request in requests)
+    assert requests[1].url.params["starting_after"] == "pm_1"
+    assert all(not hasattr(card, "fingerprint") for card in cards)
