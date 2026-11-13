@@ -6,6 +6,7 @@ import { endSession, getAccessToken, setAccessToken } from "@/shared/api";
 import { mockFetch, renderWithProviders } from "@/shared/testing/render";
 
 import { AppHeader } from "./AppHeader";
+import { HeaderBellContext } from "./HeaderBell";
 
 const replace = vi.fn();
 vi.mock("next/navigation", () => ({
@@ -44,6 +45,17 @@ describe("AppHeader", () => {
     const bell = screen.getByRole("link", { name: "Notifications" });
     expect(bell).toHaveAttribute("href", "/notifications");
     expect(bell).not.toHaveAttribute("aria-current");
+  });
+
+  it("shows the app's notification bell when it's given one", () => {
+    renderWithProviders(
+      <HeaderBellContext.Provider value={<button type="button">the real bell</button>}>
+        <AppHeader userName="Priya" />
+      </HeaderBellContext.Provider>,
+    );
+
+    expect(screen.getByRole("button", { name: "the real bell" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Notifications" })).not.toBeInTheDocument();
   });
 
   it("logs out from the account menu", async () => {
