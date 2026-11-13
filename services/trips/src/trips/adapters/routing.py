@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from trips.application.ports import RouteEstimate
 from trips.domain.errors import RoutingInvalidLocationError, RoutingUnavailableError
-from trips.domain.values import Location, Point, TripMatch
+from trips.domain.values import Direction, Location, Point, TripMatch
 
 # Routing accepts at most this many candidate trips per match request (its contract).
 MAX_MATCH_TRIPS = 500
@@ -52,6 +52,8 @@ class HTTPRoutingService:
         trip_id: UUID,
         origin: Location,
         destination: Location,
+        driver_id: UUID,
+        direction: Direction,
     ) -> RouteEstimate:
         payload = {
             "tripId": str(trip_id),
@@ -63,6 +65,9 @@ class HTTPRoutingService:
                 "lat": destination.lat,
                 "lng": destination.lng,
             },
+            # So Routing shows the whole route only to the driver (#135).
+            "driverId": str(driver_id),
+            "direction": direction.value,
         }
 
         try:

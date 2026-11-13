@@ -67,6 +67,8 @@ async def saved(api: API) -> list[RowMapping]:
             select(
                 routes.c.distance_meters,
                 routes.c.duration_seconds,
+                routes.c.driver_id,
+                routes.c.direction,
                 func.ST_NPoints(routes.c.path).label("points"),
             ).where(routes.c.trip_id == trip_id)
         )
@@ -82,6 +84,29 @@ async def saved_samples(api: API) -> int:
             .where(route_samples.c.trip_id == trip_id)
         )
         return count or 0
+
+
+async def test_stores_the_driver_and_direction_trips_sends(api: API, osrm_route: Handler) -> None:
+    """So the map shows the whole route to the driver only (#135)."""
+    driver = uuid4()
+    body = {**payload(api[2]), "driverId": str(driver), "direction": "from_campus"}
+
+    response = await post(api, osrm_route, body)
+
+    assert response.status_code == 200, response.text
+    [row] = await saved(api)
+    assert (row["driver_id"], row["direction"]) == (driver, "from_campus")
+
+
+async def test_routes_sent_without_driver_and_direction_still_work(
+    api: API, osrm_route: Handler
+) -> None:
+    """Older callers: both are optional, and then both ends are hidden on the map."""
+    response = await post(api, osrm_route, payload(api[2]))
+
+    assert response.status_code == 200, response.text
+    [row] = await saved(api)
+    assert (row["driver_id"], row["direction"]) == (None, None)
 
 
 async def test_compute_route_returns_metrics_and_commits_route(

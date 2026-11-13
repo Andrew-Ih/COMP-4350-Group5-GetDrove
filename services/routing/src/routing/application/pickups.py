@@ -22,15 +22,17 @@ from collections.abc import Sequence
 from uuid import UUID
 
 from routing.application.ports import RoutingEngine, WalkingEngine
-from routing.domain.pickups import MIN_PICKUP_SPACING_METERS, is_excluded_road, pickup_id
+from routing.domain.pickups import (
+    MIN_PICKUP_SPACING_METERS,
+    PRIVATE_END_METERS,
+    is_excluded_road,
+    pickup_id,
+)
 from routing.domain.values import CorridorHit, LatLng, PickupCandidate, Walk
 
 # Nearest samples per trip whose walking time is checked: 800 m either side of the rider at
 # 100 m spacing is about 17, so this keeps a whole pass of the route.
 SAMPLES_PER_TRIP = 20
-
-# Samples this close to either end of a route, in a straight line, are never offered.
-PRIVATE_END_METERS = 300
 
 # When no road nearby has a name (a parking lot, a service road). Read after "Pickup at"
 # and "5 min walk to".

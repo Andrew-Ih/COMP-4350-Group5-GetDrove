@@ -58,7 +58,7 @@ The OpenAPI spec is [contracts/openapi/routing.json](../../contracts/openapi/rou
 `POST /internal/routes` is called by Trips when a driver posts a trip. It's internal: only reachable inside Docker (`http://routing:8000/internal/routes`), never through the gateway.
 
 1. Asks OSRM's car profile for the driving route between the origin and the destination.
-2. Stores the full route in `routing.routes` as a PostGIS `LINESTRING` (SRID 4326, `[lng lat]` order), with its distance and duration. A GiST index on `path` is there for matching (#25, #26).
+2. Stores the full route in `routing.routes` as a PostGIS `LINESTRING` (SRID 4326, `[lng lat]` order), with its distance and duration. A GiST index on `path` is there for matching (#25, #26). It also stores the `driverId` and `direction` Trips sends (#135), which decide who sees the whole route on the map. Both are optional: routes stored without them have both ends hidden from everyone.
 3. Returns the distance in meters and the duration in seconds, rounded to whole numbers.
 
 Calling it again for the same trip replaces that trip's route. Errors:
@@ -106,13 +106,13 @@ A rider who's only near an end of a route, only near excluded roads, or can't wa
 
 An empty list means the route doesn't pass within walking distance (or every point there was rejected). 404 `route_not_found` if the trip has no stored route (checked before calling OSRM), 503 `routing_engine_unavailable` if the foot profile is down.
 
-### A trip's route for the map (#123)
+### A trip's route for the map (#123, #135)
 
-`GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the stored route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs, exactly as stored; `properties` has the trip ID, distance and duration. The driver's screen after posting a trip and the rider's search results both use it.
+`GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs; `properties` has the trip ID, and the whole trip's distance and duration. The driver's screen after posting a trip and the rider's search results both use it.
+
+**Only the driver sees the whole route** (`domain/privacy.py`). Anyone else gets it with the driver's own end cut off: the start going to campus, the end leaving it. The cut is where the route last leaves a 300 m circle (straight line) around that end, the same margin pickup points keep, so a route that loops back past the house from a cul-de-sac is cut after the loop, not before. The campus end is always drawn. Routes stored without a driver or direction (before Sprint 2) have both ends cut off, for everyone. A route entirely inside the circle shows only its far end, as a line of no length.
 
 It needs a logged-in user (401 otherwise), returns 404 `route_not_found` for a trip with no route, and 422 for an ID that isn't a UUID.
-
-In Sprint 1, any logged-in user gets the full route, including the driver's starting point. From Sprint 2, riders get the route from their pickup point on, so the driver's start stays private.
 
 ## Events
 
