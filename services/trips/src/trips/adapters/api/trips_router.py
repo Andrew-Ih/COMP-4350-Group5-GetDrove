@@ -21,10 +21,12 @@ from trips.adapters.api.dependencies import (
     UpcomingTripsService,
 )
 from trips.adapters.api.schemas import (
+    MAX_EXCLUDED_PICKUPS,
     AutoAcceptRules,
     Cost,
     DriverRequestView,
     Pickup,
+    PickupPointId,
     Place,
     PostTripRequest,
     PostTripSeriesRequest,
@@ -391,7 +393,9 @@ def _to_response(trip: TripEntity) -> Trip:
     description="One trip, with up to 3 pickup points for the rider at `lat`/`lng` (each "
     "with its walking time and price) and the caller's own request on it, if any. The "
     "driver's own end of the trip is returned only to its driver. Send `lat` and `lng` "
-    "together or not at all; they're used to find pickup points and never stored.",
+    "together or not at all; they're used to find pickup points and never stored. "
+    "`exclude` leaves out pickup points the rider rejected (#136), so the next best come "
+    "back instead; it's ignored without `lat` and `lng`.",
     responses={
         **UNAUTHORIZED,
         422: _problem("Invalid input, including only one of `lat` and `lng`", "invalid_input"),
@@ -404,6 +408,14 @@ async def get_trip(
     user: AuthenticatedUser,
     lat: Annotated[float | None, Query(ge=-90, le=90, description="Rider's latitude.")] = None,
     lng: Annotated[float | None, Query(ge=-180, le=180, description="Rider's longitude.")] = None,
+    exclude: Annotated[
+        list[PickupPointId] | None,
+        Query(
+            max_length=MAX_EXCLUDED_PICKUPS,
+            description="IDs of pickup points the rider rejected, repeated: "
+            "`?exclude=s42&exclude=s45`. At most 20.",
+        ),
+    ] = None,
 ) -> TripDetail:
     if (lat is None) != (lng is None):
         missing = "lng" if lng is None else "lat"
@@ -441,7 +453,9 @@ async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
     description="The rider asks for a seat, picked up at one of the trip detail's pickup "
     "points. The price is saved with the request and is what gets charged. The request is "
     "`pending` until the driver decides, or `accepted` straight away if it meets the "
-    "driver's auto-accept rules. The rider needs a saved card first.",
+    "driver's auto-accept rules. The rider needs a saved card first. Send the same "
+    "`exclude` the trip detail was loaded with, so a point offered after the rider rejected "
+    "others is still accepted.",
     responses={
         **UNAUTHORIZED,
         403: _problem("You can't request a seat on your own trip", "own_trip"),
