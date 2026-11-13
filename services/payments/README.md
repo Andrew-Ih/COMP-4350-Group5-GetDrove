@@ -70,8 +70,11 @@ remain placeholders until #151. This setup does not store customer IDs or proces
    the server's protected `.env`; production Compose passes it only to Payments.
    See [deployment](../../docs/deployment/deployment.md#3-secrets). Account creation and
    secret provisioning are manual prerequisites, not performed by this code change.
-4. Frontend Stripe Elements will need the matching publishable **test** key when card UI
-   is wired. It must belong to the same testing environment; never expose the secret key.
+4. For frontend Stripe Elements, use `NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY` locally and
+   the `STRIPE_PUBLISHABLE_KEY` repository variable for image builds. These are the
+   frontend configuration names; do not add a separate publishable-key setting. Use the
+   matching publishable **test** key from the same testing environment; never expose
+   the secret key.
 
 ### Mock testing
 
