@@ -205,7 +205,7 @@ services:
     environment:
       PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD:-payments}@postgres:5432/getdrove
       PAYMENTS_REDIS_URL: redis://redis:6379/0
-      PAYMENTS_STRIPE_SECRET_KEY: ${PAYMENTS_STRIPE_SECRET_KEY:-sk_test_mock}
+      PAYMENTS_STRIPE_SECRET_KEY: ${PAYMENTS_STRIPE_SECRET_KEY:-}
       PAYMENTS_STRIPE_API_BASE: ${PAYMENTS_STRIPE_API_BASE:-https://api.stripe.com}
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
