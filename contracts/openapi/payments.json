@@ -342,7 +342,7 @@
             "title": "Id",
             "description": "Stripe's payment method ID.",
             "examples": [
-              "pm_1Nxâ€¦"
+              "pm_1Nx…"
             ]
           },
           "brand": {
@@ -519,7 +519,7 @@
             "title": "Clientsecret",
             "description": "Pass to Stripe Elements (`stripe.confirmCardSetup`). Card details go straight to Stripe and never reach our servers.",
             "examples": [
-              "seti_1Nxâ€¦_secret_â€¦"
+              "seti_1Nx…_secret_…"
             ]
           }
         },
