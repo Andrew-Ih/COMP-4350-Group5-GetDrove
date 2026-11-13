@@ -21,6 +21,7 @@ from payments.application.ports import (
     PaymentIntentStatus,
     SetupIntentResult,
 )
+from payments.domain.cards import SavedCard
 
 
 @contextmanager
@@ -40,6 +41,26 @@ def _translate_errors() -> Iterator[None]:
 class StripePaymentGateway:
     def __init__(self, client: StripeClient) -> None:
         self._client = client
+
+    async def list_cards(self, *, customer_id: str) -> list[SavedCard]:
+        cards: list[SavedCard] = []
+        with _translate_errors():
+            methods = await self._client.v1.payment_methods.list_async(
+                {"customer": customer_id, "type": "card", "limit": 100}
+            )
+            async for method in methods.auto_paging_iter():
+                if method.card is not None:
+                    cards.append(
+                        SavedCard(
+                            id=method.id,
+                            brand=method.card.brand,
+                            last4=method.card.last4,
+                            exp_month=method.card.exp_month,
+                            exp_year=method.card.exp_year,
+                            created=method.created,
+                        )
+                    )
+        return cards
 
     async def create_customer(self, *, user_id: str, idempotency_key: str) -> str:
         with _translate_errors():

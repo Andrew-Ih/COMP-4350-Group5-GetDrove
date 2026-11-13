@@ -3,6 +3,9 @@
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Protocol
+from uuid import UUID
+
+from payments.domain.cards import Customer, SavedCard
 
 
 class PaymentGatewayError(Exception):
@@ -50,6 +53,7 @@ class PaymentGatewayPort(Protocol):
     async def create_setup_intent(
         self, *, customer_id: str, idempotency_key: str
     ) -> SetupIntentResult: ...
+    async def list_cards(self, *, customer_id: str) -> list[SavedCard]: ...
     async def authorize(
         self,
         *,
@@ -65,3 +69,11 @@ class PaymentGatewayPort(Protocol):
     async def cancel(
         self, *, payment_intent_id: str, idempotency_key: str
     ) -> PaymentIntentResult: ...
+
+
+class CustomerRepository(Protocol):
+    async def lock(self, user_id: UUID) -> Customer:
+        """Ensure a row exists and lock it until the caller's transaction ends."""
+        ...
+
+    async def save(self, customer: Customer) -> None: ...
