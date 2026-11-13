@@ -10,12 +10,14 @@ service name, the current request ID and (once logged in) the user ID. Output is
 
     logger.info("Trip posted", extra={"trip_id": str(trip.id), "seats": 3})
 
-Never log emails, names, addresses or locations; log IDs instead.
+Never log emails, names, addresses or locations; log IDs instead. As a safety net,
+coordinates are taken out of every log line anyway (``redact_coordinates``, #31).
 """
 
 import json
 import logging
 import os
+import re
 import sys
 from datetime import UTC, datetime
 from typing import Any
@@ -36,9 +38,34 @@ _service_name = "unknown"
 _factory_installed = False
 _MARKER = "_getdrove_handler"
 
+# A number with 4 or more decimal places: a latitude or longitude to within about 11 m. Riders'
+# locations and drivers' places must never be logged (#31), and they can still reach a log
+# line through an error message: the database driver and PostgreSQL quote a failed query's
+# values, and OSRM's URLs hold coordinates. Ordinary numbers in logs (durations to 0.1 ms,
+# version numbers) have fewer decimals.
+_COORDINATE = re.compile(r"-?\b\d{1,3}\.\d{4,}")
+COORDINATE_PLACEHOLDER = "[coordinate]"
+
+
+def redact_coordinates(text: str) -> str:
+    return _COORDINATE.sub(COORDINATE_PLACEHOLDER, text)
+
+
+def _redact(record: logging.LogRecord) -> None:
+    """Coordinates out of the message and the traceback, before any handler formats them."""
+    try:
+        message = record.getMessage()
+    except Exception:  # a bad format string: log the raw message rather than lose the line
+        message = str(record.msg)
+    record.msg, record.args = redact_coordinates(message), ()
+    if record.exc_info and record.exc_info[1] is not None:
+        # Formatters reuse exc_text instead of formatting the exception again.
+        record.exc_text = redact_coordinates(logging.Formatter().formatException(record.exc_info))
+
 
 def _install_record_factory() -> None:
-    """Adds service, request ID and user ID to every record, whichever handler formats it."""
+    """Adds service, request ID and user ID to every record, whichever handler formats it,
+    and takes coordinates out of it."""
     global _factory_installed
     if _factory_installed:
         return
@@ -49,6 +76,7 @@ def _install_record_factory() -> None:
         record.service = _service_name
         record.request_id = current_request_id()
         record.user_id = current_user_id()
+        _redact(record)
         return record
 
     logging.setLogRecordFactory(factory)
@@ -72,7 +100,8 @@ class JsonFormatter(logging.Formatter):
             if key not in _STANDARD_ATTRS and not key.startswith("_"):
                 entry[key] = value
         if record.exc_info:
-            entry["exception"] = self.formatException(record.exc_info)
+            # exc_text is the traceback with coordinates taken out (see _redact).
+            entry["exception"] = record.exc_text or self.formatException(record.exc_info)
         return json.dumps({k: v for k, v in entry.items() if v is not None}, default=str)
 
 

@@ -6,7 +6,7 @@ import logging
 import pytest
 
 from common_web.context import _set_request_id, set_user_id
-from common_web.logs import JsonFormatter, TextFormatter, configure_logging
+from common_web.logs import JsonFormatter, TextFormatter, configure_logging, redact_coordinates
 
 
 def make_record(**extra: object) -> logging.LogRecord:
@@ -88,3 +88,48 @@ def test_outgoing_request_urls_are_not_logged(caplog: pytest.LogCaptureFixture) 
         messages = [record.getMessage() for record in caplog.records]
         assert messages == ["Connection pool is full"], level
         caplog.clear()
+
+
+# ---------------------------------------------------------------- coordinates (#31)
+
+
+def test_redact_coordinates_takes_out_latitudes_and_longitudes() -> None:
+    text = "invalid input for query argument $1: 'POINT(-97.179137 49.852713)'"
+
+    assert redact_coordinates(text) == (
+        "invalid input for query argument $1: 'POINT([coordinate] [coordinate])'"
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["GET /search 200 duration_ms=12.3", "Python 3.13.1", "seats=3 cost=4.20", "id 1234567"],
+)
+def test_redact_coordinates_leaves_ordinary_numbers(text: str) -> None:
+    assert redact_coordinates(text) == text
+
+
+def test_logged_messages_and_tracebacks_never_contain_coordinates(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """In the message, in its arguments, and in an exception's text, for every formatter."""
+    configure_logging("routing")
+    logger = logging.getLogger("routing.test")
+
+    with caplog.at_level(logging.INFO):
+        logger.info("Rider at 49.852713, -97.179137")
+        logger.info("Rider at %s, %s", 49.852713, -97.179137)
+        try:
+            raise ValueError("invalid input: 'POINT(-97.179137 49.852713)'")
+        except ValueError:
+            logger.exception("Unhandled error on POST /internal/matches")
+
+    outputs = [caplog.text] + [
+        formatter.format(record)
+        for record in caplog.records
+        for formatter in (TextFormatter(), JsonFormatter())
+    ]
+    for output in outputs:
+        assert "852713" not in output and "179137" not in output
+    assert "Rider at [coordinate], [coordinate]" in caplog.text
+    assert "ValueError: invalid input" in caplog.text  # the error itself is still logged
