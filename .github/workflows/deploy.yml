@@ -98,6 +98,7 @@ jobs:
           TRIPS_DB_PASSWORD: ${{ secrets.TRIPS_DB_PASSWORD }}
           ROUTING_DB_PASSWORD: ${{ secrets.ROUTING_DB_PASSWORD }}
           PAYMENTS_DB_PASSWORD: ${{ secrets.PAYMENTS_DB_PASSWORD }}
+          PAYMENTS_STRIPE_SECRET_KEY: ${{ secrets.PAYMENTS_STRIPE_SECRET_KEY }}
           NOTIFICATIONS_DB_PASSWORD: ${{ secrets.NOTIFICATIONS_DB_PASSWORD }}
           ACCOUNTS_JWT_PRIVATE_KEY: ${{ secrets.ACCOUNTS_JWT_PRIVATE_KEY }}
           NOTIFICATIONS_SMTP_USERNAME: ${{ secrets.NOTIFICATIONS_SMTP_USERNAME }}
@@ -105,10 +106,14 @@ jobs:
           NOTIFICATIONS_EMAIL_FROM: ${{ secrets.NOTIFICATIONS_EMAIL_FROM }}
         run: |
           for name in POSTGRES_PASSWORD ACCOUNTS_DB_PASSWORD TRIPS_DB_PASSWORD ROUTING_DB_PASSWORD \
-                      PAYMENTS_DB_PASSWORD NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY \
+                      PAYMENTS_DB_PASSWORD PAYMENTS_STRIPE_SECRET_KEY NOTIFICATIONS_DB_PASSWORD ACCOUNTS_JWT_PRIVATE_KEY \
                       NOTIFICATIONS_SMTP_USERNAME NOTIFICATIONS_SMTP_PASSWORD NOTIFICATIONS_EMAIL_FROM; do
             if [ -z "${!name}" ]; then echo "::error::GitHub secret $name is not set"; exit 1; fi
           done
+          case "$PAYMENTS_STRIPE_SECRET_KEY" in
+            sk_test_*) ;;
+            *) echo "::error::PAYMENTS_STRIPE_SECRET_KEY must be a test key"; exit 1 ;;
+          esac
           # Not secrets: the live site's address and certificate contact, set at the top of this file.
           for name in SITE_DOMAIN SITE_URL ACME_EMAIL; do
             if [ -z "${!name}" ]; then echo "::error::$name is not set at the top of deploy.yml"; exit 1; fi
@@ -122,6 +127,7 @@ jobs:
             echo "TRIPS_DB_PASSWORD=$TRIPS_DB_PASSWORD"
             echo "ROUTING_DB_PASSWORD=$ROUTING_DB_PASSWORD"
             echo "PAYMENTS_DB_PASSWORD=$PAYMENTS_DB_PASSWORD"
+            printf "PAYMENTS_STRIPE_SECRET_KEY='%s'\n" "$PAYMENTS_STRIPE_SECRET_KEY"
             echo "NOTIFICATIONS_DB_PASSWORD=$NOTIFICATIONS_DB_PASSWORD"
             # The PEM key on one line, with \n for each line break; Compose turns them back
             # into line breaks inside double quotes.

@@ -193,6 +193,7 @@ services:
     environment:
       PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD}@postgres:5432/getdrove
       PAYMENTS_REDIS_URL: redis://redis:6379/0
+      PAYMENTS_STRIPE_SECRET_KEY: ${PAYMENTS_STRIPE_SECRET_KEY:?Stripe test key required}
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
