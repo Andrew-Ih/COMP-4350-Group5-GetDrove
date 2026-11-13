@@ -96,4 +96,53 @@ describe("mock API", () => {
     ).catch((e: unknown) => e);
     expect((missing as ApiError).code).toBe("route_not_found");
   });
+
+  const tripDetail = (tripId: string, query?: { lat?: number; lng?: number }) =>
+    unwrap(trips.GET("/{trip_id}", { params: { path: { trip_id: tripId }, query } }));
+
+  it("returns a trip from the search with 3 pickup points on its route, the search's one first", async () => {
+    const [first] = await search("2026-10-20T13:30:00Z");
+    const detail = await tripDetail(first!.trip.id, { lat: 49.88, lng: -97.14 });
+
+    expect(detail.trip).toEqual(first!.trip);
+    expect(detail.pickups).toHaveLength(3);
+    expect(detail.pickups[0]).toMatchObject({ label: first!.pickup.label, walkSeconds: first!.pickup.walkSeconds, cost: first!.cost });
+    expect(new Set(detail.pickups.map((p) => p.id)).size).toBe(3);
+    expect(detail.myRequest).toBeNull();
+    expect(detail.vehicle).toBeNull(); // only for accepted riders
+
+    // Every point lies on the trip's route: on the line between two of its corners.
+    const route = await unwrap(routing.GET("/trips/{trip_id}/geometry", { params: { path: { trip_id: first!.trip.id } } }));
+    const corners = route.geometry.coordinates;
+    for (const p of detail.pickups) {
+      const onRoute = corners.slice(1).some(([lng2, lat2], i) => {
+        const [lng1, lat1] = corners[i]!;
+        const cross = (lng2! - lng1!) * (p.lat - lat1!) - (lat2! - lat1!) * (p.lng - lng1!);
+        return Math.abs(cross) < 1e-9;
+      });
+      expect(onRoute).toBe(true);
+      expect(p.walkSeconds).toBeLessThan(15 * 60);
+    }
+  });
+
+  it("returns a trip without pickup points when opened without a location", async () => {
+    const [first] = await search("2026-10-20T13:30:00Z");
+    expect((await tripDetail(first!.trip.id)).pickups).toEqual([]);
+  });
+
+  it("rejects only one of lat and lng, and an unknown trip", async () => {
+    const [first] = await search("2026-10-20T13:30:00Z");
+    const half = await tripDetail(first!.trip.id, { lat: 49.88 }).catch((e: unknown) => e);
+    expect((half as ApiError).code).toBe("invalid_input");
+    const missing = await tripDetail("99999999-9999-4999-8999-999999999999").catch((e: unknown) => e);
+    expect((missing as ApiError).code).toBe("trip_not_found");
+  });
+
+  it("returns the driver's public profile", async () => {
+    const [first] = await search("2026-10-20T13:30:00Z");
+    const profile = await unwrap(accounts.GET("/users/{user_id}/profile", { params: { path: { user_id: first!.trip.driverId } } }));
+    expect(profile.id).toBe(first!.trip.driverId);
+    expect(profile.firstName).toBeTruthy();
+    expect(profile.vehicle).not.toHaveProperty("plate");
+  });
 });

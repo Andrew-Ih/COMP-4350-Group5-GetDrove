@@ -35,6 +35,7 @@ import {
   SEAT_OPTIONS,
   type Trip,
 } from "../model/postTrip";
+import { tripRequestsHref } from "../model/requests";
 
 const CAMPUS_NAME = "U of M Fort Garry Campus";
 
@@ -340,7 +341,10 @@ function Posted({ trip, place, onPostAnother }: { trip: Trip; place: string; onP
       <p className="mt-4 text-ink-soft">Riders whose area is along your route can now find this trip when they search.</p>
 
       <div className="mt-6 flex flex-col gap-3">
-        <Button fullWidth onClick={onPostAnother}>
+        <Link href={tripRequestsHref(trip.id)} className={buttonStyles({ fullWidth: true })}>
+          See requests
+        </Link>
+        <Button variant="secondary" fullWidth onClick={onPostAnother}>
           Post another trip
         </Button>
         <Link href="/ride" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
