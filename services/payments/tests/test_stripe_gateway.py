@@ -10,6 +10,13 @@ from pydantic import SecretStr, ValidationError
 from stripe import HTTPXClient, StripeClient
 
 from payments.adapters.stripe_gateway import StripePaymentGateway
+from payments.application.ports import (
+    AuthenticationRequiredError,
+    GatewayUnavailableError,
+    PaymentDeclinedError,
+    PaymentGatewayError,
+    PaymentIntentStatus,
+)
 from payments.infrastructure.gateway import create_payment_gateway
 from payments.infrastructure.settings import Settings
 
@@ -47,7 +54,7 @@ async def test_gateway_requests() -> None:
             currency="CAD",
             idempotency_key="hold-1",
         )
-        assert hold.status == "requires_capture"
+        assert hold.status is PaymentIntentStatus.REQUIRES_CAPTURE
         await gateway.capture(payment_intent_id=hold.id, idempotency_key="capture-1")
         await gateway.cancel(payment_intent_id=hold.id, idempotency_key="cancel-1")
         with pytest.raises(ValueError, match="positive"):
@@ -88,3 +95,59 @@ def test_reject_live_keys_and_missing_configuration(monkeypatch: pytest.MonkeyPa
         Settings(_env_file=None, stripe_secret_key=SecretStr("sk_live_invalid"))
     with pytest.raises(ValueError, match="required"):
         create_payment_gateway(Settings(_env_file=None))
+
+
+@pytest.mark.parametrize("operation", ["customer", "setup", "authorize", "capture", "cancel"])
+@pytest.mark.parametrize(
+    ("status", "error_type", "code", "expected"),
+    [
+        (402, "card_error", "card_declined", PaymentDeclinedError),
+        (402, "card_error", "authentication_required", AuthenticationRequiredError),
+        (500, "api_error", "api_error", GatewayUnavailableError),
+        (429, "rate_limit_error", "rate_limit", GatewayUnavailableError),
+        (401, "invalid_request_error", "invalid_api_key", PaymentGatewayError),
+        (400, "invalid_request_error", "parameter_missing", PaymentGatewayError),
+        (0, "", "", GatewayUnavailableError),
+    ],
+)
+async def test_gateway_translates_sdk_errors(
+    operation: str, status: int, error_type: str, code: str, expected: type[PaymentGatewayError]
+) -> None:
+    def respond(request: httpx.Request) -> httpx.Response:
+        if status == 0:
+            raise httpx.ConnectError("Connection failed", request=request)
+        return httpx.Response(
+            status,
+            json={"error": {"type": error_type, "code": code, "message": "Provider failure"}},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as http:
+        gateway = StripePaymentGateway(
+            StripeClient(
+                "sk_test_mock",
+                max_network_retries=0,
+                http_client=HTTPXClient(_lib=SimpleNamespace(AsyncClient=lambda **kwargs: http)),
+            )
+        )
+        with pytest.raises(expected) as caught:
+            match operation:
+                case "customer":
+                    await gateway.create_customer(user_id="user-1", idempotency_key="customer-1")
+                case "setup":
+                    await gateway.create_setup_intent(
+                        customer_id="cus_test", idempotency_key="setup-1"
+                    )
+                case "authorize":
+                    await gateway.authorize(
+                        customer_id="cus_test",
+                        payment_method_id="pm_test",
+                        amount_cents=450,
+                        currency="CAD",
+                        idempotency_key="hold-1",
+                    )
+                case "capture":
+                    await gateway.capture(payment_intent_id="pi_test", idempotency_key="capture-1")
+                case "cancel":
+                    await gateway.cancel(payment_intent_id="pi_test", idempotency_key="cancel-1")
+        assert type(caught.value) is expected
+        assert caught.value.__cause__ is not None
