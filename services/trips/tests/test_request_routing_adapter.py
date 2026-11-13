@@ -34,6 +34,7 @@ async def test_selected_pickup_is_validated_and_returned() -> None:
         assert json.loads(request.content) == {
             "tripId": str(trip_id),
             "rider": {"lat": rider.lat, "lng": rider.lng},
+            "exclude": [],
             "limit": 3,
         }
         return httpx.Response(200, json={"pickups": [pickup_payload()]})
