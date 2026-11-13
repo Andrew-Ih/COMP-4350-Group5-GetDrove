@@ -77,6 +77,7 @@ class RequestSeat:
             trip_id=command.trip_id,
             rider=command.rider,
             pickup_id=command.pickup_id,
+            exclude=command.exclude,
         )
 
         accepted_pickups = await self.requests.list_accepted_pickups(command.trip_id)

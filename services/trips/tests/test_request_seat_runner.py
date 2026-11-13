@@ -6,7 +6,9 @@ from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy import delete
 
+from trips.adapters.persistence.tables import seat_requests, trips
 from trips.adapters.api.dependencies import RequestSeatRunner
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.seat_request_repository import (
@@ -78,4 +80,7 @@ async def test_unique_index_violation_becomes_already_requested(monkeypatch) -> 
         with pytest.raises(AlreadyRequestedError):
             await runner.execute(None)  # type: ignore[arg-type]
     finally:
+        async with session_factory() as session, session.begin():
+            await session.execute(delete(seat_requests).where(seat_requests.c.trip_id == trip.id))
+            await session.execute(delete(trips).where(trips.c.id == trip.id))
         await engine.dispose()
