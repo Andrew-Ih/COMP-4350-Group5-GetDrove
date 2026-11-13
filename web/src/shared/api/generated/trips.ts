@@ -2547,7 +2547,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The pickup or detour can't be worked out right now (code `routing_unavailable`) */
+            /** @description The pickup or detour can't be worked out right now, or the price or saved card can't be checked (code `routing_unavailable / payments_unavailable`) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2558,7 +2558,7 @@ export interface operations {
                      *       "type": "about:blank",
                      *       "title": "Service Unavailable",
                      *       "status": 503,
-                     *       "detail": "The pickup or detour can't be worked out right now",
+                     *       "detail": "The pickup or detour can't be worked out right now, or the price or saved card can't be checked",
                      *       "instance": "/{trip_id}/requests",
                      *       "code": "routing_unavailable",
                      *       "requestId": "b1e2c3d4e5f6"
