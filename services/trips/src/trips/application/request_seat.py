@@ -27,6 +27,7 @@ class RequestSeatCommand:
     now: datetime
     exclude: tuple[str, ...] = ()
 
+
 class RequestSeat:
     def __init__(
         self,

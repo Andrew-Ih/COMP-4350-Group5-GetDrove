@@ -36,12 +36,7 @@ class HTTPRequestRoutingService:
         self.client = client
 
     async def select_pickup(
-        self,
-        *,
-        trip_id: UUID,
-        rider: Point,
-        pickup_id: str,
-        exclude: Sequence[str] = ()
+        self, *, trip_id: UUID, rider: Point, pickup_id: str, exclude: Sequence[str] = ()
     ) -> SelectedPickup:
         try:
             response = await self.client.post(
