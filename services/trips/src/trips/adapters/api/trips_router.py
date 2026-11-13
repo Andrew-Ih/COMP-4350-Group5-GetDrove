@@ -469,7 +469,11 @@ async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
             "Invalid input, or the pickup point isn't available from where you are",
             "invalid_input / pickup_not_available",
         ),
-        503: _problem("The pickup or detour can't be worked out right now", "routing_unavailable"),
+        503: _problem(
+            "The pickup or detour can't be worked out right now, or the price or saved card "
+            "can't be checked",
+            "routing_unavailable / payments_unavailable",
+        ),
     },
 )
 async def request_seat(

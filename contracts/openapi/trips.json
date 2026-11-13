@@ -1869,7 +1869,7 @@
             }
           },
           "503": {
-            "description": "The pickup or detour can't be worked out right now (code `routing_unavailable`)",
+            "description": "The pickup or detour can't be worked out right now, or the price or saved card can't be checked (code `routing_unavailable / payments_unavailable`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -1879,7 +1879,7 @@
                   "type": "about:blank",
                   "title": "Service Unavailable",
                   "status": 503,
-                  "detail": "The pickup or detour can't be worked out right now",
+                  "detail": "The pickup or detour can't be worked out right now, or the price or saved card can't be checked",
                   "instance": "/{trip_id}/requests",
                   "code": "routing_unavailable",
                   "requestId": "b1e2c3d4e5f6"
