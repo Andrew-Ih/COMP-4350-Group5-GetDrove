@@ -5,15 +5,15 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from trips.adapters.persistence.tables import seat_requests, trips
 from trips.adapters.api.dependencies import RequestSeatRunner
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.seat_request_repository import (
     SQLAlchemySeatRequestRepository,
 )
+from trips.adapters.persistence.tables import seat_requests, trips
 from trips.application.request_seat import RequestSeat
 from trips.domain.entities import Trip
 from trips.domain.request_errors import AlreadyRequestedError
