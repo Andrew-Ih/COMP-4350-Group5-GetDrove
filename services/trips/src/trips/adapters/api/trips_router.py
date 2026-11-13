@@ -11,7 +11,7 @@ from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import AwareDatetime, StringConstraints
+from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
@@ -26,6 +26,7 @@ from trips.adapters.api.schemas import (
     Cost,
     DriverRequestView,
     Pickup,
+    PickupPointId,
     Place,
     PostTripRequest,
     PostTripSeriesRequest,
@@ -408,7 +409,7 @@ async def get_trip(
     lat: Annotated[float | None, Query(ge=-90, le=90, description="Rider's latitude.")] = None,
     lng: Annotated[float | None, Query(ge=-180, le=180, description="Rider's longitude.")] = None,
     exclude: Annotated[
-        list[Annotated[str, StringConstraints(min_length=1, max_length=64)]] | None,
+        list[PickupPointId] | None,
         Query(
             max_length=MAX_EXCLUDED_PICKUPS,
             description="IDs of pickup points the rider rejected, repeated: "
@@ -452,7 +453,9 @@ async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
     description="The rider asks for a seat, picked up at one of the trip detail's pickup "
     "points. The price is saved with the request and is what gets charged. The request is "
     "`pending` until the driver decides, or `accepted` straight away if it meets the "
-    "driver's auto-accept rules. The rider needs a saved card first.",
+    "driver's auto-accept rules. The rider needs a saved card first. Send the same "
+    "`exclude` the trip detail was loaded with, so a point offered after the rider rejected "
+    "others is still accepted.",
     responses={
         **UNAUTHORIZED,
         403: _problem("You can't request a seat on your own trip", "own_trip"),

@@ -297,7 +297,7 @@ export interface paths {
         put?: never;
         /**
          * Request a seat
-         * @description The rider asks for a seat, picked up at one of the trip detail's pickup points. The price is saved with the request and is what gets charged. The request is `pending` until the driver decides, or `accepted` straight away if it meets the driver's auto-accept rules. The rider needs a saved card first.
+         * @description The rider asks for a seat, picked up at one of the trip detail's pickup points. The price is saved with the request and is what gets charged. The request is `pending` until the driver decides, or `accepted` straight away if it meets the driver's auto-accept rules. The rider needs a saved card first. Send the same `exclude` the trip detail was loaded with, so a point offered after the rider rejected others is still accepted.
          */
         post: operations["request_seat__trip_id__requests_post"];
         delete?: never;
@@ -712,6 +712,15 @@ export interface components {
          *       "lng": -97.1561,
          *       "pickupId": "s42"
          *     }
+         * @example {
+         *       "exclude": [
+         *         "s42",
+         *         "s45"
+         *       ],
+         *       "lat": 49.8722,
+         *       "lng": -97.1561,
+         *       "pickupId": "s50"
+         *     }
          */
         SeatRequestBody: {
             /**
@@ -726,6 +735,11 @@ export interface components {
              * @description One of the trip detail's `pickups`.
              */
             pickupId: string;
+            /**
+             * Exclude
+             * @description The same `exclude` the trip detail was loaded with (#136), so a pickup point that was only offered because the rider rejected others is still accepted (#299). Passed on to Routing, never stored.
+             */
+            exclude?: string[];
         };
         /**
          * Trip
