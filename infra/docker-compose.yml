@@ -240,6 +240,9 @@ services:
   web:
     build:
       context: ../web
+      args:
+        # Stripe's publishable test key (pk_test_...) for the card form, from .env. Optional.
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]

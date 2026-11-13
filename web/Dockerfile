@@ -16,6 +16,10 @@ RUN npm ci
 FROM node:${NODE_VERSION}-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
+# NEXT_PUBLIC_ values are built into the browser code, so they're needed here, not at run
+# time. Stripe's publishable key is public by design (the secret key never comes here).
+ARG NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=""
+ENV NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=$NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
