@@ -163,7 +163,11 @@ export const handlers = [
       return problem(422, "invalid_input", "Invalid input", instance);
     }
     const rider = lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined;
-    const found = tripDetailFor(tripId, rider, lastSearch ?? { direction: "to_campus", time: tomorrowAt830() });
+    const exclude = url.searchParams.getAll("exclude");
+    if (exclude.length > 20 || exclude.some((id) => id.length === 0 || id.length > 64)) {
+      return problem(422, "invalid_input", "Invalid input", instance);
+    }
+    const found = tripDetailFor(tripId, rider, lastSearch ?? { direction: "to_campus", time: tomorrowAt830() }, exclude);
     if (!found) return problem(404, "trip_not_found", "No trip with this ID", instance);
     routes.set(tripId, found.route); // so its route shows after a reload too
     return HttpResponse.json(withMyRequest(found.detail)); // with the rider's own request, if any

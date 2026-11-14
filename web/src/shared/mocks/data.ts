@@ -157,12 +157,18 @@ function metersBetween(a: [number, number], b: [number, number]): number {
 }
 
 /**
- * GET /trips/{id}: the trip with 3 pickup points on its route, best first: the one from
- * the search, one further back towards the driver's end and one further on. Picked up
- * further back, the rider rides (and pays) a little more. Without `rider`, no pickups.
- * Undefined if the trip isn't one of the mock trips.
+ * GET /trips/{id}: the trip with up to 3 pickup points on its route, best first, leaving
+ * out the ones in `exclude` (#136). Each trip has 6 points: the one from the search, then
+ * others further back towards the driver's end or further on, so "None of these work" gives
+ * 3 new ones once and then none. Picked up further back, the rider rides (and pays) a
+ * little more. Without `rider`, no pickups. Undefined if the trip isn't one of the mock trips.
  */
-export function tripDetailFor(tripId: string, rider: { lat: number; lng: number } | undefined, search: Omit<Search, "lat" | "lng">) {
+export function tripDetailFor(
+  tripId: string,
+  rider: { lat: number; lng: number } | undefined,
+  search: Omit<Search, "lat" | "lng">,
+  exclude: readonly string[] = [],
+) {
   const offer = OFFERS.find((o) => o.id === tripId);
   if (!offer) return undefined;
   const placed = place(offer, { lat: rider?.lat ?? campus.lat, lng: rider?.lng ?? campus.lng, ...search });
@@ -172,19 +178,25 @@ export function tripDetailFor(tripId: string, rider: { lat: number; lng: number 
     { label: offer.label, point: placed.pickup, extraKm: 0 },
     { label: `${offer.label}, further back`, point: between(placed.pickup, placed.driverEnd, 0.15), extraKm: 0.5 },
     { label: `${offer.label}, further on`, point: between(placed.pickup, placed.bend, 0.12), extraKm: -0.4 },
+    { label: `${offer.label}, a little back`, point: between(placed.pickup, placed.driverEnd, 0.06), extraKm: 0.2 },
+    { label: `${offer.label}, a little on`, point: between(placed.pickup, placed.bend, 0.05), extraKm: -0.2 },
+    { label: `${offer.label}, near the corner`, point: between(placed.pickup, placed.bend, 0.09), extraKm: -0.3 },
   ];
   const pickups: Trips["schemas"]["PickupOption"][] = rider
-    ? options.map((option, i) => {
-        const km = offer.km + option.extraKm;
-        return {
-          id: `${offer.id.slice(0, 4)}-${i + 1}`,
-          label: option.label,
-          lat: option.point[1],
-          lng: option.point[0],
-          walkSeconds: i === 0 ? offer.walkSeconds : Math.round(metersBetween(you, option.point) / WALK_METERS_PER_SECOND),
-          cost: cost(offer.cents + Math.round(option.extraKm * 45), km),
-        };
-      })
+    ? options
+        .map((option, i) => {
+          const km = offer.km + option.extraKm;
+          return {
+            id: `${offer.id.slice(0, 4)}-${i + 1}`,
+            label: option.label,
+            lat: option.point[1],
+            lng: option.point[0],
+            walkSeconds: i === 0 ? offer.walkSeconds : Math.round(metersBetween(you, option.point) / WALK_METERS_PER_SECOND),
+            cost: cost(offer.cents + Math.round(option.extraKm * 45), km),
+          };
+        })
+        .filter((option) => !exclude.includes(option.id))
+        .slice(0, 3)
     : [];
 
   const detail: Trips["schemas"]["TripDetail"] = { trip: placed.trip, vehicle: null, pickups, myRequest: null };

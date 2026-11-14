@@ -9,8 +9,9 @@ import { defaultWhen, type SearchQuery, toSearchTime } from "../model/search";
 import type { DriverProfile, PickupOption, SeatRequest, TripDetail as Detail } from "../model/tripDetail";
 import { TripDetail } from "./TripDetail";
 
+const { replace } = vi.hoisted(() => ({ replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), replace }),
   usePathname: () => "/ride/trip/t1",
 }));
 
@@ -116,9 +117,9 @@ function inTurn(...answers: Answer[]) {
 }
 
 function api(
-  trip: Answer | (() => Answer) = { status: 200, body: detail() },
+  trip: Answer | ((url: URL) => Answer) = { status: 200, body: detail() },
   profile: Answer = { status: 200, body: priya },
-  more: Record<string, Answer | (() => Answer)> = {},
+  more: Record<string, Answer | ((url: URL) => Answer)> = {},
 ) {
   return mockApi({
     "/accounts/me": { status: 200, body: maya },
@@ -223,12 +224,109 @@ describe("TripDetail", () => {
     expect(within(map).getAllByText(/^stop\s*$/)).toHaveLength(2);
   });
 
-  it("doesn't offer other points when there's only one", async () => {
+  it("with only one point, still lets the rider ask for others", async () => {
     api({ status: 200, body: detail({ pickups: [PICKUPS[0]!] }) });
     renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
 
-    await screen.findByRole("heading", { name: "Priya" });
-    expect(screen.queryByRole("button", { name: "Choose a different pickup point" })).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("button", { name: "Choose a different pickup point" }));
+    expect(within(screen.getByRole("radiogroup", { name: "Points near you" })).getAllByRole("radio")).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "None of these work" })).toBeInTheDocument();
+  });
+
+  describe("none of the points work (#136)", () => {
+    const NEXT = [
+      pickup("s4", "Pembina Hwy & Jubilee Ave", 300, 440),
+      pickup("s5", "Osborne St & Morley Ave", 480, 410),
+      pickup("s6", "River Ave & Clarke St", 540, 450),
+    ];
+    const excludedIn = (url: URL) => url.searchParams.getAll("exclude");
+    /** The trip detail, with the next 3 points once the first 3 are left out, then none. */
+    const byExclude = (url: URL): Answer => {
+      const left = excludedIn(url);
+      if (left.length === 0) return { status: 200, body: detail() };
+      return { status: 200, body: detail({ pickups: left.length === 3 ? NEXT : [] }) };
+    };
+    const noneWork = async () => {
+      await userEvent.click(await screen.findByRole("button", { name: "Choose a different pickup point" }));
+      await userEvent.click(screen.getByRole("button", { name: "None of these work" }));
+    };
+
+    afterEach(() => replace.mockClear());
+
+    it("asks for other points, leaving out the rejected ones, and keeps them in the address", async () => {
+      const fetchSpy = api(byExclude);
+      renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+      await noneWork();
+
+      const stops = screen.getByRole("list", { name: "Stops" });
+      await waitFor(() => expect(within(stops).getAllByRole("listitem")[0]).toHaveTextContent("Pembina Hwy & Jubilee Ave"));
+      const lastTripUrl = urlsOf(fetchSpy).filter((url) => url.pathname.endsWith(`/trips/${TRIP_ID}`)).at(-1)!;
+      expect(excludedIn(lastTripUrl)).toEqual(["s1", "s2", "s3"]);
+      expect(screen.getByRole("button", { name: /Request seat · \$4\.40/ })).toBeInTheDocument();
+
+      const address = new URL(replace.mock.lastCall![0] as string, "http://localhost");
+      expect(address.pathname).toBe("/ride/trip/t1");
+      expect(excludedIn(address)).toEqual(["s1", "s2", "s3"]);
+      expect(address.searchParams.get("direction")).toBe("to_campus"); // the search is kept
+
+      // The new points can be chosen between as before.
+      await userEvent.click(screen.getByRole("button", { name: "Choose a different pickup point" }));
+      const choices = within(screen.getByRole("radiogroup", { name: "Points near you" })).getAllByRole("radio");
+      expect(choices.map((c) => c.textContent)).toEqual([
+        expect.stringContaining("Pembina Hwy & Jubilee Ave"),
+        expect.stringContaining("Osborne St & Morley Ave"),
+        expect.stringContaining("River Ave & Clarke St"),
+      ]);
+    });
+
+    it("sends the rejected points with the request", async () => {
+      const fetchSpy = api(byExclude, undefined, { [`/trips/${TRIP_ID}/requests`]: { status: 201, body: seatRequest("pending") } });
+      renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+
+      await noneWork();
+      await userEvent.click(await screen.findByRole("button", { name: /Request seat · \$4\.40/ }));
+
+      expect(await screen.findByText("Request sent")).toBeInTheDocument();
+      expect(await requestSent(fetchSpy)!.json()).toEqual({ lat: 49.8768, lng: -97.1438, pickupId: "s4", exclude: ["s1", "s2", "s3"] });
+    });
+
+    it("says when there are no other points, and can show the first ones again", async () => {
+      api(byExclude);
+      renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} exclude={["s1", "s2", "s3"]} />);
+
+      await noneWork();
+
+      const message = await screen.findByText("There are no other pickup points on this trip near you.");
+      expect(screen.queryByRole("button", { name: /Request seat/ })).not.toBeInTheDocument();
+      // Besides the back link at the top, the message has its own way back to the results.
+      expect(within(message.closest<HTMLElement>("[role=status]")!).getByRole("link", { name: "All trips" })).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole("button", { name: "See those points again" }));
+
+      const stops = await screen.findByRole("list", { name: "Stops" });
+      expect(within(stops).getAllByRole("listitem")[0]).toHaveTextContent("Osborne St & River Ave");
+      expect(excludedIn(new URL(replace.mock.lastCall![0] as string, "http://localhost"))).toEqual([]);
+    });
+
+    it("opened with rejected points in the address, leaves them out", async () => {
+      const fetchSpy = api(byExclude);
+      renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} exclude={["s1", "s2", "s3"]} />);
+
+      expect(await screen.findByText("Pembina Hwy & Jubilee Ave")).toBeInTheDocument();
+      const tripUrl = urlsOf(fetchSpy).find((url) => url.pathname.endsWith(`/trips/${TRIP_ID}`))!;
+      expect(excludedIn(tripUrl)).toEqual(["s1", "s2", "s3"]);
+    });
+
+    it("stops offering it once 20 points have been left out", async () => {
+      const already = Array.from({ length: 18 }, (_, i) => `x${i}`);
+      api({ status: 200, body: detail() });
+      renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} exclude={already} />);
+
+      await userEvent.click(await screen.findByRole("button", { name: "Choose a different pickup point" }));
+      expect(screen.getByRole("radiogroup", { name: "Points near you" })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "None of these work" })).not.toBeInTheDocument();
+    });
   });
 
   it("asks for a seat with the chosen pickup and the rider's location, then waits for the driver", async () => {

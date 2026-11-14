@@ -2,6 +2,7 @@
 
 import { ArrowLeft, CheckCircle2, Clock, Footprints, XCircle } from "lucide-react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
@@ -15,6 +16,7 @@ import { useCancelSeatRequest, useProfile, useRequestSeat, useRoute, useSeatRequ
 import { formatClock, formatMoney, formatWalk, routeCoordinates } from "../model/results";
 import { AREA_RADIUS_METERS, type SearchQuery, toQueryString } from "../model/search";
 import {
+  afterRejecting,
   availability,
   cancelRequestError,
   type DriverProfile,
@@ -31,24 +33,47 @@ import {
 /**
  * A trip opened from the results (#140): the driver, the pickup point and the rider's
  * share, from GET /api/trips/{id}?lat&lng. The rider can pick another of the (up to 3)
- * pickup points (#136). `search` is the search the rider came from: its location is used
- * to find pickup points, and "All trips" goes back to its results. Without it, the trip
- * shows without pickup points.
+ * pickup points, or say none of them work to see the next ones (#136). `search` is the
+ * search the rider came from: its location is used to find pickup points, and "All trips"
+ * goes back to its results. Without it, the trip shows without pickup points.
+ *
+ * Rejected points (`exclude`) are left out of the trip detail and sent with the request,
+ * and kept in the page's address, so a reload doesn't offer them again.
  *
  * Requesting a seat (#141): the request is sent with the chosen pickup, then checked every
  * few seconds while it's pending, so the screen shows when the driver accepts or declines.
  * The rider can cancel a pending or accepted request.
  */
-export function TripDetail({ tripId, search }: { tripId: string; search: SearchQuery | undefined }) {
+export function TripDetail({
+  tripId,
+  search,
+  exclude: initialExclude = [],
+}: {
+  tripId: string;
+  search: SearchQuery | undefined;
+  exclude?: string[];
+}) {
   const me = useCurrentUser();
+  const router = useRouter();
+  const pathname = usePathname();
   const rider = useMemo(() => (search ? { lat: search.lat, lng: search.lng } : undefined), [search]);
-  const detail = useTripDetail(tripId, rider);
+  const [excluded, setExcluded] = useState<string[]>(initialExclude);
+  const detail = useTripDetail(tripId, rider, excluded);
   const trip = detail.data?.trip;
   const profile = useProfile(trip?.driverId);
   const route = useRoute(tripId, detail.isSuccess);
 
   const pickups = useMemo(() => detail.data?.pickups ?? [], [detail.data]);
   const [chosenId, setChosenId] = useState<string>();
+
+  // Leaves out a set of points (or none, to start again) and keeps it in the address.
+  const changeExcluded = (next: string[]) => {
+    setExcluded(next);
+    setChosenId(undefined);
+    const query = new URLSearchParams(search ? toQueryString(search) : "");
+    for (const id of next) query.append("exclude", id);
+    router.replace(`${pathname}?${query.toString()}`, { scroll: false });
+  };
 
   // The rider's request: the one just sent, or the one the trip detail came with. It's
   // checked again while pending; a declined or cancelled one stays on screen until another is sent.
@@ -140,9 +165,12 @@ export function TripDetail({ tripId, search }: { tripId: string; search: SearchQ
               <Trip
                 tripId={tripId}
                 detail={detail.data}
+                finding={detail.isPlaceholderData}
                 profile={profile.data}
                 pickup={pickup}
                 onChoosePickup={setChosenId}
+                excluded={excluded}
+                onExclude={changeExcluded}
                 rider={rider}
                 request={current}
                 onSent={(request) => setSentId(request.id)}
@@ -161,9 +189,12 @@ type Back = { href: string; label: string };
 function Trip({
   tripId,
   detail,
+  finding,
   profile,
   pickup,
   onChoosePickup,
+  excluded,
+  onExclude,
   rider,
   request,
   onSent,
@@ -171,9 +202,12 @@ function Trip({
 }: {
   tripId: string;
   detail: Detail;
+  finding: boolean;
   profile: DriverProfile | undefined;
   pickup: PickupOption | undefined;
   onChoosePickup: (id: string) => void;
+  excluded: string[];
+  onExclude: (excluded: string[]) => void;
   rider: { lat: number; lng: number } | undefined;
   request: SeatRequest | undefined;
   onSent: (request: SeatRequest) => void;
@@ -197,11 +231,12 @@ function Trip({
 
   const toCampus = trip.direction === "to_campus";
   const campus = (toCampus ? trip.destination : trip.origin) ?? { label: "University Centre" };
+  const nextExcluded = afterRejecting(excluded, pickups);
   const nearYou = pickup && (
     <NearYouStop
       pickup={pickup}
       toCampus={toCampus}
-      canChoose={pickups.length > 1 && !isActive(request)}
+      canChoose={!finding && !isActive(request) && (pickups.length > 1 || nextExcluded !== undefined)}
       choosing={choosing}
       onToggle={() => setChoosing((open) => !open)}
     />
@@ -240,14 +275,27 @@ function Trip({
               </>
             )}
           </ol>
-          {choosing && (
+          {finding && (
+            <p role="status" className="mt-4 flex items-center gap-2 font-semibold text-ink-soft">
+              <Spinner className="size-4" /> Finding other points near you…
+            </p>
+          )}
+          {choosing && !finding && (
             <PickupChoices
               pickups={pickups}
               chosen={pickup}
+              toCampus={toCampus}
               onChoose={(id) => {
                 onChoosePickup(id);
                 setChoosing(false);
               }}
+              onNoneWork={
+                nextExcluded &&
+                (() => {
+                  onExclude(nextExcluded);
+                  setChoosing(false);
+                })
+              }
             />
           )}
           <Share pickup={pickup} />
@@ -261,8 +309,12 @@ function Trip({
             onSent={onSent}
             name={name}
             back={back}
+            excluded={excluded}
+            disabled={finding}
           />
         </>
+      ) : excluded.length > 0 && rider ? (
+        <NoMorePickups toCampus={toCampus} onStartOver={() => onExclude([])} back={back} />
       ) : (
         <NoPickup hasSearch={Boolean(rider)} back={back} />
       )}
@@ -317,14 +369,20 @@ function NearYouStop({
 function PickupChoices({
   pickups,
   chosen,
+  toCampus,
   onChoose,
+  onNoneWork,
 }: {
   pickups: PickupOption[];
   chosen: PickupOption;
+  toCampus: boolean;
   onChoose: (id: string) => void;
+  /** Leaves these points out and asks for others. Undefined when no more can be left out. */
+  onNoneWork: (() => void) | undefined;
 }) {
   return (
-    <div role="radiogroup" aria-label="Points near you" className="mt-4 space-y-2">
+    <div className="mt-4 space-y-3">
+      <div role="radiogroup" aria-label="Points near you" className="space-y-2">
       {pickups.map((option) => (
         <button
           key={option.id}
@@ -344,6 +402,17 @@ function PickupChoices({
           <span className="shrink-0 font-bold">{option.cost ? formatMoney(option.cost.amountCents) : "—"}</span>
         </button>
       ))}
+      </div>
+      {onNoneWork && (
+        <div>
+          <button type="button" onClick={onNoneWork} className="font-bold underline underline-offset-4">
+            None of these work
+          </button>
+          <p className="text-sm text-ink-soft">
+            We&apos;ll suggest other {toCampus ? "pickup" : "drop-off"} points and won&apos;t offer these again.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -373,6 +442,8 @@ function RequestArea({
   onSent,
   name,
   back,
+  excluded,
+  disabled,
 }: {
   tripId: string;
   state: "open" | "full";
@@ -383,6 +454,8 @@ function RequestArea({
   onSent: (request: SeatRequest) => void;
   name: string | undefined;
   back: Back;
+  excluded: string[];
+  disabled: boolean;
 }) {
   const send = useRequestSeat(tripId, onSent);
   const cancel = useCancelSeatRequest(tripId);
@@ -466,7 +539,12 @@ function RequestArea({
       ) : (
         rider && (
           <>
-            <Button fullWidth loading={send.isPending} onClick={() => send.mutate({ ...rider, pickupId: pickup.id })}>
+            <Button
+              fullWidth
+              loading={send.isPending}
+              disabled={disabled}
+              onClick={() => send.mutate({ ...rider, pickupId: pickup.id, ...(excluded.length > 0 && { exclude: excluded }) })}
+            >
               Request seat{pickup.cost ? ` · ${formatMoney(pickup.cost.amountCents)}` : ""}
             </Button>
             <PrivacyNote>
@@ -476,6 +554,25 @@ function RequestArea({
           </>
         )
       )}
+    </div>
+  );
+}
+
+/** The rider said none of the points worked, and there are no others on this trip. */
+function NoMorePickups({ toCampus, onStartOver, back }: { toCampus: boolean; onStartOver: () => void; back: Back }) {
+  const kind = toCampus ? "pickup" : "drop-off";
+  return (
+    <div role="status" className="mt-6 space-y-4 text-ink-soft">
+      <p className="font-semibold text-ink">There are no other {kind} points on this trip near you.</p>
+      <p>You can look at the points you saw before again, or find another trip.</p>
+      <div className="flex gap-3">
+        <Button variant="secondary" size="md" fullWidth onClick={onStartOver}>
+          See those points again
+        </Button>
+        <Link href={back.href} className={buttonStyles({ size: "md", fullWidth: true })}>
+          {back.label}
+        </Link>
+      </div>
     </div>
   );
 }
