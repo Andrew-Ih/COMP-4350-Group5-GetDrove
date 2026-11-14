@@ -297,7 +297,7 @@ export interface paths {
         put?: never;
         /**
          * Request a seat
-         * @description The rider asks for a seat, picked up at one of the trip detail's pickup points. The price is saved with the request and is what gets charged. The request is `pending` until the driver decides, or `accepted` straight away if it meets the driver's auto-accept rules. The rider needs a saved card first.
+         * @description The rider asks for a seat, picked up at one of the trip detail's pickup points. The price is saved with the request and is what gets charged. The request is `pending` until the driver decides, or `accepted` straight away if it meets the driver's auto-accept rules. The rider needs a saved card first. Send the same `exclude` the trip detail was loaded with, so a point offered after the rider rejected others is still accepted.
          */
         post: operations["request_seat__trip_id__requests_post"];
         delete?: never;
@@ -566,7 +566,7 @@ export interface components {
             seatsTotal: number;
             /**
              * Weekdays
-             * @description The weekdays it repeats on. Each one at most once.
+             * @description The weekdays it repeats on. Each one at most once. The first departure must be on one of them (its Winnipeg day).
              * @example [
              *       "mon",
              *       "wed",
@@ -712,6 +712,15 @@ export interface components {
          *       "lng": -97.1561,
          *       "pickupId": "s42"
          *     }
+         * @example {
+         *       "exclude": [
+         *         "s42",
+         *         "s45"
+         *       ],
+         *       "lat": 49.8722,
+         *       "lng": -97.1561,
+         *       "pickupId": "s50"
+         *     }
          */
         SeatRequestBody: {
             /**
@@ -726,6 +735,11 @@ export interface components {
              * @description One of the trip detail's `pickups`.
              */
             pickupId: string;
+            /**
+             * Exclude
+             * @description The same `exclude` the trip detail was loaded with (#136), so a pickup point that was only offered because the rider rejected others is still accepted (#299). Passed on to Routing, never stored.
+             */
+            exclude?: string[];
         };
         /**
          * Trip
@@ -1060,7 +1074,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Invalid input, including a weekday listed twice, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`) */
+            /** @description Invalid input, including a weekday listed twice, a first departure that isn't on one of the weekdays, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2401,6 +2415,26 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The riders' details can't be loaded right now (code `accounts_unavailable`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The riders' details can't be loaded right now",
+                     *       "instance": "/{trip_id}/requests",
+                     *       "code": "accounts_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     request_seat__trip_id__requests_post: {
@@ -2533,7 +2567,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description The pickup or detour can't be worked out right now (code `routing_unavailable`) */
+            /** @description The pickup or detour can't be worked out right now, or the price or saved card can't be checked (code `routing_unavailable / payments_unavailable`) */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2544,7 +2578,7 @@ export interface operations {
                      *       "type": "about:blank",
                      *       "title": "Service Unavailable",
                      *       "status": 503,
-                     *       "detail": "The pickup or detour can't be worked out right now",
+                     *       "detail": "The pickup or detour can't be worked out right now, or the price or saved card can't be checked",
                      *       "instance": "/{trip_id}/requests",
                      *       "code": "routing_unavailable",
                      *       "requestId": "b1e2c3d4e5f6"
