@@ -51,7 +51,15 @@ import-linter enforces that inner layers never import outer ones, and that `doma
 
 ## API
 
-_To be filled in as endpoints are added: link to the OpenAPI spec in `contracts/openapi/notifications.yaml`._
+The spec is [`contracts/openapi/notifications.json`](../../contracts/openapi/notifications.json). Behind the gateway, paths start with `/api/notifications`. Every endpoint needs an access token.
+
+| Endpoint | What it does |
+|---|---|
+| `GET /?limit=30` | The logged-in user's latest notifications (1 to 100, default 30), newest first, and `unreadCount`: how many of **all** their notifications are unread. The bell polls this every few seconds while open (ADR 0018). |
+| `POST /{notificationId}/read` | Marks one as read (204). Marking it again keeps the first read time. `404 notification_not_found` if the user has no notification with that ID, including someone else's, so IDs can't be probed. |
+| `POST /read-all` | Marks all of the user's unread notifications as read (204). |
+
+Notifications are stored in the `notifications` table ([#145](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/145)). Every query filters on the user, so nobody reads or changes another user's notifications. To create one (from an event handler, #146, or a reminder, #149), build a `Notification` and call `SQLAlchemyNotificationStore(session).add(...)` with the handler's session, so it's saved in the same transaction that records the event and a repeated event can't add it twice.
 
 ## Events
 
