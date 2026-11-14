@@ -1,4 +1,3 @@
-
 """Integration tests for recurring trip series persistence."""
 
 from datetime import UTC, datetime, timedelta

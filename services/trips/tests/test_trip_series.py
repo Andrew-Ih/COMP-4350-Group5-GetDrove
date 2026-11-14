@@ -1,4 +1,3 @@
-
 from datetime import date, datetime
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -22,7 +21,11 @@ def valid_series_data():
             lng=-97.15,
         ),
         "departure_at": datetime(
-            2026, 11, 16, 8, 0,
+            2026,
+            11,
+            16,
+            8,
+            0,
             tzinfo=WINNIPEG,
         ),
         "seats_total": 3,
@@ -100,9 +103,7 @@ def test_reject_invalid_seats(valid_series_data, seats):
 
 
 def test_reject_naive_departure(valid_series_data):
-    valid_series_data["departure_at"] = datetime(
-        2026, 11, 16, 8, 0
-    )
+    valid_series_data["departure_at"] = datetime(2026, 11, 16, 8, 0)
 
     with pytest.raises(ValueError, match="timezone"):
         TripSeries.create(**valid_series_data)

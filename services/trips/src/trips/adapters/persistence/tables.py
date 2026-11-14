@@ -70,7 +70,12 @@ trips = Table(
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("driver_id", Uuid, nullable=False),
-    Column("series_id", Uuid, ForeignKey("trips.trip_series.id"), nullable=True,),
+    Column(
+        "series_id",
+        Uuid,
+        ForeignKey("trips.trip_series.id"),
+        nullable=True,
+    ),
     Column("direction", String(20), nullable=False),
     Column("origin_label", String(200), nullable=False),
     Column("origin_lat", Float, nullable=False),

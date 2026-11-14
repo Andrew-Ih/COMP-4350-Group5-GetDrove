@@ -25,7 +25,6 @@ class Trip:
     status: TripStatus
     series_id: UUID | None = None
 
-
     def __post_init__(self) -> None:
         """Validate the trip's business rules."""
 
@@ -123,10 +122,7 @@ class TripSeries:
     end_date: date
 
     def __post_init__(self) -> None:
-        if (
-            self.departure_at.tzinfo is None
-            or self.departure_at.utcoffset() is None
-        ):
+        if self.departure_at.tzinfo is None or self.departure_at.utcoffset() is None:
             raise ValueError("Departure time must include a timezone")
 
         if not 1 <= self.seats_total <= 6:

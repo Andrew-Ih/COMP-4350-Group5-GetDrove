@@ -88,6 +88,7 @@ class SQLAlchemyTripRepository:
         )
         return [_trip(row) for row in result.mappings()]
 
+
 class SQLAlchemyTripSeriesRepository:
     """Store recurring trip series in PostgreSQL."""
 
