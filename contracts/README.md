@@ -64,6 +64,7 @@ Endpoints return 501 until the task in brackets implements them.
 | Leaving out rejected pickup points when requesting a seat: `exclude` on `POST /api/trips/{tripId}/requests` (#299, for #136 and #137) | Trips | Frontend | Written |
 | Payments down when requesting a seat: 503 `payments_unavailable` on `POST /api/trips/{tripId}/requests` (#301, for #137) | Trips | Frontend | Written |
 | Accounts down on the driver's request list: 503 `accounts_unavailable` on `GET /api/trips/{tripId}/requests` (#309, for #139) | Trips | Frontend | Written |
+| A series' first departure must be on one of its weekdays: `POST /api/trips/series` (#315, for #16 and #17) | Trips | Frontend | Written |
 | Card setup and saved cards (#151), internal "has a card" check | Payments | Frontend, Trips | Written |
 | Notifications list, mark read, mark all read (#145) | Notifications | Frontend | Written |
 | `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
