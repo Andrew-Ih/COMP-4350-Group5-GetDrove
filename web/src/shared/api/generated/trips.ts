@@ -2415,6 +2415,26 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
+            /** @description The riders' details can't be loaded right now (code `accounts_unavailable`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The riders' details can't be loaded right now",
+                     *       "instance": "/{trip_id}/requests",
+                     *       "code": "accounts_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
         };
     };
     request_seat__trip_id__requests_post: {
