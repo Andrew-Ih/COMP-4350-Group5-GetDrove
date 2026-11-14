@@ -1,10 +1,10 @@
 """Integration tests for recurring trip series persistence."""
 
-from sqlalchemy import text
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from trips.adapters.persistence.repository import (
