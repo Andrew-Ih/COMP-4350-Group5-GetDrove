@@ -124,21 +124,30 @@ def test_search_time_needs_a_timezone() -> None:
 def test_going_to_campus_the_rider_rides_from_the_pickup_to_the_end() -> None:
     to_campus = trip(TIME, Direction.TO_CAMPUS)
 
-    assert ride_meters(Direction.TO_CAMPUS, 6000, match(to_campus, to_end=4000)) == 4000
+    assert (
+        ride_meters(Direction.TO_CAMPUS, 6000, match(to_campus, to_end=4000).meters_to_trip_end)
+        == 4000
+    )
 
 
 def test_leaving_campus_the_rider_rides_from_campus_to_the_drop_off() -> None:
     """The point is a drop-off 1.5 km before the driver's end: the rider rides 4.5 km."""
     from_campus = trip(TIME, Direction.FROM_CAMPUS)
 
-    assert ride_meters(Direction.FROM_CAMPUS, 6000, match(from_campus, to_end=1500)) == 4500
+    assert (
+        ride_meters(Direction.FROM_CAMPUS, 6000, match(from_campus, to_end=1500).meters_to_trip_end)
+        == 4500
+    )
 
 
 def test_ride_is_never_negative() -> None:
     """If Routing's distance ever disagreed with the stored trip, don't price a negative."""
     from_campus = trip(TIME, Direction.FROM_CAMPUS)
 
-    assert ride_meters(Direction.FROM_CAMPUS, 6000, match(from_campus, to_end=6200)) == 0
+    assert (
+        ride_meters(Direction.FROM_CAMPUS, 6000, match(from_campus, to_end=6200).meters_to_trip_end)
+        == 0
+    )
 
 
 # ---------------------------------------------------------------- the use case

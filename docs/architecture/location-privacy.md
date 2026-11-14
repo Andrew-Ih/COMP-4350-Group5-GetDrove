@@ -16,6 +16,7 @@ This page lists everywhere these locations pass through, the rule for each, and 
 | Where | Who gets it | Rule | Proven by |
 |---|---|---|---|
 | `GET /api/trips/search` | A rider | The driver's own end (`origin` going to campus, `destination` leaving it) is `null`. The rider's location isn't echoed back. | `trips/tests/test_search_trips_api.py` (`test_the_drivers_end_of_the_trip_is_private`), `trips/tests/test_location_privacy.py` |
+| `GET /api/trips/{id}?lat=&lng=` (trip detail, #30) | Anyone logged in | The driver's own end is `null` for anyone but the driver. Pickup options come from Routing (so never near either end). `lat`/`lng` are only passed to Routing, never stored. | `trips/tests/test_trip_detail_api.py` (`test_a_rider_gets_the_trip_with_its_pickup_points`, `test_leaving_campus_the_drivers_end_is_hidden_too`, `test_the_driver_sees_their_own_end_and_no_pickups`) |
 | `POST /api/trips/`, `GET /api/trips/mine` | The trip's driver | The driver's own trip, so their place is shown. Only their own trips are listed. | `trips/tests/test_location_privacy.py` (`test_the_driver_does_see_their_own_place`) |
 | `POST /internal/matches`, `POST /internal/pickup-points` (Routing, called by Trips) | Trips, then the rider | Pickups are points on the route, never within 300 m of either end. The rider's location isn't echoed back. | `routing/tests/test_suggest_pickups.py`, `test_match_rider.py` (private ends), `routing/tests/test_location_privacy.py` |
 | `GET /api/routing/trips/{id}/geometry` | Anyone logged in | Only the driver gets the whole route. Anyone else gets it with the driver's end cut off where it last leaves the 300 m circle around it (#135). Routes stored without a driver or direction have both ends cut off for everyone. | `routing/tests/test_privacy.py`, `routing/tests/test_route_geometry_api.py` |
@@ -49,6 +50,5 @@ The redaction only knows numbers: a place's **label** ("Driver's own street") wo
 
 These don't exist yet. When they're built, they need the same rules and a test each:
 
-- **Trip detail** (`GET /api/trips/{id}?lat=&lng=`, #30): the driver's end is `null` for anyone but the driver, the pickup options come from Routing, and `lat`/`lng` are never stored.
 - **Seat requests** (#137–#139, #142): the request stores the chosen **pickup point**, never the rider's location; the driver's list of requests shows only that pickup point.
 - **Notifications** (emails and in-app, #144): reminders use the pickup label, never the rider's location or the driver's place.
