@@ -4,7 +4,10 @@ import type { LngLat } from "@/shared/map";
 import { areaName, type Direction, isInServiceArea, toSearchTime } from "@/features/ride";
 
 export type PostTripRequest = components["schemas"]["PostTripRequest"];
+export type PostTripSeriesRequest = components["schemas"]["PostTripSeriesRequest"];
+export type TripSeriesResult = components["schemas"]["TripSeriesResult"];
 export type Trip = components["schemas"]["Trip"];
+export type Weekday = PostTripSeriesRequest["weekdays"][number];
 
 /** Seats a driver can offer, from the contract (1 to 6). */
 export const SEAT_OPTIONS = [1, 2, 3, 4, 5, 6] as const;
@@ -46,7 +49,7 @@ export type TripForm = {
   seats: number;
 };
 
-export type FormProblem = { field: "place" | "departure" | "seats"; message: string };
+export type FormProblem = { field: "place" | "departure" | "seats" | "repeat"; message: string };
 
 /**
  * The request for POST /api/trips/ from what the driver chose, or what to fix first.
@@ -78,6 +81,96 @@ export function buildPostTrip(form: TripForm, now: Date = new Date()): { body: P
       seatsTotal: form.seats,
     },
   };
+}
+
+// ---------------------------------------------------------------- repeating trips (#19)
+
+/** The weekdays a trip can repeat on, Monday first, with how they're shown. */
+export const WEEKDAYS: readonly { day: Weekday; short: string; long: string }[] = [
+  { day: "mon", short: "Mon", long: "Monday" },
+  { day: "tue", short: "Tue", long: "Tuesday" },
+  { day: "wed", short: "Wed", long: "Wednesday" },
+  { day: "thu", short: "Thu", long: "Thursday" },
+  { day: "fri", short: "Fri", long: "Friday" },
+];
+
+/** How long a trip can repeat for, from its first departure (the contract's limit). */
+export const MAX_REPEAT_WEEKS = 16;
+/** The end date suggested when repeating is turned on: 4 weeks after the first trip. */
+export const DEFAULT_REPEAT_WEEKS = 4;
+
+const WINNIPEG = "America/Winnipeg";
+
+/** "2026-11-16": the Winnipeg date of a moment, which the contract judges the days by. */
+export function winnipegDate(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: WINNIPEG, year: "numeric", month: "2-digit", day: "2-digit" }).format(
+    new Date(iso),
+  );
+}
+
+/** The weekday of a "2026-11-16" date, or undefined for Saturday and Sunday. */
+export function weekdayOf(date: string): Weekday | undefined {
+  const day = new Date(`${date}T12:00:00Z`).getUTCDay(); // 0 = Sunday
+  return day >= 1 && day <= 5 ? WEEKDAYS[day - 1]!.day : undefined;
+}
+
+/** "2026-11-16" plus `days` days. */
+export function addDays(date: string, days: number): string {
+  const moved = new Date(`${date}T12:00:00Z`);
+  moved.setUTCDate(moved.getUTCDate() + days);
+  return moved.toISOString().slice(0, 10);
+}
+
+export type Repeat = { weekdays: Weekday[]; endDate: string };
+
+/**
+ * The request for POST /api/trips/series, or what to fix first. The same rules the API
+ * checks: at least one weekday, the first trip on one of them (its Winnipeg day, #315), and
+ * an end date after the first trip and at most 16 weeks after it.
+ */
+export function buildPostTripSeries(
+  form: TripForm,
+  repeat: Repeat,
+  now: Date = new Date(),
+): { body: PostTripSeriesRequest } | { problem: FormProblem } {
+  const single = buildPostTrip(form, now);
+  if ("problem" in single) return single;
+
+  const firstDate = winnipegDate(single.body.departureAt);
+  const firstDay = weekdayOf(firstDate);
+  if (!firstDay) {
+    return { problem: { field: "departure", message: "Repeating trips run Monday to Friday. Choose a weekday for your first trip." } };
+  }
+  if (repeat.weekdays.length === 0) {
+    return { problem: { field: "repeat", message: "Pick at least one day to repeat on." } };
+  }
+  if (!repeat.weekdays.includes(firstDay)) {
+    const name = WEEKDAYS.find((w) => w.day === firstDay)!.long;
+    return { problem: { field: "repeat", message: `Your first trip is on a ${name}. Pick ${name} too, or change the date.` } };
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(repeat.endDate)) {
+    return { problem: { field: "repeat", message: "Choose the last day it repeats." } };
+  }
+  if (repeat.endDate <= firstDate) {
+    return { problem: { field: "repeat", message: "The last day must be after your first trip." } };
+  }
+  if (repeat.endDate > addDays(firstDate, MAX_REPEAT_WEEKS * 7)) {
+    return { problem: { field: "repeat", message: `A trip can repeat for up to ${MAX_REPEAT_WEEKS} weeks. Choose an earlier last day.` } };
+  }
+
+  const weekdays = WEEKDAYS.map((w) => w.day).filter((day) => repeat.weekdays.includes(day)); // Monday first
+  return { body: { ...single.body, weekdays, endDate: repeat.endDate } };
+}
+
+/** "Mon, Wed and Fri". */
+export function weekdayList(weekdays: readonly Weekday[]): string {
+  const names = WEEKDAYS.filter((w) => weekdays.includes(w.day)).map((w) => w.short);
+  return names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names.at(-1)}` : (names[0] ?? "");
+}
+
+/** "Wed, Nov 18", for a "2026-11-18" date. */
+export function formatDate(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { timeZone: "UTC", weekday: "short", month: "short", day: "numeric" });
 }
 
 /**

@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { toSearchTime } from "@/features/ride";
 
 import {
+  addDays,
   buildPostTrip,
+  buildPostTripSeries,
   defaultDeparture,
   findOverlap,
   formatClock,
@@ -13,6 +15,9 @@ import {
   placeLabel,
   type Trip,
   type TripForm,
+  weekdayList,
+  weekdayOf,
+  winnipegDate,
 } from "./postTrip";
 
 const NOW = new Date("2026-10-15T20:00:00"); // local time, so this passes in any time zone
@@ -139,5 +144,73 @@ describe("findOverlap", () => {
 
   it("names the clashing trip", () => {
     expect(overlapMessage(morning)).toBe("You already have a trip at 7:30 AM on Fri, Oct 16. Choose a different time.");
+  });
+});
+
+describe("repeating trips (#19)", () => {
+  // Monday, Nov 16, 2026 at 2 PM local: a Monday in Winnipeg too, in the time zones we run in.
+  const LATER = new Date("2026-11-10T09:00:00");
+  const monday = (changes: Partial<TripForm> = {}) => form({ date: "2026-11-16", time: "14:00", ...changes });
+  const repeat = { weekdays: ["mon" as const, "wed" as const, "fri" as const], endDate: "2026-12-11" };
+
+  it("builds the series request, with the days Monday first", () => {
+    const built = buildPostTripSeries(monday(), { ...repeat, weekdays: ["fri", "mon", "wed"] }, LATER);
+    expect(built).toEqual({
+      body: {
+        direction: "to_campus",
+        place: { label: "Osborne Village area", lat: 49.8768, lng: -97.1438 },
+        departureAt: toSearchTime("2026-11-16", "14:00"),
+        seatsTotal: 3,
+        weekdays: ["mon", "wed", "fri"],
+        endDate: "2026-12-11",
+      },
+    });
+  });
+
+  it("checks the trip itself first", () => {
+    expect(buildPostTripSeries(monday({ point: undefined }), repeat, LATER)).toMatchObject({ problem: { field: "place" } });
+  });
+
+  it("needs the first trip on a weekday", () => {
+    expect(buildPostTripSeries(monday({ date: "2026-11-21" }), repeat, LATER)).toEqual({
+      problem: { field: "departure", message: "Repeating trips run Monday to Friday. Choose a weekday for your first trip." },
+    });
+  });
+
+  it("needs at least one day", () => {
+    expect(buildPostTripSeries(monday(), { ...repeat, weekdays: [] }, LATER)).toEqual({
+      problem: { field: "repeat", message: "Pick at least one day to repeat on." },
+    });
+  });
+
+  it("needs the first trip's day among the days (#315)", () => {
+    expect(buildPostTripSeries(monday(), { ...repeat, weekdays: ["tue", "wed"] }, LATER)).toEqual({
+      problem: { field: "repeat", message: "Your first trip is on a Monday. Pick Monday too, or change the date." },
+    });
+  });
+
+  it.each([
+    ["", "Choose the last day it repeats."],
+    ["2026-11-16", "The last day must be after your first trip."],
+    ["2026-11-10", "The last day must be after your first trip."],
+    ["2027-03-09", "A trip can repeat for up to 16 weeks. Choose an earlier last day."],
+  ])("refuses a last day of %j", (endDate, message) => {
+    expect(buildPostTripSeries(monday(), { ...repeat, endDate }, LATER)).toEqual({ problem: { field: "repeat", message } });
+  });
+
+  it("allows exactly 16 weeks", () => {
+    expect(buildPostTripSeries(monday(), { ...repeat, endDate: "2027-03-08" }, LATER)).toHaveProperty("body");
+  });
+
+  it("judges days by Winnipeg's date, not UTC's", () => {
+    expect(winnipegDate("2026-11-17T01:30:00Z")).toBe("2026-11-16"); // Monday evening in Winnipeg
+    expect(weekdayOf("2026-11-16")).toBe("mon");
+    expect(weekdayOf("2026-11-21")).toBeUndefined(); // Saturday
+  });
+
+  it("adds days across months and lists days in words", () => {
+    expect(addDays("2026-11-30", 2)).toBe("2026-12-02");
+    expect(weekdayList(["fri", "mon", "wed"])).toBe("Mon, Wed and Fri");
+    expect(weekdayList(["tue"])).toBe("Tue");
   });
 });
