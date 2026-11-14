@@ -21,12 +21,14 @@ from trips.adapters.api.dependencies import (
     PostTripService,
     RequestSeatService,
     SearchTripsService,
+    TripRequestsService,
     UpcomingTripsService,
 )
 from trips.adapters.api.schemas import (
     MAX_EXCLUDED_PICKUPS,
     AutoAcceptRules,
     Cost,
+    DriverPickup,
     DriverRequestView,
     Pickup,
     PickupPointId,
@@ -36,6 +38,7 @@ from trips.adapters.api.schemas import (
     Problem,
     RequestPickup,
     RequestStatus,
+    RiderSummary,
     RiderTrip,
     SearchResult,
     SeatRequest,
@@ -45,6 +48,10 @@ from trips.adapters.api.schemas import (
     TripSeriesResult,
 )
 from trips.application.decide_request import RequestActionCommand
+from trips.application.list_trip_requests import (
+    DriverRequest,
+    ListTripRequestsCommand,
+)
 from trips.application.request_seat import RequestSeatCommand
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.seat_request import SeatRequest as SeatRequestEntity
@@ -395,6 +402,30 @@ def _seat_request_response(request: SeatRequestEntity) -> SeatRequest:
     )
 
 
+def _driver_request_response(item: DriverRequest) -> DriverRequestView:
+    request = item.request
+    return DriverRequestView(
+        id=request.id,
+        status=RequestStatus(request.status.value),
+        rider=RiderSummary(
+            id=item.rider.id,
+            first_name=item.rider.first_name,
+            rating=item.rider.rating,
+            rating_count=item.rider.rating_count,
+            no_show_count=item.rider.no_show_count,
+        ),
+        pickup=DriverPickup(
+            label=request.pickup.label, lat=request.pickup.lat, lng=request.pickup.lng
+        ),
+        pickup_order=item.pickup_order,
+        detour_seconds=request.detour_seconds,
+        cost=Cost(amount_cents=request.cost.amount_cents, explanation=request.cost.explanation),
+        auto_accepted=request.auto_accepted,
+        created_at=request.created_at,
+        decided_at=request.decided_at,
+    )
+
+
 def _for_rider(trip: TripEntity) -> Trip:
     """A trip as someone other than its driver sees it: the driver's own end (near their
     home) is null. Only the campus end is shown."""
@@ -553,5 +584,8 @@ async def request_seat(
         503: _problem("The riders' details can't be loaded right now", "accounts_unavailable"),
     },
 )
-async def trip_requests(trip_id: UUID, user: AuthenticatedUser) -> list[DriverRequestView]:
-    _not_implemented()
+async def trip_requests(
+    trip_id: UUID, user: AuthenticatedUser, service: TripRequestsService
+) -> list[DriverRequestView]:
+    items = await service.execute(ListTripRequestsCommand(trip_id=trip_id, user_id=user.id))
+    return [_driver_request_response(item) for item in items]

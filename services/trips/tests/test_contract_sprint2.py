@@ -46,6 +46,7 @@ IMPLEMENTED = {
     ("POST", f"/requests/{ID}/accept"),
     ("POST", f"/requests/{ID}/decline"),
     ("POST", f"/requests/{ID}/cancel"),
+    ("GET", f"/{ID}/requests"),
 }
 STILL_501 = [e for e in NEW_ENDPOINTS if (e[0], e[1]) not in IMPLEMENTED]
 

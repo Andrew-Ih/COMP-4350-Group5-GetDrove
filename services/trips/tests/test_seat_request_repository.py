@@ -319,3 +319,46 @@ async def test_a_decision_is_saved_only_while_the_status_matches(session: AsyncS
 
     assert (first, second) == (True, False)
     assert await repository.get(request.id) == accepted
+
+
+async def test_open_requests_list_pending_first_then_accepted_oldest_first(
+    session: AsyncSession,
+) -> None:
+    trip = await add_trip(session)
+    other_trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    old = make_request(trip, status=RequestStatus.ACCEPTED, now=datetime(2029, 12, 29, tzinfo=UTC))
+    newer = make_request(
+        trip, status=RequestStatus.ACCEPTED, now=datetime(2029, 12, 30, tzinfo=UTC)
+    )
+    pending = make_request(trip, now=datetime(2029, 12, 31, tzinfo=UTC))
+    declined = make_request(trip, status=RequestStatus.DECLINED)
+    elsewhere = make_request(other_trip)
+    for request in (newer, declined, pending, elsewhere, old):
+        await repository.add(request)
+
+    listed = await repository.list_open_for_trip(trip.id)
+
+    assert [request.id for request in listed] == [pending.id, old.id, newer.id]
+
+
+async def test_open_list_and_accepted_pickups_use_the_same_order(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    for day, label in [(30, "Second stop"), (29, "First stop"), (31, "Third stop")]:
+        request = replace(
+            make_request(
+                trip, status=RequestStatus.ACCEPTED, now=datetime(2029, 12, day, tzinfo=UTC)
+            ),
+            pickup=Location(label, 49.82, -97.15),
+        )
+        await repository.add(request)
+
+    open_labels = [
+        request.pickup.label
+        for request in await repository.list_open_for_trip(trip.id)
+        if request.status is RequestStatus.ACCEPTED
+    ]
+    pickup_labels = [pickup.label for pickup in await repository.list_accepted_pickups(trip.id)]
+
+    assert open_labels == pickup_labels
