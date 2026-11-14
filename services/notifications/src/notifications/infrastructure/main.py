@@ -20,11 +20,16 @@ from events.consumer import StreamConsumer
 from notifications.adapters.api import health, notifications_router
 from notifications.adapters.email.smtp_sender import SmtpEmailSender, SmtpSettings
 from notifications.adapters.events.handlers import register_handlers
+from notifications.adapters.events.reminder_handlers import register_reminder_handlers
 from notifications.adapters.persistence.tables import consumer as consumer_tables
 from notifications.application.send_verification_email import SendVerificationEmail
 from notifications.infrastructure.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Accounts' events ask for verification emails (#93); Trips' events keep reminders in step
+# with seat requests and trips (#148).
+CONSUMED_STREAMS = [stream_name("accounts"), stream_name("trips")]
 
 # How long the consumer waits on Redis for new events before checking again.
 CONSUMER_BLOCK_MS = 5_000
@@ -66,17 +71,18 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Reads Accounts' events for as long as the service runs.
+        # Reads Accounts' and Trips' events for as long as the service runs.
         redis = redis_client(settings.redis_url)
         consumer = StreamConsumer(
             redis=redis,
             session_factory=sessions,
             group="notifications",
-            streams=[stream_name("accounts")],
+            streams=CONSUMED_STREAMS,
             tables=consumer_tables,
             block_ms=CONSUMER_BLOCK_MS,
         )
         register_handlers(consumer, send_email)
+        register_reminder_handlers(consumer)
         stop = asyncio.Event()
         consumer_task = asyncio.create_task(consumer.run(stop))
         consumer_task.add_done_callback(_log_if_consumer_stopped)

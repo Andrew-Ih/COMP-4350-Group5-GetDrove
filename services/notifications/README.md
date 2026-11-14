@@ -64,6 +64,17 @@ Consumed from the `events.accounts` stream as the `notifications` consumer group
 
 The link is `NOTIFICATIONS_WEB_BASE_URL` + `/verify?token=…`, the web app's verify page.
 
+Consumed from the `events.trips` stream, to keep trip reminders in step ([#148](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/148)):
+
+| Event | What Notifications does |
+|---|---|
+| [`RequestAccepted`](../../contracts/events/request-accepted.v1.json) | Schedules the rider's reminder, 30 minutes before departure |
+| [`RequestCancelled`](../../contracts/events/request-cancelled.v1.json) | Cancels the rider's reminder |
+| [`RequestDeclined`](../../contracts/events/request-declined.v1.json) | Cancels the reminder if the rider had a seat (`wasAccepted`) |
+| [`TripCancelled`](../../contracts/events/trip-cancelled.v1.json) | Cancels every reminder on the trip |
+
+Reminders are rows in `scheduled_notifications`: one per accepted request (`request_id` is unique, so an acceptance that arrives twice still makes one), with a status of `pending`, `sent`, `skipped` or `cancelled`. Only pending reminders are cancelled. A reminder stores the pickup point's label, never the rider's own location. Sending them when due is [#149](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/149).
+
 Each event is handled once: it's recorded in `processed_events` in the same transaction as the handler, so a repeat delivery or a restart skips it. A failed send is retried, and after 5 tries the event is parked in `failed_events`. If the service dies after the mail server accepted an email but before that commit, the email is sent once more on restart.
 
 **`failed_events` holds personal data.** A parked event keeps its whole envelope: the student's email and a verification token that works until it expires (24 hours). Look at why it failed, then delete the row; don't copy envelopes into issues or chat.

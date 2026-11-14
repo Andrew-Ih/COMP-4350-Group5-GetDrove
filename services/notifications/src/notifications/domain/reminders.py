@@ -1,0 +1,60 @@
+"""Trip reminders (#148): a rider with a seat is reminded shortly before departure.
+
+A reminder is stored when the rider is accepted (``RequestAccepted``) and sent by the
+scheduler (#149) once it is due. If the request or the trip is cancelled first, the
+reminder is cancelled and never sent.
+"""
+
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import StrEnum
+from uuid import UUID, uuid4
+
+# How long before departure the rider is reminded.
+REMINDER_LEAD = timedelta(minutes=30)
+
+
+class ReminderStatus(StrEnum):
+    PENDING = "pending"  # waiting to be sent
+    SENT = "sent"
+    SKIPPED = "skipped"  # the trip had already left when it was due (e.g. after an outage)
+    CANCELLED = "cancelled"  # the request or the trip was cancelled first
+
+
+def reminder_due_at(departure_at: datetime) -> datetime:
+    """``REMINDER_LEAD`` before departure. A rider accepted later than that gets a reminder
+    that is already due, so the scheduler sends it on its next pass."""
+    return departure_at - REMINDER_LEAD
+
+
+@dataclass(frozen=True)
+class TripReminder:
+    """One accepted rider's reminder for one trip."""
+
+    rider_id: UUID
+    trip_id: UUID
+    request_id: UUID
+    departure_at: datetime
+    pickup_label: str  # the pickup point's label, never the rider's own location
+    send_at: datetime
+    status: ReminderStatus = ReminderStatus.PENDING
+    id: UUID = field(default_factory=uuid4)
+
+    @classmethod
+    def for_accepted_request(
+        cls,
+        *,
+        rider_id: UUID,
+        trip_id: UUID,
+        request_id: UUID,
+        departure_at: datetime,
+        pickup_label: str,
+    ) -> "TripReminder":
+        return cls(
+            rider_id=rider_id,
+            trip_id=trip_id,
+            request_id=request_id,
+            departure_at=departure_at,
+            pickup_label=pickup_label,
+            send_at=reminder_due_at(departure_at),
+        )
