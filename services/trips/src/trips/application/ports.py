@@ -7,7 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from trips.domain.entities import Trip
-from trips.domain.seat_request import SeatRequest
+from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
 
 
@@ -85,6 +85,28 @@ class SeatRequestRepository(Protocol):
 
     async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]: ...
 
+    async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
+        """Save the request's new status only if it is still `expected`. False if not."""
+        ...
+
+    async def take_seat(self, trip_id: UUID) -> bool:
+        """Take one seat in a single atomic update. False if none is left (#47)."""
+        ...
+
+    async def release_seat(self, trip_id: UUID) -> None:
+        """Give one seat back (#48)."""
+        ...
+
 
 class SeatRequestEvents(Protocol):
     async def seat_requested(self, request: SeatRequest, trip: Trip) -> None: ...
+
+    async def request_accepted(self, request: SeatRequest, trip: Trip) -> None: ...
+
+    async def request_declined(
+        self, request: SeatRequest, trip: Trip, *, was_accepted: bool
+    ) -> None: ...
+
+    async def request_cancelled(
+        self, request: SeatRequest, trip: Trip, *, was_accepted: bool
+    ) -> None: ...

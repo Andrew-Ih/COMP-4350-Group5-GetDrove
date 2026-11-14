@@ -19,6 +19,12 @@ from trips.adapters.persistence.seat_request_repository import (
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.request_routing import HTTPRequestRoutingService
 from trips.adapters.routing import HTTPRoutingService
+from trips.application.decide_request import (
+    AcceptRequest,
+    CancelRequest,
+    DeclineRequest,
+    RequestActionCommand,
+)
 from trips.application.post_trip import PostTrip
 from trips.application.request_seat import RequestSeat, RequestSeatCommand
 from trips.application.search_trips import SearchResult, SearchTrips
@@ -198,3 +204,49 @@ def get_request_seat(request: Request) -> RequestSeatRunner:
 
 
 RequestSeatService = Annotated[RequestSeatRunner, Depends(get_request_seat)]
+
+
+class DecideRequestRunner:
+    """Runs accept, decline or cancel within one database transaction."""
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+
+    def _parts(
+        self, session: AsyncSession
+    ) -> tuple[SQLAlchemyTripRepository, SQLAlchemySeatRequestRepository, OutboxTripEvents]:
+        events = OutboxTripEvents(
+            OutboxPublisher(session, outbox, producer="trips", correlation_id=current_request_id())
+        )
+        return SQLAlchemyTripRepository(session), SQLAlchemySeatRequestRepository(session), events
+
+    async def accept(self, command: RequestActionCommand) -> SeatRequest:
+        async with self.session_factory() as session:
+            trips, requests, events = self._parts(session)
+            async with session.begin():
+                return await AcceptRequest(trips=trips, requests=requests, events=events).execute(
+                    command
+                )
+
+    async def decline(self, command: RequestActionCommand) -> SeatRequest:
+        async with self.session_factory() as session:
+            trips, requests, events = self._parts(session)
+            async with session.begin():
+                return await DeclineRequest(trips=trips, requests=requests, events=events).execute(
+                    command
+                )
+
+    async def cancel(self, command: RequestActionCommand) -> SeatRequest:
+        async with self.session_factory() as session:
+            trips, requests, events = self._parts(session)
+            async with session.begin():
+                return await CancelRequest(trips=trips, requests=requests, events=events).execute(
+                    command
+                )
+
+
+def get_decide_request(request: Request) -> DecideRequestRunner:
+    return DecideRequestRunner(session_factory=request.app.state.session_factory)
+
+
+DecideRequestService = Annotated[DecideRequestRunner, Depends(get_decide_request)]

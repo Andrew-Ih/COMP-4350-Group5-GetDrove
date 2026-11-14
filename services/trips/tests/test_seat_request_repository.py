@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -261,3 +261,61 @@ async def test_accepted_pickups_are_listed_oldest_first(session: AsyncSession) -
     pickups = await repository.list_accepted_pickups(trip.id)
 
     assert [pickup.label for pickup in pickups] == ["First stop", "Second stop"]
+
+
+async def seats_left(session: AsyncSession, trip: Trip) -> int | None:
+    return await session.scalar(select(trips.c.seats_available).where(trips.c.id == trip.id))
+
+
+async def test_seats_can_be_taken_until_none_are_left(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+
+    results = [await repository.take_seat(trip.id) for _ in range(4)]
+
+    assert results == [True, True, True, False]
+    assert await seats_left(session, trip) == 0
+
+
+async def test_a_seat_cannot_be_taken_on_a_cancelled_trip(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    await session.execute(
+        update(trips).where(trips.c.id == trip.id).values(status=TripStatus.CANCELLED.value)
+    )
+
+    assert await repository.take_seat(trip.id) is False
+    assert await seats_left(session, trip) == 3
+
+
+async def test_a_released_seat_comes_back(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    await repository.take_seat(trip.id)
+
+    await repository.release_seat(trip.id)
+
+    assert await seats_left(session, trip) == 3
+
+
+async def test_releasing_never_goes_past_the_seat_total(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+
+    await repository.release_seat(trip.id)
+
+    assert await seats_left(session, trip) == 3
+
+
+async def test_a_decision_is_saved_only_while_the_status_matches(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    request = make_request(trip)
+    repository = SQLAlchemySeatRequestRepository(session)
+    await repository.add(request)
+    accepted = request.accept(datetime(2029, 12, 31, 12, tzinfo=UTC))
+
+    first = await repository.save_decision(accepted, expected=RequestStatus.PENDING)
+    second = await repository.save_decision(accepted, expected=RequestStatus.PENDING)
+
+    assert (first, second) == (True, False)
+    assert await repository.get(request.id) == accepted

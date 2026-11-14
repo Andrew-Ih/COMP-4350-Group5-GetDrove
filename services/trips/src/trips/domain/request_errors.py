@@ -89,3 +89,68 @@ class PickupNotAvailableError(InvalidInputError):
             message,
             errors=[InvalidField(field="pickupId", message=message)],
         )
+
+
+class SeatTakenError(DomainError):
+    status = 409
+    code = "seat_taken"
+    title = "No seat left"
+
+    def __init__(self, detail: str = "The last seat on this trip was just taken.") -> None:
+        super().__init__(detail)
+
+
+class RequestNotPendingError(DomainError):
+    status = 409
+    code = "request_not_pending"
+    title = "Request is not pending"
+
+    def __init__(self, detail: str = "Only a pending request can be accepted.") -> None:
+        super().__init__(detail)
+
+
+class RequestNotDecidableError(DomainError):
+    status = 409
+    code = "request_not_decidable"
+    title = "Request cannot be declined"
+
+    def __init__(self, detail: str = "Only a pending or accepted request can be declined.") -> None:
+        super().__init__(detail)
+
+
+class RequestNotCancellableError(DomainError):
+    status = 409
+    code = "request_not_cancellable"
+    title = "Request cannot be cancelled"
+
+    def __init__(
+        self, detail: str = "Only a pending or accepted request can be cancelled."
+    ) -> None:
+        super().__init__(detail)
+
+
+class NotYourRequestError(DomainError):
+    status = 403
+    code = "not_your_request"
+    title = "Not your request"
+
+    def __init__(self, detail: str = "Only the rider who made this request can cancel it.") -> None:
+        super().__init__(detail)
+
+
+class RequestNotFoundError(DomainError):
+    status = 404
+    code = "request_not_found"
+    title = "Request not found"
+
+    def __init__(self, detail: str = "No request with this ID.") -> None:
+        super().__init__(detail)
+
+
+class NotTripDriverError(DomainError):
+    status = 403
+    code = "not_trip_driver"
+    title = "Not the trip's driver"
+
+    def __init__(self, detail: str = "Only the trip's driver can do this.") -> None:
+        super().__init__(detail)

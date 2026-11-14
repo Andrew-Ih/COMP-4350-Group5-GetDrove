@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select
+from sqlalchemy import RowMapping, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import seat_requests, trips
@@ -104,3 +104,32 @@ class SQLAlchemySeatRequestRepository:
             Location(row["pickup_label"], row["pickup_lat"], row["pickup_lng"])
             for row in result.mappings()
         ]
+
+    async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
+        result = await self.session.execute(
+            update(seat_requests)
+            .where(seat_requests.c.id == request.id)
+            .where(seat_requests.c.status == expected.value)
+            .values(status=request.status.value, decided_at=request.decided_at)
+            .returning(seat_requests.c.id)
+        )
+        return result.first() is not None
+
+    async def take_seat(self, trip_id: UUID) -> bool:
+        result = await self.session.execute(
+            update(trips)
+            .where(trips.c.id == trip_id)
+            .where(trips.c.status == TripStatus.SCHEDULED.value)
+            .where(trips.c.seats_available > 0)
+            .values(seats_available=trips.c.seats_available - 1)
+            .returning(trips.c.id)
+        )
+        return result.first() is not None
+
+    async def release_seat(self, trip_id: UUID) -> None:
+        await self.session.execute(
+            update(trips)
+            .where(trips.c.id == trip_id)
+            .where(trips.c.seats_available < trips.c.seats_total)
+            .values(seats_available=trips.c.seats_available + 1)
+        )

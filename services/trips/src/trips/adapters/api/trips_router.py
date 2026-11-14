@@ -17,6 +17,7 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    DecideRequestService,
     PostTripService,
     RequestSeatService,
     SearchTripsService,
@@ -43,6 +44,7 @@ from trips.adapters.api.schemas import (
     TripDetail,
     TripSeriesResult,
 )
+from trips.application.decide_request import RequestActionCommand
 from trips.application.request_seat import RequestSeatCommand
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.seat_request import SeatRequest as SeatRequestEntity
@@ -292,8 +294,13 @@ async def get_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
         ),
     },
 )
-async def accept_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def accept_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.accept(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
 
 
 @router.post(
@@ -312,8 +319,13 @@ async def accept_request(request_id: UUID, user: AuthenticatedUser) -> SeatReque
         ),
     },
 )
-async def decline_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def decline_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.decline(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
 
 
 @router.post(
@@ -332,8 +344,13 @@ async def decline_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequ
         ),
     },
 )
-async def cancel_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def cancel_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.cancel(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
 
 
 @router.post(
