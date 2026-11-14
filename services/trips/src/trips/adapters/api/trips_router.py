@@ -131,8 +131,9 @@ async def post_trip(
         **UNAUTHORIZED,
         **NOT_APPROVED,
         422: _problem(
-            "Invalid input, including a weekday listed twice, an end date before the first "
-            "departure or more than 16 weeks after it, or a departure in the past",
+            "Invalid input, including a weekday listed twice, a first departure that isn't "
+            "on one of the weekdays, an end date before the first departure or more than 16 "
+            "weeks after it, or a departure in the past",
             "invalid_input / departure_in_past",
         ),
         503: _problem("The route couldn't be computed right now", "routing_unavailable"),
@@ -523,6 +524,7 @@ async def request_seat(
         **INVALID,
         403: _problem("Only the trip's driver can see its requests", "not_trip_driver"),
         **TRIP_NOT_FOUND,
+        503: _problem("The riders' details can't be loaded right now", "accounts_unavailable"),
     },
 )
 async def trip_requests(trip_id: UUID, user: AuthenticatedUser) -> list[DriverRequestView]:

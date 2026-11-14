@@ -566,7 +566,7 @@ export interface components {
             seatsTotal: number;
             /**
              * Weekdays
-             * @description The weekdays it repeats on. Each one at most once.
+             * @description The weekdays it repeats on. Each one at most once. The first departure must be on one of them (its Winnipeg day).
              * @example [
              *       "mon",
              *       "wed",
@@ -1074,7 +1074,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Invalid input, including a weekday listed twice, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`) */
+            /** @description Invalid input, including a weekday listed twice, a first departure that isn't on one of the weekdays, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2410,6 +2410,26 @@ export interface operations {
                      *           "message": "Input should be less than or equal to 6"
                      *         }
                      *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The riders' details can't be loaded right now (code `accounts_unavailable`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The riders' details can't be loaded right now",
+                     *       "instance": "/{trip_id}/requests",
+                     *       "code": "accounts_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
                      *     }
                      */
                     "application/json": components["schemas"]["Problem"];
