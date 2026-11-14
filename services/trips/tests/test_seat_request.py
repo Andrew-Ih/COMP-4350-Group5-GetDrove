@@ -7,6 +7,11 @@ from uuid import uuid4
 
 import pytest
 
+from trips.domain.request_errors import (
+    RequestNotCancellableError,
+    RequestNotDecidableError,
+    RequestNotPendingError,
+)
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Location, Quote
 
@@ -105,3 +110,74 @@ def test_request_cannot_be_mutated_in_place() -> None:
 
     with pytest.raises(FrozenInstanceError):
         request.status = RequestStatus.ACCEPTED  # type: ignore[misc]
+
+
+LATER = NOW + timedelta(minutes=5)
+NOT_PENDING = [
+    RequestStatus.ACCEPTED,
+    RequestStatus.DECLINED,
+    RequestStatus.CANCELLED,
+    RequestStatus.EXPIRED,
+    RequestStatus.PAYMENT_FAILED,
+]
+FINISHED = [
+    RequestStatus.DECLINED,
+    RequestStatus.CANCELLED,
+    RequestStatus.EXPIRED,
+    RequestStatus.PAYMENT_FAILED,
+]
+
+
+def test_accepting_a_pending_request() -> None:
+    request = make()
+
+    accepted = request.accept(LATER)
+
+    assert accepted.status == RequestStatus.ACCEPTED
+    assert accepted.decided_at == LATER
+    assert request.status == RequestStatus.PENDING
+
+
+@pytest.mark.parametrize("status", NOT_PENDING)
+def test_only_a_pending_request_can_be_accepted(status: RequestStatus) -> None:
+    with pytest.raises(RequestNotPendingError):
+        replace(make(), status=status).accept(LATER)
+
+
+@pytest.mark.parametrize("status", [RequestStatus.PENDING, RequestStatus.ACCEPTED])
+def test_declining_a_pending_or_accepted_request(status: RequestStatus) -> None:
+    declined = replace(make(), status=status).decline(LATER)
+
+    assert declined.status == RequestStatus.DECLINED
+    assert declined.decided_at == LATER
+
+
+@pytest.mark.parametrize("status", FINISHED)
+def test_a_finished_request_cannot_be_declined(status: RequestStatus) -> None:
+    with pytest.raises(RequestNotDecidableError):
+        replace(make(), status=status).decline(LATER)
+
+
+@pytest.mark.parametrize("status", [RequestStatus.PENDING, RequestStatus.ACCEPTED])
+def test_cancelling_a_pending_or_accepted_request(status: RequestStatus) -> None:
+    cancelled = replace(make(), status=status).cancel(LATER)
+
+    assert cancelled.status == RequestStatus.CANCELLED
+    assert cancelled.decided_at == LATER
+
+
+@pytest.mark.parametrize("status", FINISHED)
+def test_a_finished_request_cannot_be_cancelled(status: RequestStatus) -> None:
+    with pytest.raises(RequestNotCancellableError):
+        replace(make(), status=status).cancel(LATER)
+
+
+def test_only_an_accepted_request_holds_a_seat() -> None:
+    assert make().holds_seat is False
+    assert make().accept(LATER).holds_seat is True
+    assert make().accept(LATER).cancel(LATER).holds_seat is False
+
+
+def test_a_decision_cannot_be_dated_before_creation() -> None:
+    with pytest.raises(ValueError):
+        make().accept(NOW - timedelta(seconds=1))

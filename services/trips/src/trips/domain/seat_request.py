@@ -1,10 +1,15 @@
 """A rider's request for a seat, including the saved pickup and price quote."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from trips.domain.request_errors import (
+    RequestNotCancellableError,
+    RequestNotDecidableError,
+    RequestNotPendingError,
+)
 from trips.domain.values import Location, Quote
 
 
@@ -96,3 +101,22 @@ class SeatRequest:
             created_at=now,
             decided_at=None,
         )
+
+    @property
+    def holds_seat(self) -> bool:
+        return self.status is RequestStatus.ACCEPTED
+
+    def accept(self, now: datetime) -> "SeatRequest":
+        if self.status is not RequestStatus.PENDING:
+            raise RequestNotPendingError()
+        return replace(self, status=RequestStatus.ACCEPTED, decided_at=now)
+
+    def decline(self, now: datetime) -> "SeatRequest":
+        if self.status not in (RequestStatus.PENDING, RequestStatus.ACCEPTED):
+            raise RequestNotDecidableError()
+        return replace(self, status=RequestStatus.DECLINED, decided_at=now)
+
+    def cancel(self, now: datetime) -> "SeatRequest":
+        if self.status not in (RequestStatus.PENDING, RequestStatus.ACCEPTED):
+            raise RequestNotCancellableError()
+        return replace(self, status=RequestStatus.CANCELLED, decided_at=now)

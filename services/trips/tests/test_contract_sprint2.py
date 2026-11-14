@@ -41,8 +41,13 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/requests/{ID}/decline", {}),
     ("POST", f"/requests/{ID}/cancel", {}),
 ]
-IMPLEMENTED = ("POST", f"/{ID}/requests")
-STILL_501 = [e for e in NEW_ENDPOINTS if (e[0], e[1]) != IMPLEMENTED]
+IMPLEMENTED = {
+    ("POST", f"/{ID}/requests"),
+    ("POST", f"/requests/{ID}/accept"),
+    ("POST", f"/requests/{ID}/decline"),
+    ("POST", f"/requests/{ID}/cancel"),
+}
+STILL_501 = [e for e in NEW_ENDPOINTS if (e[0], e[1]) not in IMPLEMENTED]
 
 
 @pytest.fixture

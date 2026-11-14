@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 
@@ -102,5 +103,5 @@ class Quote:
     """Payments' price for the rider's share."""
 
     amount_cents: int
-    currency: str
+    currency: Literal["CAD"]
     explanation: str
