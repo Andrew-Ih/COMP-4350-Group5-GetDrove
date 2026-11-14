@@ -40,7 +40,6 @@ class HTTPRiderProfileService:
                 response = await self.client.get(
                     "/internal/users", params={"ids": [str(rider_id) for rider_id in batch]}
                 )
-                response.raise_for_status()
                 if response.status_code != 200:
                     raise AccountsUnavailableError("Accounts did not return the riders.")
                 data = _UsersResponse.model_validate_json(response.content)
