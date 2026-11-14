@@ -42,7 +42,7 @@ class OutboxTripEvents:
                 departure_at=trip.departure_at,
                 pickup_label=request.pickup.label,
                 amount_cents=request.cost.amount_cents,
-                currency="CAD",
+                currency=request.cost.currency,
                 auto_accepted=request.auto_accepted,
             )
         )

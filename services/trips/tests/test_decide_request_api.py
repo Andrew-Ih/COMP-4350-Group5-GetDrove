@@ -21,7 +21,7 @@ from trips.adapters.persistence.seat_request_repository import (
 from trips.adapters.persistence.tables import outbox, seat_requests, trips
 from trips.domain.entities import Trip
 from trips.domain.seat_request import RequestStatus, SeatRequest
-from trips.domain.values import Direction, Location, Quote
+from trips.domain.values import Direction, Location, Quote, TripStatus
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
@@ -100,7 +100,7 @@ async def seed(
         driver_id=me if as_driver else uuid4(),
         direction=Direction.TO_CAMPUS,
         place=Location("Pembina Highway", 49.82, -97.15),
-        departure_at=DEPARTURE,
+        departure_at=departure_at,
         duration_seconds=900,
         distance_meters=6000,
         seats_total=3,
