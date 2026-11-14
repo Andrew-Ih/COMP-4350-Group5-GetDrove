@@ -108,6 +108,7 @@ def test_reject_naive_departure(valid_series_data):
     with pytest.raises(ValueError, match="timezone"):
         TripSeries.create(**valid_series_data)
 
+
 def test_reject_departure_on_unselected_weekday(valid_series_data):
     valid_series_data["weekdays"] = ["tue", "thu"]
 
@@ -116,9 +117,7 @@ def test_reject_departure_on_unselected_weekday(valid_series_data):
 
 
 def test_accept_departure_using_winnipeg_weekday(valid_series_data):
-    valid_series_data["departure_at"] = datetime.fromisoformat(
-        "2026-11-17T01:30:00+00:00"
-    )
+    valid_series_data["departure_at"] = datetime.fromisoformat("2026-11-17T01:30:00+00:00")
     valid_series_data["weekdays"] = ["mon"]
 
     series = TripSeries.create(**valid_series_data)
