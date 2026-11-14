@@ -76,6 +76,7 @@ trips = Table(
         ForeignKey("trips.trip_series.id"),
         nullable=True,
     ),
+    Index("ix_trips_series_id", "series_id"),
     Column("direction", String(20), nullable=False),
     Column("origin_label", String(200), nullable=False),
     Column("origin_lat", Float, nullable=False),

@@ -1,13 +1,11 @@
-
 """Add recurring trip series schema.
 
 Revision ID: a16b20261113
 Revises: 682e9335a989
 """
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "a16b20261113"
 down_revision = "682e9335a989"
@@ -18,7 +16,7 @@ depends_on = None
 def upgrade() -> None:
     op.create_table(
         "trip_series",
-        sa.Column("id", sa.Uuid(), primary_key=True),
+        sa.Column("id", sa.Uuid(), nullable=False),
         sa.Column("driver_id", sa.Uuid(), nullable=False),
         sa.Column("direction", sa.String(20), nullable=False),
         sa.Column("place_label", sa.String(200), nullable=False),
@@ -41,6 +39,10 @@ def upgrade() -> None:
         sa.CheckConstraint(
             "seats_total BETWEEN 1 AND 6",
             name="ck_trip_series_valid_series_seats_total",
+        ),
+        sa.PrimaryKeyConstraint(
+            "id",
+            name="pk_trip_series",
         ),
         schema="trips",
     )
@@ -68,8 +70,21 @@ def upgrade() -> None:
         referent_schema="trips",
     )
 
+    op.create_index(
+        "ix_trips_series_id",
+        "trips",
+        ["series_id"],
+        schema="trips",
+    )
+
 
 def downgrade() -> None:
+    op.drop_index(
+        "ix_trips_series_id",
+        table_name="trips",
+        schema="trips",
+    )
+
     op.drop_constraint(
         "fk_trips_series_id_trip_series",
         "trips",
