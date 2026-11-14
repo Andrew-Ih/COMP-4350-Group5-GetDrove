@@ -67,3 +67,53 @@ describe("mock API: posting a trip", () => {
     expect((unavailable as ApiError).code).toBe("routing_unavailable");
   });
 });
+
+describe("mock API: posting a repeating trip (#19)", () => {
+  // Monday, March 8, 2027 at 7:45 AM in Winnipeg (CST); daylight time starts March 14.
+  const series = (changes: Partial<{ departureAt: string; weekdays: ("mon" | "tue" | "wed" | "thu" | "fri")[]; endDate: string }> = {}) =>
+    unwrap(
+      trips.POST("/series", {
+        body: {
+          direction: "to_campus",
+          place,
+          departureAt: "2027-03-08T13:45:00Z",
+          seatsTotal: 3,
+          weekdays: ["mon", "wed"],
+          endDate: "2027-03-17",
+          ...changes,
+        },
+      }),
+    );
+  const winnipegTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/Winnipeg", hour: "numeric", minute: "2-digit" });
+
+  it("makes one trip per chosen weekday, all at the same Winnipeg time across the daylight time change", async () => {
+    const result = await series();
+
+    expect(result.trips.map((t) => t.departureAt)).toEqual([
+      "2027-03-08T13:45:00.000Z",
+      "2027-03-10T13:45:00.000Z",
+      "2027-03-15T12:45:00.000Z", // CDT: an hour earlier in UTC, same 7:45 in Winnipeg
+      "2027-03-17T12:45:00.000Z",
+    ]);
+    expect(new Set(result.trips.map((t) => winnipegTime(t.departureAt)))).toEqual(new Set(["7:45 AM"]));
+    expect(result.trips.every((t) => t.seriesId === result.seriesId)).toBe(true);
+    expect(result.skippedDates).toEqual([]);
+  });
+
+  it("skips the days that clash with a trip already posted", async () => {
+    await postTrip("2027-03-10T13:45:00Z");
+    const result = await series();
+
+    expect(result.skippedDates).toEqual(["2027-03-10"]);
+    expect(result.trips).toHaveLength(3);
+  });
+
+  it("refuses a first departure that isn't on one of the weekdays (#315), and a last day too far away", async () => {
+    const notOnADay = await series({ weekdays: ["tue"] }).catch((e: unknown) => e);
+    expect((notOnADay as ApiError).problem.errors?.[0]?.field).toBe("weekdays");
+
+    const tooFar = await series({ endDate: "2027-07-01" }).catch((e: unknown) => e);
+    expect((tooFar as ApiError).problem.errors?.[0]?.field).toBe("endDate");
+  });
+});

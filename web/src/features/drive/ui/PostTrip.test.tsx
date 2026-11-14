@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -6,7 +6,7 @@ import { toSearchTime } from "@/features/ride";
 import type { LngLat, MapMarker, MapRoute } from "@/shared/map";
 import { mockFetch, problem, renderWithProviders } from "@/shared/testing/render";
 
-import { defaultDeparture } from "../model/postTrip";
+import { addDays, defaultDeparture, formatDate } from "../model/postTrip";
 import { PostTrip } from "./PostTrip";
 
 vi.mock("next/navigation", () => ({
@@ -268,4 +268,142 @@ describe("PostTrip", () => {
     expect(screen.getByText("Osborne Village area")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Post trip" })).toBeEnabled();
   });
+
+  describe("repeating on weekdays (#19)", () => {
+    /** A Monday at least two days away, as a "2026-11-16" date. */
+    function nextMonday(): string {
+      const date = new Date();
+      date.setDate(date.getDate() + 2);
+      while (date.getDay() !== 1) date.setDate(date.getDate() + 1);
+      const pad = (n: number) => String(n).padStart(2, "0");
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    const monday = nextMonday();
+
+    /** Chooses an area, a Monday at 2 PM, and turns repeating on. */
+    async function startRepeating() {
+      await userEvent.click(screen.getByRole("button", { name: "tap the map" }));
+      const date = screen.getByLabelText("Date");
+      await userEvent.clear(date);
+      await userEvent.type(date, monday);
+      const time = screen.getByLabelText("Departure time");
+      await userEvent.clear(time);
+      await userEvent.type(time, "14:00");
+      await userEvent.click(screen.getByRole("switch", { name: "Repeat on weekdays" }));
+    }
+
+    function seriesResult(dates: string[], skippedDates: string[] = []) {
+      return {
+        seriesId: "series-1",
+        trips: dates.map((date, i) => ({ ...postedTrip("to_campus", toSearchTime(date, "14:00")!, 3), id: `trip-${i + 1}`, seriesId: "series-1" })),
+        skippedDates,
+      };
+    }
+
+    it("starts from the first trip's day, for 4 weeks", async () => {
+      mockFetch({ status: 200, body: maya });
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+
+      expect(screen.getByRole("button", { name: "Monday" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByRole("button", { name: "Tuesday" })).toHaveAttribute("aria-pressed", "false");
+      expect(screen.getByLabelText("Last day")).toHaveValue(addDays(monday, 28));
+      expect(screen.getByText(`Every Mon at 2:00 PM, until ${formatDate(addDays(monday, 28))}. Up to 16 weeks.`)).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Post repeating trip" })).toBeInTheDocument();
+    });
+
+    it("posts the chosen weekdays and last day, then says how many trips were made and which days were skipped", async () => {
+      const wednesday = addDays(monday, 2);
+      const fetchSpy = mockFetch(
+        { status: 200, body: maya },
+        { status: 201, body: seriesResult([monday, addDays(monday, 4), addDays(monday, 7)], [wednesday]) },
+        { status: 200, body: route },
+      );
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+      await userEvent.click(screen.getByRole("button", { name: "Friday" }));
+      await userEvent.click(screen.getByRole("button", { name: "Wednesday" }));
+      const last = screen.getByLabelText("Last day");
+      await userEvent.clear(last);
+      await userEvent.type(last, addDays(monday, 11));
+      await userEvent.click(screen.getByRole("button", { name: "Post repeating trip" }));
+
+      expect(await screen.findByRole("heading", { name: "3 trips posted" })).toBeInTheDocument();
+      const sent = fetchSpy.mock.calls.map(([input]) => input as Request).find((r) => r.method === "POST")!;
+      expect(new URL(sent.url).pathname).toBe("/api/trips/series");
+      expect(await sent.clone().json()).toEqual({
+        direction: "to_campus",
+        place: { label: "Osborne Village area", lat: 49.8768, lng: -97.1438 },
+        departureAt: toSearchTime(monday, "14:00"),
+        seatsTotal: 3,
+        weekdays: ["mon", "wed", "fri"],
+        endDate: addDays(monday, 11),
+      });
+
+      expect(screen.getByText("1 day skipped")).toBeInTheDocument();
+      expect(within(screen.getByRole("list", { name: "Skipped days" })).getByText(formatDate(wednesday))).toBeInTheDocument();
+      expect(screen.getByRole("link", { name: "See them in My trips" })).toHaveAttribute("href", "/trips?role=driver");
+    });
+
+    it("says when every day clashed and nothing was posted", async () => {
+      mockFetch({ status: 200, body: maya }, { status: 201, body: seriesResult([], [monday, addDays(monday, 7)]) });
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+      await userEvent.click(screen.getByRole("button", { name: "Post repeating trip" }));
+
+      expect(await screen.findByRole("heading", { name: "0 trips posted" })).toBeInTheDocument();
+      expect(screen.getByText(/Every day clashes with a trip you already have/)).toBeInTheDocument();
+      expect(screen.getByText("2 days skipped")).toBeInTheDocument();
+    });
+
+    it("asks for at least one day, without posting", async () => {
+      const fetchSpy = mockFetch({ status: 200, body: maya });
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+      await userEvent.click(screen.getByRole("button", { name: "Monday" }));
+      await userEvent.click(screen.getByRole("button", { name: "Post repeating trip" }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Pick at least one day to repeat on.");
+      expect(await postedBody(fetchSpy)).toBeUndefined();
+    });
+
+    it("asks for the first trip's day among the days (#315), without posting", async () => {
+      const fetchSpy = mockFetch({ status: 200, body: maya });
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+      await userEvent.click(screen.getByRole("button", { name: "Monday" }));
+      await userEvent.click(screen.getByRole("button", { name: "Tuesday" }));
+      await userEvent.click(screen.getByRole("button", { name: "Post repeating trip" }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent("Your first trip is on a Monday. Pick Monday too, or change the date.");
+      expect(await postedBody(fetchSpy)).toBeUndefined();
+    });
+
+    it("refuses a last day more than 16 weeks away, without posting", async () => {
+      const fetchSpy = mockFetch({ status: 200, body: maya });
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+      const last = screen.getByLabelText("Last day");
+      await userEvent.clear(last);
+      await userEvent.type(last, addDays(monday, 16 * 7 + 1));
+      await userEvent.click(screen.getByRole("button", { name: "Post repeating trip" }));
+
+      expect(screen.getByRole("alert")).toHaveTextContent("A trip can repeat for up to 16 weeks.");
+      expect(await postedBody(fetchSpy)).toBeUndefined();
+    });
+
+    it("turned off again, posts a one-off trip", async () => {
+      const fetchSpy = mockFetch({ status: 200, body: maya }, NO_TRIPS, { status: 201, body: postedTrip("to_campus", toSearchTime(monday, "14:00")!, 3) });
+      renderWithProviders(<PostTrip />);
+      await startRepeating();
+      await userEvent.click(screen.getByRole("switch", { name: "Repeat on weekdays" }));
+      await userEvent.click(screen.getByRole("button", { name: "Post trip" }));
+
+      expect(await screen.findByText("Trip posted")).toBeInTheDocument();
+      const sent = fetchSpy.mock.calls.map(([input]) => input as Request).find((r) => r.method === "POST")!;
+      expect(new URL(sent.url).pathname).toBe("/api/trips/");
+    });
+  });
 });
+
