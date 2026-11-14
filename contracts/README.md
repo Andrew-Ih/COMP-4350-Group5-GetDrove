@@ -60,6 +60,11 @@ Endpoints return 501 until the task in brackets implements them.
 | Driver status, documents and vehicle (#9, #10, #125), admin approval, which needs a saved vehicle (#127), public profile (#143) | Accounts | Frontend | Written |
 | Internal user lookups: `/internal/users` (names, ratings, drivers' vehicles; no email) and `/internal/contacts` (email) (#143, #146) | Accounts | Trips, Notifications | Written |
 | Pickup points (#29, #30), detours (#36, #38), `driverId` and `direction` on `/internal/routes` (#135) | Routing | Trips | Written |
+| Leaving out rejected pickup points: `exclude` on `POST /internal/pickup-points` and `GET /api/trips/{tripId}` (#292, for #29 and #136) | Routing, Trips | Trips, frontend | Written |
+| Leaving out rejected pickup points when requesting a seat: `exclude` on `POST /api/trips/{tripId}/requests` (#299, for #136 and #137) | Trips | Frontend | Written |
+| Payments down when requesting a seat: 503 `payments_unavailable` on `POST /api/trips/{tripId}/requests` (#301, for #137) | Trips | Frontend | Written |
+| Accounts down on the driver's request list: 503 `accounts_unavailable` on `GET /api/trips/{tripId}/requests` (#309, for #139) | Trips | Frontend | Written |
+| A series' first departure must be on one of its weekdays: `POST /api/trips/series` (#315, for #16 and #17) | Trips | Frontend | Written |
 | Card setup and saved cards (#151), internal "has a card" check | Payments | Frontend, Trips | Written |
 | Notifications list, mark read, mark all read (#145) | Notifications | Frontend | Written |
 | `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
