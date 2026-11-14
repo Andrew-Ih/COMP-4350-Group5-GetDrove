@@ -14,6 +14,16 @@ export const maya = {
   roles: ["user"],
 } satisfies Accounts["schemas"]["User"];
 
+/** The mock admin: log in as admin@myumanitoba.ca to approve or reject drivers (#128). */
+export const adminUser = {
+  id: "0d9a3c1e-5b7f-4e2a-8c6d-1f2e3a4b5c6d",
+  email: "admin@myumanitoba.ca",
+  firstName: "Alex",
+  lastName: "Admin",
+  emailVerified: true,
+  roles: ["user", "admin"],
+} satisfies Accounts["schemas"]["User"];
+
 const campus = { label: "University Centre", lat: 49.8075, lng: -97.1366 } satisfies Trips["schemas"]["Place"];
 
 type Direction = Trips["schemas"]["Direction"];

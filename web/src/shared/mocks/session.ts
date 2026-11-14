@@ -11,7 +11,8 @@ import type { components as Accounts } from "@/shared/api/generated/accounts";
  * Tests run without sessionStorage and use `mockSessionState` instead.
  */
 const KEY = "getdrove-mock-session";
-let inMemory = false; // where tests (Node, no sessionStorage) keep it
+// Where tests (Node, no sessionStorage) keep it: logged out, as a student, or as an admin.
+let inMemory: "" | "1" | "admin" = "";
 
 function storage(): Storage | undefined {
   try {
@@ -21,17 +22,23 @@ function storage(): Storage | undefined {
   }
 }
 
+const current = () => storage()?.getItem(KEY) ?? inMemory;
+
 export const mockSessionState = {
   isLoggedIn(): boolean {
-    return storage()?.getItem(KEY) === "1" || inMemory;
+    return current() === "1" || current() === "admin";
   },
-  logIn(): void {
-    storage()?.setItem(KEY, "1");
-    inMemory = true;
+  /** Logged in as the mock admin (admin@myumanitoba.ca), who can approve drivers (#128). */
+  isAdmin(): boolean {
+    return current() === "admin";
+  },
+  logIn(asAdmin = false): void {
+    inMemory = asAdmin ? "admin" : "1";
+    storage()?.setItem(KEY, inMemory);
   },
   logOut(): void {
     storage()?.removeItem(KEY);
-    inMemory = false;
+    inMemory = "";
   },
 };
 
