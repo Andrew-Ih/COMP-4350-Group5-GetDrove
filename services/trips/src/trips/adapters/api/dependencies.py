@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from common_web import current_request_id
 from events.outbox import OutboxPublisher
+from trips.adapters.accounts import HTTPRiderProfileService
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService, HTTPRiderCardService
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
@@ -24,6 +25,11 @@ from trips.application.decide_request import (
     CancelRequest,
     DeclineRequest,
     RequestActionCommand,
+)
+from trips.application.list_trip_requests import (
+    DriverRequest,
+    ListTripRequests,
+    ListTripRequestsCommand,
 )
 from trips.application.post_trip import PostTrip
 from trips.application.request_seat import RequestSeat, RequestSeatCommand
@@ -250,3 +256,34 @@ def get_decide_request(request: Request) -> DecideRequestRunner:
 
 
 DecideRequestService = Annotated[DecideRequestRunner, Depends(get_decide_request)]
+
+
+class TripRequestsRunner:
+    """Loads a trip's requests for its driver."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        riders: HTTPRiderProfileService,
+    ) -> None:
+        self.session_factory = session_factory
+        self.riders = riders
+
+    async def execute(self, command: ListTripRequestsCommand) -> list[DriverRequest]:
+        async with self.session_factory() as session, session.begin():
+            use_case = ListTripRequests(
+                trips=SQLAlchemyTripRepository(session),
+                requests=SQLAlchemySeatRequestRepository(session),
+                riders=self.riders,
+            )
+            return await use_case.execute(command)
+
+
+def get_trip_requests(request: Request) -> TripRequestsRunner:
+    return TripRequestsRunner(
+        session_factory=request.app.state.session_factory,
+        riders=HTTPRiderProfileService(request.app.state.accounts_client),
+    )
+
+
+TripRequestsService = Annotated[TripRequestsRunner, Depends(get_trip_requests)]

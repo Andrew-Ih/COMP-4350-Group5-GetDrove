@@ -51,9 +51,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             base_url=settings.payments_url,
             timeout=2.0,
         ) as payments_client,
+        httpx.AsyncClient(
+            base_url=settings.accounts_url,
+            timeout=2.0,
+        ) as accounts_client,
     ):
         app.state.routing_client = routing_client
         app.state.payments_client = payments_client
+        app.state.accounts_client = accounts_client
         stop = asyncio.Event()
         relay_task = asyncio.create_task(relay.run(stop))
 

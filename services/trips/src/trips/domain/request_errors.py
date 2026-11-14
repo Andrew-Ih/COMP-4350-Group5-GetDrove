@@ -154,3 +154,14 @@ class NotTripDriverError(DomainError):
 
     def __init__(self, detail: str = "Only the trip's driver can do this.") -> None:
         super().__init__(detail)
+
+
+class AccountsUnavailableError(DomainError):
+    status = 503
+    code = "accounts_unavailable"
+    title = "Accounts unavailable"
+
+    def __init__(
+        self, detail: str = "The riders' details can't be loaded right now. Please try again."
+    ) -> None:
+        super().__init__(detail)
