@@ -8,12 +8,13 @@ from contextlib import asynccontextmanager
 
 import httpx
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from common_security.dependencies import install_security
 from common_web.app import install
 from routing.adapters.api import health, routing_router
 from routing.domain.values import Corridor
+from routing.infrastructure.database import create_database_engine
 from routing.infrastructure.settings import get_settings
 
 
@@ -23,7 +24,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
 
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True)
+    engine = create_database_engine(settings.database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
     app.state.corridor = Corridor(radius_meters=settings.corridor_meters)
     app.state.max_walk_seconds = settings.max_walk_seconds
