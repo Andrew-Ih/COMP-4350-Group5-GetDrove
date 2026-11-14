@@ -6,10 +6,19 @@ JSON fields are camelCase; times are ISO 8601 with a timezone; money is in cents
 
 from datetime import date
 from enum import StrEnum
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    ValidationInfo,
+    field_validator,
+)
 from pydantic.alias_generators import to_camel
 
 from trips.domain.values import Direction, TripStatus
@@ -151,13 +160,16 @@ class SearchResult(ApiModel):
 # ---------------------------------------------------------------- recurring trips (#15)
 
 Weekday = Literal["mon", "tue", "wed", "thu", "fri"]
+WEEKDAYS: tuple[Weekday, ...] = ("mon", "tue", "wed", "thu", "fri")
+WINNIPEG = ZoneInfo("America/Winnipeg")
 
 
 class PostTripSeriesRequest(PostTripRequest):
     weekdays: list[Weekday] = Field(
         min_length=1,
         max_length=5,
-        description="The weekdays it repeats on. Each one at most once.",
+        description="The weekdays it repeats on. Each one at most once. The first "
+        "departure must be on one of them (its Winnipeg day).",
         examples=[["mon", "wed", "fri"]],
     )
     end_date: date = Field(
@@ -171,6 +183,19 @@ class PostTripSeriesRequest(PostTripRequest):
     def _each_weekday_once(cls, weekdays: list[Weekday]) -> list[Weekday]:
         if len(set(weekdays)) != len(weekdays):
             raise ValueError("Each weekday can only be listed once")
+        return weekdays
+
+    @field_validator("weekdays")
+    @classmethod
+    def _first_departure_on_a_weekday(
+        cls, weekdays: list[Weekday], info: ValidationInfo
+    ) -> list[Weekday]:
+        departure_at = info.data.get("departure_at")
+        if departure_at is None:  # already invalid; that error is reported instead
+            return weekdays
+        local_day = departure_at.astimezone(WINNIPEG).weekday()
+        if local_day >= len(WEEKDAYS) or WEEKDAYS[local_day] not in weekdays:
+            raise ValueError("The first departure must be on one of the chosen weekdays")
         return weekdays
 
     model_config = ConfigDict(
@@ -257,6 +282,13 @@ class SeatRequest(ApiModel):
     )
 
 
+# How many rejected pickup points the trip detail and a seat request can be asked to leave
+# out (#136); passed on to Routing, which has the same limit.
+MAX_EXCLUDED_PICKUPS = 20
+
+PickupPointId = Annotated[str, StringConstraints(min_length=1, max_length=64)]
+
+
 class SeatRequestBody(ApiModel):
     lat: float = Field(
         ge=-90, le=90, description="The rider's location. Used to check the pickup, never stored."
@@ -265,9 +297,21 @@ class SeatRequestBody(ApiModel):
     pickup_id: str = Field(
         min_length=1, max_length=64, description="One of the trip detail's `pickups`."
     )
+    exclude: list[PickupPointId] = Field(
+        default_factory=list,
+        max_length=MAX_EXCLUDED_PICKUPS,
+        description="The same `exclude` the trip detail was loaded with (#136), so a pickup "
+        "point that was only offered because the rider rejected others is still accepted "
+        "(#299). Passed on to Routing, never stored.",
+    )
 
     model_config = ConfigDict(
-        json_schema_extra={"examples": [{"lat": 49.8722, "lng": -97.1561, "pickupId": "s42"}]}
+        json_schema_extra={
+            "examples": [
+                {"lat": 49.8722, "lng": -97.1561, "pickupId": "s42"},
+                {"lat": 49.8722, "lng": -97.1561, "pickupId": "s50", "exclude": ["s42", "s45"]},
+            ]
+        }
     )
 
 
