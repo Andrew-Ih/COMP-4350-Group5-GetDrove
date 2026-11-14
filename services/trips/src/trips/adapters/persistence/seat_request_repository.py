@@ -32,6 +32,8 @@ def _request(row: RowMapping) -> SeatRequest:
         auto_accepted=row["auto_accepted"],
         created_at=row["created_at"],
         decided_at=row["decided_at"],
+        detour_position=row["detour_position"],
+        pickup_order=row["pickup_order"],
     )
 
 
@@ -58,6 +60,8 @@ class SQLAlchemySeatRequestRepository:
                 auto_accepted=request.auto_accepted,
                 created_at=request.created_at,
                 decided_at=request.decided_at,
+                detour_position=request.detour_position,
+                pickup_order=request.pickup_order,
             )
         )
 

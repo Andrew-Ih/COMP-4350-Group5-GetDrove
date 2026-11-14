@@ -319,3 +319,16 @@ async def test_a_decision_is_saved_only_while_the_status_matches(session: AsyncS
 
     assert (first, second) == (True, False)
     assert await repository.get(request.id) == accepted
+
+
+async def test_detour_position_and_pickup_order_round_trip(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    request = replace(
+        make_request(trip, status=RequestStatus.ACCEPTED),
+        detour_position=1,
+        pickup_order=2,
+    )
+    repository = SQLAlchemySeatRequestRepository(session)
+    await repository.add(request)
+
+    assert await repository.get(request.id) == request
