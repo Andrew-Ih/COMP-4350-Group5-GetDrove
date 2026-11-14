@@ -1,6 +1,6 @@
 """Accept, decline or cancel a seat request (#138)."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from uuid import UUID
 
@@ -65,6 +65,8 @@ class AcceptRequest(_RequestAction):
             raise RequestNotPendingError()
         if not await self.requests.take_seat(trip.id):
             raise SeatTakenError()
+        order = await self.requests.place_accepted(accepted, position=request.detour_position)
+        accepted = replace(accepted, pickup_order=order)
 
         await self.events.request_accepted(accepted, trip)
         return accepted
@@ -84,6 +86,7 @@ class DeclineRequest(_RequestAction):
             raise RequestNotDecidableError()
         if was_accepted:
             await self.requests.release_seat(trip.id)
+            await self.requests.renumber_accepted(trip.id)
 
         await self.events.request_declined(declined, trip, was_accepted=was_accepted)
         return declined
@@ -103,6 +106,7 @@ class CancelRequest(_RequestAction):
             raise RequestNotCancellableError()
         if was_accepted:
             await self.requests.release_seat(trip.id)
+            await self.requests.renumber_accepted(trip.id)
 
         await self.events.request_cancelled(cancelled, trip, was_accepted=was_accepted)
         return cancelled

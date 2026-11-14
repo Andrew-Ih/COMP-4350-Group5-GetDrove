@@ -97,6 +97,14 @@ class SeatRequestRepository(Protocol):
         """Give one seat back (#48)."""
         ...
 
+    async def place_accepted(self, request: SeatRequest, *, position: int | None) -> int:
+        """Number a just-accepted request in the pickup order and push later ones down."""
+        ...
+
+    async def renumber_accepted(self, trip_id: UUID) -> None:
+        """Number the trip's accepted requests 1..n in their current order."""
+        ...
+
 
 class SeatRequestEvents(Protocol):
     async def seat_requested(self, request: SeatRequest, trip: Trip) -> None: ...
