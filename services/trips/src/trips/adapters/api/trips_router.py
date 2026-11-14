@@ -492,6 +492,7 @@ async def request_seat(
         **INVALID,
         403: _problem("Only the trip's driver can see its requests", "not_trip_driver"),
         **TRIP_NOT_FOUND,
+        503: _problem("The riders' details can't be loaded right now", "accounts_unavailable"),
     },
 )
 async def trip_requests(trip_id: UUID, user: AuthenticatedUser) -> list[DriverRequestView]:
