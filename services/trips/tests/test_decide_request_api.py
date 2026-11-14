@@ -92,6 +92,8 @@ async def seed(
     as_driver: bool,
     status: RequestStatus = RequestStatus.PENDING,
     seats_available: int = 3,
+    departure_at: datetime = DEPARTURE,
+    trip_status: TripStatus = TripStatus.SCHEDULED,
 ) -> tuple[Trip, SeatRequest]:
     me = api[1].user_id
     trip = Trip.create(
@@ -104,6 +106,7 @@ async def seed(
         seats_total=3,
     )
     trip.seats_available = seats_available
+    trip.status = trip_status
     factory = async_sessionmaker(api[2], expire_on_commit=False)
     async with factory() as session, session.begin():
         await SQLAlchemyTripRepository(session).add(trip)
@@ -222,6 +225,31 @@ async def test_two_requests_race_for_the_last_seat(api: API) -> None:
     statuses = sorted([await stored_status(api, first), await stored_status(api, second)])
     assert statuses == ["accepted", "pending"]
     assert [event["type"] for event in await saved_events(api)] == ["RequestAccepted"]
+
+
+async def test_accepting_after_departure_returns_409_and_takes_no_seat(api: API) -> None:
+    trip, request = await seed(
+        api, as_driver=True, departure_at=datetime.now(UTC) - timedelta(minutes=5)
+    )
+
+    response = await act(api, "accept", request.id)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "request_not_pending"
+    assert await stored_status(api, request) == "pending"
+    assert await seats_left(api, trip) == 3
+    assert await saved_events(api) == []
+
+
+async def test_accepting_on_a_cancelled_trip_is_not_seat_taken(api: API) -> None:
+    trip, request = await seed(api, as_driver=True, trip_status=TripStatus.CANCELLED)
+
+    response = await act(api, "accept", request.id)
+
+    assert response.status_code == 409
+    assert response.json()["code"] == "request_not_pending"
+    assert await stored_status(api, request) == "pending"
+    assert await saved_events(api) == []
 
 
 # ---------------------------------------------------------------- decline

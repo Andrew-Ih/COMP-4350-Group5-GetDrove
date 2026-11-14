@@ -57,6 +57,8 @@ class AcceptRequest(_RequestAction):
         request, trip = await self._load(command.request_id)
         if trip.driver_id != command.user_id:
             raise NotTripDriverError()
+        if _started(trip, command.now):
+            raise RequestNotPendingError("This trip has already started or been cancelled.")
 
         accepted = request.accept(command.now)
         if not await self.requests.save_decision(accepted, expected=RequestStatus.PENDING):

@@ -223,6 +223,29 @@ async def test_accepting_twice_publishes_once() -> None:
     assert s.trip.seats_available == 1
 
 
+async def test_accepting_after_departure_is_rejected() -> None:
+    s = Setup()
+    command = s.command(s.trip.driver_id, now=DEPARTURE + timedelta(minutes=1))
+
+    with pytest.raises(RequestNotPendingError):
+        await s.accept().execute(command)
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
+async def test_accepting_on_a_cancelled_trip_is_not_reported_as_seat_taken() -> None:
+    s = Setup(trip_status=TripStatus.CANCELLED)
+
+    with pytest.raises(RequestNotPendingError):
+        await s.accept().execute(s.command(s.trip.driver_id))
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
 # ---------------------------------------------------------------- decline
 
 
