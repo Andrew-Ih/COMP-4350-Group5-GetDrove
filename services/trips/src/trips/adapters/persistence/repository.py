@@ -70,6 +70,16 @@ class SQLAlchemyTripRepository:
         )
         return [_trip(row) for row in result.mappings()]
 
+    async def get_active_or_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
+        result = await self.session.execute(
+            select(trips)
+            .where(trips.c.driver_id == driver_id)
+            .where(trips.c.estimated_arrival_at > now)
+            .where(trips.c.status == TripStatus.SCHEDULED.value)
+            .order_by(trips.c.departure_at.asc())
+        )
+        return [_trip(row) for row in result.mappings()]
+
     async def search(
         self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
     ) -> list[Trip]:

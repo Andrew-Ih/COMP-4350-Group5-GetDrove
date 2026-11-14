@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
+from trips.adapters.api.dependencies import get_post_recurring_trip
 from common_security.testing import TestAuth
 from trips.adapters.api.schemas import PostTripSeriesRequest
 from trips.infrastructure.main import create_app
@@ -20,14 +21,33 @@ SERIES: dict[str, Any] = {
 }
 
 
+
 @pytest.fixture
 async def client() -> AsyncClient:
     auth = TestAuth()
     app = create_app()
     auth.install(app)
-    return AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
+
+    # Fake service so contract tests don't need a database
+    class FakeRecurringService:
+        async def execute(self, *, series):
+            from fastapi import HTTPException
+
+            raise HTTPException(
+                status_code=501,
+                detail="Contract test stub",
+            )
+
+    app.dependency_overrides[get_post_recurring_trip] = (
+        lambda: FakeRecurringService()
     )
+
+    return AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test",
+        headers=auth.headers(),
+    )
+
 
 
 @pytest.mark.parametrize(

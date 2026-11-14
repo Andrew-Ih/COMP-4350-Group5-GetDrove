@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from trips.domain.entities import Trip
+from trips.domain.entities import Trip, TripSeries
 from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
 
 
@@ -20,7 +20,13 @@ class TripRepository(Protocol):
         left yet, except the given driver's own."""
         ...
 
-    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
+    async def get_active_or_upcoming_by_driver(
+        self, driver_id: UUID, now: datetime
+    ) -> list[Trip]: ...
+
+
+class TripSeriesRepository(Protocol):
+    async def add(self, series: TripSeries) -> None: ...
 
 
 class TripEvents(Protocol):

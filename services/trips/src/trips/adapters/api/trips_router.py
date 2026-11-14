@@ -16,6 +16,7 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    PostRecurringTripService,
     PostTripService,
     SearchTripsService,
     UpcomingTripsService,
@@ -39,6 +40,7 @@ from trips.adapters.api.schemas import (
     TripDetail,
     TripSeriesResult,
 )
+from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.values import Direction, Location, Point
 
@@ -140,8 +142,31 @@ async def post_trip(
 async def post_trip_series(
     body: PostTripSeriesRequest,
     user: AuthenticatedUser,
+    service: PostRecurringTripService,
 ) -> TripSeriesResult:
-    _not_implemented()
+    series = TripSeries.create(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+        weekdays=body.weekdays,
+        end_date=body.end_date,
+    )
+
+    result = await service.execute(series=series)
+
+    return TripSeriesResult(
+        series_id=result.series.id,
+        trips=[_to_response(trip) for trip in result.created_trips],
+        skipped_dates=[
+            departure.astimezone(WINNIPEG_TZ).date() for departure in result.skipped_departures
+        ],
+    )
 
 
 @router.get(
