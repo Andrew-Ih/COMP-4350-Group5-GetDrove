@@ -16,11 +16,13 @@ export function getRoute(tripId: string) {
 }
 
 /**
- * GET /api/trips/{id}?lat&lng: one trip, with up to 3 pickup points near the rider and the
- * rider's own request on it, if any. Without `rider`, the trip comes back with no pickups.
+ * GET /api/trips/{id}?lat&lng&exclude: one trip, with up to 3 pickup points near the rider
+ * and the rider's own request on it, if any. Points in `exclude` (ones the rider rejected,
+ * #136) are never returned. Without `rider`, the trip comes back with no pickups.
  */
-export function getTrip(tripId: string, rider?: { lat: number; lng: number }) {
-  return unwrap(tripsApi.GET("/{trip_id}", { params: { path: { trip_id: tripId }, query: rider } }));
+export function getTrip(tripId: string, rider?: { lat: number; lng: number }, exclude: readonly string[] = []) {
+  const query = rider && exclude.length > 0 ? { ...rider, exclude: [...exclude] } : rider;
+  return unwrap(tripsApi.GET("/{trip_id}", { params: { path: { trip_id: tripId }, query } }));
 }
 
 /** GET /api/accounts/users/{id}/profile: the driver's first name, rating and vehicle (no plate). */
@@ -28,11 +30,16 @@ export function getProfile(userId: string) {
   return unwrap(accountsApi.GET("/users/{user_id}/profile", { params: { path: { user_id: userId } } }));
 }
 
+/** What's sent to ask for a seat: the rider's location, the chosen pickup point and the points they rejected. */
+export type SeatRequestBody = { lat: number; lng: number; pickupId: string; exclude?: string[] };
+
 /**
  * POST /api/trips/{id}/requests: asks for a seat, picked up at one of the trip detail's
  * pickup points. The rider's location is sent to check the pickup and is never stored.
+ * `exclude` is the same list the trip detail was loaded with, so a point offered after the
+ * rider rejected others is still accepted (#299).
  */
-export function requestSeat(tripId: string, body: { lat: number; lng: number; pickupId: string }) {
+export function requestSeat(tripId: string, body: SeatRequestBody) {
   return unwrap(tripsApi.POST("/{trip_id}/requests", { params: { path: { trip_id: tripId } }, body }));
 }
 

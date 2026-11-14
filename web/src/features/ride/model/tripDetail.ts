@@ -55,6 +55,22 @@ export function driverLine(profile: DriverProfile | undefined, vehicle: Vehicle 
 /** How often a pending request is checked for the driver's decision. */
 export const REQUEST_POLL_MS = 10_000;
 
+/**
+ * How many rejected pickup points the trip detail can be asked to leave out (#136): the
+ * contract's limit for `exclude`, on the trip detail and on a seat request.
+ */
+export const MAX_EXCLUDED_PICKUPS = 20;
+
+/**
+ * The points to leave out after the rider says none of `pickups` work: the ones already
+ * left out plus these. Undefined when that would go over the contract's limit, so there's
+ * no "None of these work" to offer.
+ */
+export function afterRejecting(excluded: readonly string[], pickups: readonly PickupOption[]): string[] | undefined {
+  const next = [...new Set([...excluded, ...pickups.map((p) => p.id)])];
+  return next.length <= MAX_EXCLUDED_PICKUPS ? next : undefined;
+}
+
 /** Where a rider adds a payment card (#152). */
 export const ADD_CARD_HREF = "/account/card";
 
@@ -119,6 +135,8 @@ export function requestSeatError(code: string | undefined, here: string): Messag
     case "routing_unavailable":
     case "service_unavailable":
       return { title: "We couldn't confirm your pickup", text: "Matching is unavailable right now. Try again in a minute." };
+    case "payments_unavailable":
+      return { title: "We couldn't check your card or price", text: "Payments are unavailable right now. Try again in a minute." };
     case "trip_not_found":
       return { title: "This trip is no longer available", text: "Go back to see other trips." };
     default:

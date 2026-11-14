@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { availability, type DriverProfile, driverLine, seatsAndDeparture, type TripDetail, tripDetailHref } from "./tripDetail";
+import {
+  afterRejecting,
+  availability,
+  type DriverProfile,
+  driverLine,
+  type PickupOption,
+  requestSeatError,
+  seatsAndDeparture,
+  type TripDetail,
+  tripDetailHref,
+} from "./tripDetail";
 
 // Local times, so the tests pass in any time zone.
 const NOW = new Date("2026-10-15T20:00:00");
@@ -90,5 +100,25 @@ describe("tripDetailHref", () => {
     expect(tripDetailHref("t1", query)).toBe(
       "/ride/trip/t1?lat=49.87680&lng=-97.14380&direction=to_campus&time=2026-10-16T13%3A30%3A00.000Z",
     );
+  });
+});
+
+describe("afterRejecting", () => {
+  const option = (id: string): PickupOption => ({ id, label: id, lat: 49.88, lng: -97.14, walkSeconds: 60, cost: null });
+
+  it("adds the rejected points to the ones already left out, once each", () => {
+    expect(afterRejecting(["s1"], [option("s1"), option("s2"), option("s3")])).toEqual(["s1", "s2", "s3"]);
+  });
+
+  it("allows up to 20 and no more (the contract's limit)", () => {
+    const left = Array.from({ length: 17 }, (_, i) => `x${i}`);
+    expect(afterRejecting(left, [option("a"), option("b"), option("c")])).toHaveLength(20);
+    expect(afterRejecting([...left, "x17"], [option("a"), option("b"), option("c")])).toBeUndefined();
+  });
+});
+
+describe("requestSeatError", () => {
+  it("explains when payments can't be reached", () => {
+    expect(requestSeatError("payments_unavailable", "/here").title).toBe("We couldn't check your card or price");
   });
 });

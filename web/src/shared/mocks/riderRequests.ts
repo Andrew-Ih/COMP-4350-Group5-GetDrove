@@ -81,6 +81,7 @@ export const riderRequestHandlers = [
     const tripId = String(params.tripId);
     const instance = `/api/trips/${tripId}/requests`;
     const body = (await request.json()) as Trips["schemas"]["SeatRequestBody"];
+    if ((body.exclude?.length ?? 0) > 20) return problem(422, "invalid_input", "Invalid input", instance);
     if (!isSearchTrip(tripId)) return problem(404, "trip_not_found", "No trip with this ID", instance);
     if (activeOn(tripId)) return problem(409, "already_requested", "You've already asked for a seat on this trip", instance);
     if ([...requests.values()].some(isActive)) {
@@ -91,6 +92,7 @@ export const riderRequestHandlers = [
       return problem(409, "trip_full", "No seats left on this trip", instance);
     }
     if (tripId === JORDAN) return problem(409, "card_required", "Add a card before requesting a seat", instance);
+    // The points last offered on the trip detail, which were found with the same `exclude`.
     const pickup = offered.get(tripId)?.find((p) => p.id === body.pickupId);
     if (!pickup) return problem(422, "pickup_not_available", "This pickup point isn't available from where you are", instance);
 

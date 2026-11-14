@@ -1,18 +1,23 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ApiError } from "@/shared/api";
 
-import { cancelSeatRequest, getProfile, getRoute, getSeatRequest, getTrip, requestSeat } from "../api/tripsApi";
+import { cancelSeatRequest, getProfile, getRoute, getSeatRequest, getTrip, requestSeat, type SeatRequestBody } from "../api/tripsApi";
 import type { RouteFeature } from "../model/results";
 import { type DriverProfile, REQUEST_POLL_MS, type SeatRequest, type TripDetail } from "../model/tripDetail";
 
-/** One trip with the pickup points near `rider`. Refetched when the rider comes back to it. */
-export function useTripDetail(tripId: string, rider: { lat: number; lng: number } | undefined) {
+/**
+ * One trip with the pickup points near `rider`, leaving out the ones in `exclude` (#136).
+ * Refetched when the rider comes back to it. While other points are being found, the
+ * previous answer stays on screen (`isPlaceholderData`) instead of a blank loading state.
+ */
+export function useTripDetail(tripId: string, rider: { lat: number; lng: number } | undefined, exclude: readonly string[] = []) {
   return useQuery<TripDetail, ApiError>({
-    queryKey: ["trips", "detail", tripId, rider?.lat, rider?.lng],
-    queryFn: () => getTrip(tripId, rider),
+    queryKey: ["trips", "detail", tripId, rider?.lat, rider?.lng, [...exclude]],
+    queryFn: () => getTrip(tripId, rider, exclude),
+    placeholderData: keepPreviousData,
   });
 }
 
@@ -66,7 +71,7 @@ export function useSeatRequest(requestId: string | undefined, initial: SeatReque
  */
 export function useRequestSeat(tripId: string, onSent: (request: SeatRequest) => void) {
   const queryClient = useQueryClient();
-  return useMutation<SeatRequest, ApiError, { lat: number; lng: number; pickupId: string }>({
+  return useMutation<SeatRequest, ApiError, SeatRequestBody>({
     mutationFn: (body) => requestSeat(tripId, body),
     onSuccess: (request) => {
       queryClient.setQueryData(requestKey(request.id), request);
