@@ -1,5 +1,6 @@
 """Integration tests for recurring trip series persistence."""
 
+from sqlalchemy import text
 from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
@@ -104,5 +105,29 @@ async def test_trip_can_reference_recurring_series() -> None:
             assert len(retrieved) == 1
             assert retrieved[0].id == trip.id
             assert retrieved[0].series_id == series.id
+    finally:
+        await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_trips_series_id_index_exists() -> None:
+    """Verify the migration creates an index on trips.series_id."""
+    engine = create_async_engine(get_settings().database_url)
+
+    try:
+        async with engine.connect() as connection:
+            result = await connection.execute(
+                text(
+                    """
+                    SELECT indexname
+                    FROM pg_indexes
+                    WHERE schemaname = 'trips'
+                      AND tablename = 'trips'
+                      AND indexname = 'ix_trips_series_id'
+                    """
+                )
+            )
+
+            assert result.scalar_one_or_none() == "ix_trips_series_id"
     finally:
         await engine.dispose()

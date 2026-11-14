@@ -138,6 +138,12 @@ class TripSeries:
             raise ValueError("Weekdays must not contain duplicates")
 
         first_date = self.departure_at.astimezone(WINNIPEG_TZ).date()
+        if first_date.weekday() not in {
+            WEEKDAY_NUMBERS[day] for day in self.weekdays
+        }:
+            raise ValueError("First departure must fall on a selected weekday")
+
+        
 
         if self.end_date <= first_date:
             raise ValueError("End date must be after first departure")
