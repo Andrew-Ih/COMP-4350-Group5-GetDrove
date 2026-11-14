@@ -96,6 +96,8 @@ seat_requests = Table(
     Column("walk_seconds", Integer, nullable=False),
     Column("rider_distance_meters", Integer, nullable=False),
     Column("detour_seconds", Integer, nullable=True),
+    Column("detour_position", Integer, nullable=True),
+    Column("pickup_order", Integer, nullable=True),
     Column("amount_cents", Integer, nullable=False),
     Column("currency", String(3), nullable=False),
     Column("cost_explanation", String(1000), nullable=False),
@@ -131,6 +133,14 @@ seat_requests = Table(
     CheckConstraint(
         "detour_seconds IS NULL OR detour_seconds >= 0",
         name="valid_detour_seconds",
+    ),
+    CheckConstraint(
+        "detour_position IS NULL OR detour_position >= 0",
+        name="valid_detour_position",
+    ),
+    CheckConstraint(
+        "pickup_order IS NULL OR (status = 'accepted' AND pickup_order >= 1)",
+        name="valid_pickup_order",
     ),
     CheckConstraint(
         "amount_cents >= 0 AND currency = 'CAD'",
