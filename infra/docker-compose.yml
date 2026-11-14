@@ -71,6 +71,12 @@ services:
       timeout: 3s
       retries: 20
 
+  stripe-mock:
+    image: stripe/stripe-mock:v0.197.0
+    profiles: [payments-test]
+    ports:
+      - "127.0.0.1:12111:12111"
+
   mailpit:
     # Catches every email the app sends; nothing reaches a real inbox.
     image: axllent/mailpit:v1.27
@@ -199,6 +205,8 @@ services:
     environment:
       PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD:-payments}@postgres:5432/getdrove
       PAYMENTS_REDIS_URL: redis://redis:6379/0
+      PAYMENTS_STRIPE_SECRET_KEY: ${PAYMENTS_STRIPE_SECRET_KEY:-}
+      PAYMENTS_STRIPE_API_BASE: ${PAYMENTS_STRIPE_API_BASE:-https://api.stripe.com}
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
