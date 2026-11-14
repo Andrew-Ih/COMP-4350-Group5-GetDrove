@@ -365,6 +365,7 @@ def _for_rider(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -382,6 +383,7 @@ def _to_response(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
