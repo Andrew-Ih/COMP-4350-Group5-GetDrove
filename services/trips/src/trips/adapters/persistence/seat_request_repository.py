@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select, update
+from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import seat_requests, trips
@@ -109,12 +109,68 @@ class SQLAlchemySeatRequestRepository:
             for row in result.mappings()
         ]
 
+    async def place_accepted(self, request: SeatRequest, *, position: int | None) -> int:
+        """Put a just-accepted request into the pickup order and push the later ones down."""
+        await self.session.execute(
+            select(trips.c.id).where(trips.c.id == request.trip_id).with_for_update()
+        )
+        placed = (
+            seat_requests.c.trip_id == request.trip_id,
+            seat_requests.c.status == RequestStatus.ACCEPTED.value,
+            seat_requests.c.id != request.id,
+            seat_requests.c.pickup_order.is_not(None),
+        )
+        counted = await self.session.execute(
+            select(func.count()).select_from(seat_requests).where(*placed)
+        )
+        count = counted.scalar_one()
+        order = count + 1 if position is None else min(position, count) + 1
+        await self.session.execute(
+            update(seat_requests)
+            .where(*placed)
+            .where(seat_requests.c.pickup_order >= order)
+            .values(pickup_order=seat_requests.c.pickup_order + 1)
+        )
+        await self.session.execute(
+            update(seat_requests).where(seat_requests.c.id == request.id).values(pickup_order=order)
+        )
+        return order
+
+    async def renumber_accepted(self, trip_id: UUID) -> None:
+        """Number a trip's accepted requests 1..n in their current order, closing any gap."""
+        ranked = (
+            select(
+                seat_requests.c.id,
+                func.row_number()
+                .over(
+                    order_by=(
+                        seat_requests.c.pickup_order,
+                        seat_requests.c.created_at,
+                        seat_requests.c.id,
+                    )
+                )
+                .label("place"),
+            )
+            .where(seat_requests.c.trip_id == trip_id)
+            .where(seat_requests.c.status == RequestStatus.ACCEPTED.value)
+            .subquery()
+        )
+        await self.session.execute(
+            update(seat_requests)
+            .where(seat_requests.c.id == ranked.c.id)
+            .values(pickup_order=ranked.c.place)
+        )
+
     async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
         result = await self.session.execute(
             update(seat_requests)
             .where(seat_requests.c.id == request.id)
             .where(seat_requests.c.status == expected.value)
-            .values(status=request.status.value, decided_at=request.decided_at)
+            .values(
+                status=request.status.value,
+                decided_at=request.decided_at,
+                pickup_order=request.pickup_order,
+            )
             .returning(seat_requests.c.id)
         )
         return result.first() is not None

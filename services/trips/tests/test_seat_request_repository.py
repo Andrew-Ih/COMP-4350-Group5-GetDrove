@@ -20,6 +20,7 @@ from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Direction, Location, Quote, TripStatus
 
 DEPARTURE = datetime(2030, 1, 1, 9, 0, tzinfo=UTC)
+DECIDED = datetime(2030, 1, 1, tzinfo=UTC)
 
 
 @pytest.fixture
@@ -332,3 +333,82 @@ async def test_detour_position_and_pickup_order_round_trip(session: AsyncSession
     await repository.add(request)
 
     assert await repository.get(request.id) == request
+
+
+async def accept_at(
+    repository: SQLAlchemySeatRequestRepository, trip: Trip, position: int | None, day: int
+) -> UUID:
+    request = replace(
+        make_request(trip, now=datetime(2029, 12, day, tzinfo=UTC)), detour_position=position
+    )
+    await repository.add(request)
+    accepted = request.accept(DECIDED)
+    assert await repository.save_decision(accepted, expected=RequestStatus.PENDING)
+    await repository.place_accepted(accepted, position=position)
+    return request.id
+
+
+async def order_of(repository: SQLAlchemySeatRequestRepository, request_id: UUID) -> int | None:
+    request = await repository.get(request_id)
+    assert request is not None
+    return request.pickup_order
+
+
+async def test_pickups_are_numbered_in_the_order_they_are_placed(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    first = await accept_at(repository, trip, 0, 1)
+    second = await accept_at(repository, trip, 1, 2)
+
+    assert [await order_of(repository, i) for i in (first, second)] == [1, 2]
+
+
+async def test_a_pickup_placed_first_pushes_the_others_down(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    first = await accept_at(repository, trip, 0, 1)
+    second = await accept_at(repository, trip, 1, 2)
+    inserted = await accept_at(repository, trip, 0, 3)
+
+    assert [await order_of(repository, i) for i in (first, second, inserted)] == [2, 3, 1]
+
+
+async def test_a_pickup_placed_in_the_middle_pushes_only_later_ones(session: AsyncSession) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    first = await accept_at(repository, trip, 0, 1)
+    second = await accept_at(repository, trip, 1, 2)
+    inserted = await accept_at(repository, trip, 1, 3)
+
+    assert [await order_of(repository, i) for i in (first, second, inserted)] == [1, 3, 2]
+
+
+async def test_a_position_past_the_end_is_clamped_and_none_goes_last(
+    session: AsyncSession,
+) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    first = await accept_at(repository, trip, 0, 1)
+    second = await accept_at(repository, trip, 9, 2)
+    third = await accept_at(repository, trip, None, 3)
+
+    assert [await order_of(repository, i) for i in (first, second, third)] == [1, 2, 3]
+
+
+async def test_renumbering_closes_the_gap_after_a_removal_from_the_middle(
+    session: AsyncSession,
+) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    first = await accept_at(repository, trip, 0, 1)
+    middle = await accept_at(repository, trip, 1, 2)
+    last = await accept_at(repository, trip, 2, 3)
+    removed = await repository.get(middle)
+    assert removed is not None
+    declined = removed.decline(DECIDED)
+    assert await repository.save_decision(declined, expected=RequestStatus.ACCEPTED)
+
+    await repository.renumber_accepted(trip.id)
+
+    assert await order_of(repository, middle) is None
+    assert [await order_of(repository, i) for i in (first, last)] == [1, 2]
