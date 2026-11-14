@@ -184,7 +184,7 @@
           "internal"
         ],
         "summary": "Pickup points for a rider on a trip",
-        "description": "Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route.",
+        "description": "Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route. Points in `exclude` (ones the rider rejected) are never returned.",
         "operationId": "pickup_points_internal_pickup_points_post",
         "requestBody": {
           "content": {
@@ -776,6 +776,23 @@
             "title": "Limit",
             "description": "How many points to return at most.",
             "default": 3
+          },
+          "exclude": {
+            "items": {
+              "type": "string",
+              "maxLength": 64,
+              "minLength": 1
+            },
+            "type": "array",
+            "maxItems": 20,
+            "title": "Exclude",
+            "description": "IDs of points the rider rejected (#136). They're never returned, so the next best come back instead. At most 20.",
+            "examples": [
+              [
+                "s42",
+                "s45"
+              ]
+            ]
           }
         },
         "type": "object",
