@@ -1,5 +1,6 @@
 """Trip events persisted with the Trip transaction."""
 
+from typing import Literal, cast
 from uuid import UUID
 
 from events.catalog import (
@@ -42,7 +43,7 @@ class OutboxTripEvents:
                 departure_at=trip.departure_at,
                 pickup_label=request.pickup.label,
                 amount_cents=request.cost.amount_cents,
-                currency=request.cost.currency,
+                currency=cast(Literal["CAD"], request.cost.currency),
                 auto_accepted=request.auto_accepted,
             )
         )
