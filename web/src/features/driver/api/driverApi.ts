@@ -1,6 +1,6 @@
 import { accountsApi, unwrap } from "@/shared/api";
 
-import type { DocumentKind, Vehicle } from "../model/driver";
+import type { AdminDriverStatus, DocumentKind, Vehicle } from "../model/driver";
 
 /** GET /api/accounts/me/driver: where the student's application to drive stands. */
 export function getDriverProfile() {
@@ -32,4 +32,28 @@ export function saveVehicle(vehicle: Vehicle) {
 /** GET /api/accounts/me/driver/documents/{kind}: the file as uploaded. */
 export function getDocument(kind: DocumentKind) {
   return unwrap(accountsApi.GET("/me/driver/documents/{kind}", { params: { path: { kind } }, parseAs: "blob" })) as Promise<Blob>;
+}
+
+// ---------------------------------------------------------------- admin (#128)
+
+/** GET /api/accounts/admin/drivers?status=: applications with that status, oldest first. Admins only. */
+export function getAdminDrivers(status: AdminDriverStatus) {
+  return unwrap(accountsApi.GET("/admin/drivers", { params: { query: { status } } }));
+}
+
+/** GET /api/accounts/admin/drivers/{id}/documents/{kind}: an applicant's file as uploaded. */
+export function getApplicantDocument(userId: string, kind: DocumentKind) {
+  return unwrap(
+    accountsApi.GET("/admin/drivers/{user_id}/documents/{kind}", { params: { path: { user_id: userId, kind } }, parseAs: "blob" }),
+  ) as Promise<Blob>;
+}
+
+/** POST /api/accounts/admin/drivers/{id}/approve: they can post trips straight away. */
+export function approveDriver(userId: string) {
+  return unwrap(accountsApi.POST("/admin/drivers/{user_id}/approve", { params: { path: { user_id: userId } } }));
+}
+
+/** POST /api/accounts/admin/drivers/{id}/reject: the reason is shown to the driver. */
+export function rejectDriver(userId: string, reason: string) {
+  return unwrap(accountsApi.POST("/admin/drivers/{user_id}/reject", { params: { path: { user_id: userId } }, body: { reason } }));
 }
