@@ -2,19 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import type { ApiError } from "@/shared/api";
+import { type ApiError, retryServerErrors } from "@/shared/api";
 
 import { acceptRequest, declineRequest, getRoute, getTrip, getTripRequests } from "../api/tripsApi";
 import { applyDecision, type DriverRequest, type TripDetail } from "../model/requests";
 
 const tripKey = (tripId: string) => ["trips", "detail", tripId] as const;
 const requestsKey = (tripId: string) => ["trips", "requests", tripId] as const;
-
-/**
- * Retries a failed load once if the server or routing had a problem (5xx), not when the
- * answer itself was no (4xx): a missing trip won't appear by asking again.
- */
-const retryServerErrors = (failures: number, error: ApiError) => error.status >= 500 && failures < 1;
 
 /** The driver's trip: when it leaves, its ends and how many seats are left. */
 export function useDriverTrip(tripId: string) {
