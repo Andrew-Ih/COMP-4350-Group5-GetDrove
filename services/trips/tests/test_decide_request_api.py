@@ -242,7 +242,7 @@ async def test_accepting_after_departure_returns_409_and_takes_no_seat(api: API)
 
 
 async def test_accepting_on_a_cancelled_trip_is_not_seat_taken(api: API) -> None:
-    trip, request = await seed(api, as_driver=True, trip_status=TripStatus.CANCELLED)
+    _, request = await seed(api, as_driver=True, trip_status=TripStatus.CANCELLED)
 
     response = await act(api, "accept", request.id)
 
