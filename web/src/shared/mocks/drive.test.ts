@@ -69,7 +69,7 @@ describe("mock API: posting a trip", () => {
 });
 
 describe("mock API: posting a repeating trip (#19)", () => {
-  // Monday, March 8, 2027 at 7:45 AM in Winnipeg (CST); daylight time starts March 14.
+  // Monday, March 8, 2027, in the morning in Winnipeg; the series runs for two weeks.
   const series = (changes: Partial<{ departureAt: string; weekdays: ("mon" | "tue" | "wed" | "thu" | "fri")[]; endDate: string }> = {}) =>
     unwrap(
       trips.POST("/series", {
@@ -84,19 +84,18 @@ describe("mock API: posting a repeating trip (#19)", () => {
         },
       }),
     );
-  const winnipegTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString("en-US", { timeZone: "America/Winnipeg", hour: "numeric", minute: "2-digit" });
+  const inWinnipeg = (iso: string, options: Intl.DateTimeFormatOptions) =>
+    new Date(iso).toLocaleString("en-CA", { timeZone: "America/Winnipeg", ...options });
+  const winnipegDay = (iso: string) => inWinnipeg(iso, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const winnipegTime = (iso: string) => inWinnipeg(iso, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
-  it("makes one trip per chosen weekday, all at the same Winnipeg time across the daylight time change", async () => {
+  it("makes one trip per chosen weekday, all at the same Winnipeg time", async () => {
     const result = await series();
 
-    expect(result.trips.map((t) => t.departureAt)).toEqual([
-      "2027-03-08T13:45:00.000Z",
-      "2027-03-10T13:45:00.000Z",
-      "2027-03-15T12:45:00.000Z", // CDT: an hour earlier in UTC, same 7:45 in Winnipeg
-      "2027-03-17T12:45:00.000Z",
-    ]);
-    expect(new Set(result.trips.map((t) => winnipegTime(t.departureAt)))).toEqual(new Set(["7:45 AM"]));
+    expect(result.trips.map((t) => winnipegDay(t.departureAt))).toEqual(["2027-03-08", "2027-03-10", "2027-03-15", "2027-03-17"]);
+    // The same clock time every day, whatever Winnipeg's UTC offset is on each date.
+    const firstTime = winnipegTime("2027-03-08T13:45:00Z");
+    expect(result.trips.map((t) => winnipegTime(t.departureAt))).toEqual([firstTime, firstTime, firstTime, firstTime]);
     expect(result.trips.every((t) => t.seriesId === result.seriesId)).toBe(true);
     expect(result.skippedDates).toEqual([]);
   });
