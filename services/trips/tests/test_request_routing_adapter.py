@@ -52,6 +52,33 @@ async def test_selected_pickup_is_validated_and_returned() -> None:
     assert result.meters_to_trip_end == 4000
 
 
+async def test_excluded_pickups_are_sent_to_routing() -> None:
+    trip_id = uuid4()
+    rider = Point(lat=49.821, lng=-97.151)
+    sent: list[dict[str, Any]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={"pickups": [{**pickup_payload(), "id": "s50"}]})
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://routing:8000"
+    ) as client:
+        result = await HTTPRequestRoutingService(client).select_pickup(
+            trip_id=trip_id, rider=rider, pickup_id="s50", exclude=("s42", "s45")
+        )
+
+    assert sent == [
+        {
+            "tripId": str(trip_id),
+            "rider": {"lat": rider.lat, "lng": rider.lng},
+            "exclude": ["s42", "s45"],
+            "limit": 3,
+        }
+    ]
+    assert result.id == "s50"
+
+
 @pytest.mark.parametrize("empty", [True, False])
 async def test_unavailable_pickup_id_is_rejected(empty: bool) -> None:
     def handler(request: httpx.Request) -> httpx.Response:
