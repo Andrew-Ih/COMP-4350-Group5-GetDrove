@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, LogOut, Menu, X } from "lucide-react";
+import { Bell, LogOut, Menu, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -106,6 +106,14 @@ export function AppHeader({ userName }: { userName: string }) {
             {accountOpen && (
               <div role="menu" className="absolute top-full right-0 mt-2 w-56 rounded-md bg-surface py-2 shadow-card">
                 {userName && <p className="truncate px-4 pt-1 pb-2 text-sm text-ink-soft">Logged in as {userName}</p>}
+                <Link
+                  href="/account/auto-accept"
+                  role="menuitem"
+                  onClick={() => setAccountOpen(false)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
+                >
+                  <Zap aria-hidden="true" className="size-4" /> Auto-accept
+                </Link>
                 <button
                   type="button"
                   role="menuitem"
@@ -156,6 +164,13 @@ export function AppHeader({ userName }: { userName: string }) {
             )}
           >
             Notifications
+          </Link>
+          <Link
+            href="/account/auto-accept"
+            onClick={() => setMenuOpen(false)}
+            className="block border-b border-line py-4 text-lg font-semibold text-muted"
+          >
+            Auto-accept
           </Link>
           <button
             type="button"
