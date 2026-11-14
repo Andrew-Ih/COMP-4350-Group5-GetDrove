@@ -3,6 +3,7 @@
 from collections.abc import AsyncIterator, Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 import httpx
@@ -10,6 +11,7 @@ import pytest
 from fastapi import FastAPI
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import QueuePool
 
 from common_security.testing import TestAuth
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
@@ -251,3 +253,19 @@ async def test_unknown_trip_returns_404_and_skips_accounts(api: API) -> None:
 
     assert response.status_code == 404
     assert response.json()["code"] == "trip_not_found"
+
+
+async def test_accounts_is_called_after_the_database_connection_is_released(api: API) -> None:
+    trip = await add_trip(api, driver_id=api[1].user_id)
+    request = await add_request(api, trip, RequestStatus.PENDING, 1)
+    in_use: list[int] = []
+    inner = accounts({request.rider_id: "Priya"})
+
+    def handler(http_request: httpx.Request) -> httpx.Response:
+        in_use.append(cast(QueuePool, api[2].pool).checkedout())
+        return inner(http_request)
+
+    response = await list_requests(api, trip.id, handler)
+
+    assert response.status_code == 200, response.text
+    assert in_use == [0]

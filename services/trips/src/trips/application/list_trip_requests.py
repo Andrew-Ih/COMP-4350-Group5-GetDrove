@@ -32,6 +32,13 @@ class DriverRequest:
     pickup_order: int | None
 
 
+@dataclass(frozen=True)
+class LoadedRequests:
+    """What the database gave us. Everything after this needs no session."""
+
+    requests: list[SeatRequest]
+
+
 class ListTripRequests:
     def __init__(
         self,
@@ -44,14 +51,19 @@ class ListTripRequests:
         self.requests = requests
         self.riders = riders
 
-    async def execute(self, command: ListTripRequestsCommand) -> list[DriverRequest]:
+    async def load(self, command: ListTripRequestsCommand) -> LoadedRequests:
+        """Everything that needs the database: the driver check and the open requests."""
         trip = await self.trips.get(command.trip_id)
         if trip is None:
             raise TripNotFoundError()
         if trip.driver_id != command.user_id:
             raise NotTripDriverError()
 
-        open_requests = await self.requests.list_open_for_trip(trip.id)
+        return LoadedRequests(await self.requests.list_open_for_trip(trip.id))
+
+    async def build(self, loaded: LoadedRequests) -> list[DriverRequest]:
+        """Add the riders' details from Accounts. Never touches the database."""
+        open_requests = loaded.requests
         if not open_requests:
             return []
 
@@ -72,3 +84,6 @@ class ListTripRequests:
                 continue
             items.append(DriverRequest(request, rider, pickup_order))
         return items
+
+    async def execute(self, command: ListTripRequestsCommand) -> list[DriverRequest]:
+        return await self.build(await self.load(command))

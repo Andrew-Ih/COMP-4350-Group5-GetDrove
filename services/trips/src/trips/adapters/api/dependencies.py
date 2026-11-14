@@ -276,7 +276,8 @@ class TripRequestsRunner:
                 requests=SQLAlchemySeatRequestRepository(session),
                 riders=self.riders,
             )
-            return await use_case.execute(command)
+            loaded = await use_case.load(command)
+        return await use_case.build(loaded)
 
 
 def get_trip_requests(request: Request) -> TripRequestsRunner:
