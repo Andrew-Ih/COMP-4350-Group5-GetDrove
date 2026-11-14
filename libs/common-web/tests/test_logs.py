@@ -103,10 +103,53 @@ def test_redact_coordinates_takes_out_latitudes_and_longitudes() -> None:
 
 @pytest.mark.parametrize(
     "text",
-    ["GET /search 200 duration_ms=12.3", "Python 3.13.1", "seats=3 cost=4.20", "id 1234567"],
+    [
+        "GET /search 200 duration_ms=12.3",
+        "Python 3.13.1",
+        "seats=3 cost=4.20",
+        "id 1234567",
+        # The seconds of a time aren't a coordinate (Andrew's review of #304).
+        "departure 2026-11-13T02:21:55.123456+00:00",
+        "took 00:01:02.123456",
+    ],
 )
 def test_redact_coordinates_leaves_ordinary_numbers(text: str) -> None:
     assert redact_coordinates(text) == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["lat:49.852713", "lat=49.852713", "(49.852713, -97.179137)", "foot/-97.179137,49.852713;"],
+)
+def test_coordinates_right_after_a_colon_or_a_symbol_are_still_taken_out(text: str) -> None:
+    """Only a ":" after a digit means a time; "lat:49.852713" is a coordinate."""
+    assert "852713" not in redact_coordinates(text)
+    assert "179137" not in redact_coordinates(text)
+
+
+def test_extra_fields_never_contain_coordinates() -> None:
+    """Fields passed with ``extra`` skip the message: both formatters still redact them."""
+    configure_logging("routing")
+    record = logging.getLogger("routing.test").makeRecord(
+        "routing.test",
+        logging.INFO,
+        __file__,
+        1,
+        "Pickup chosen",
+        None,
+        None,
+        extra={"lat": 49.852713, "where": "POINT(-97.179137 49.852713)", "seats": 3, "ok": True},
+    )
+
+    text_line = TextFormatter().format(record)
+    json_line = json.loads(JsonFormatter().format(record))  # still valid JSON
+
+    for output in (text_line, json.dumps(json_line)):
+        assert "852713" not in output and "179137" not in output
+    assert json_line["lat"] == "[coordinate]"
+    assert json_line["where"] == "POINT([coordinate] [coordinate])"
+    # Other fields keep their type.
+    assert (json_line["seats"], json_line["ok"]) == (3, True)
 
 
 def test_logged_messages_and_tracebacks_never_contain_coordinates(

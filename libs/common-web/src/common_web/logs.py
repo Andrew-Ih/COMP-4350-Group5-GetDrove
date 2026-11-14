@@ -42,13 +42,25 @@ _MARKER = "_getdrove_handler"
 # locations and drivers' places must never be logged (#31), and they can still reach a log
 # line through an error message: the database driver and PostgreSQL quote a failed query's
 # values, and OSRM's URLs hold coordinates. Ordinary numbers in logs (durations to 0.1 ms,
-# version numbers) have fewer decimals.
-_COORDINATE = re.compile(r"-?\b\d{1,3}\.\d{4,}")
+# version numbers) have fewer decimals. Not when it follows a digit or a ".", or a ":" after a
+# digit: that's the seconds of a time ("02:21:55.123456"), not a coordinate. Very short
+# durations ("0.004512s") are still taken out; that's harmless.
+_COORDINATE = re.compile(r"(?<![\d.])(?<!\d:)-?\d{1,3}\.\d{4,}")
 COORDINATE_PLACEHOLDER = "[coordinate]"
 
 
 def redact_coordinates(text: str) -> str:
     return _COORDINATE.sub(COORDINATE_PLACEHOLDER, text)
+
+
+def _redact_value(value: Any) -> Any:
+    """An ``extra`` field's value with coordinates taken out. Left as it is (a number stays a
+    number in JSON) unless it held one, then it becomes the redacted text."""
+    if value is None or isinstance(value, bool | int):
+        return value
+    text = value if isinstance(value, str) else json.dumps(value, default=str)
+    redacted = redact_coordinates(text)
+    return value if redacted == text else redacted
 
 
 def _redact(record: logging.LogRecord) -> None:
@@ -98,7 +110,8 @@ class JsonFormatter(logging.Formatter):
         }
         for key, value in record.__dict__.items():
             if key not in _STANDARD_ATTRS and not key.startswith("_"):
-                entry[key] = value
+                # extra fields: the message was redacted in _redact, these weren't.
+                entry[key] = _redact_value(value)
         if record.exc_info:
             # exc_text is the traceback with coordinates taken out (see _redact).
             entry["exception"] = record.exc_text or self.formatException(record.exc_info)
@@ -123,7 +136,8 @@ class TextFormatter(logging.Formatter):
             extras = {"requestId": request_id, **extras}
         if extras:
             line += " " + " ".join(f"{key}={value}" for key, value in extras.items())
-        return line
+        # The whole line, so extra fields are covered too (the message already is).
+        return redact_coordinates(line)
 
 
 def configure_logging(service: str, *, level: str | None = None, fmt: str | None = None) -> None:

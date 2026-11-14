@@ -21,7 +21,9 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
+from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox, trips
+from trips.domain.entities import Trip
 from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
@@ -32,7 +34,8 @@ pytestmark = pytest.mark.usefixtures("trips_database")
 RIDER = {"lat": 49.852713, "lng": -97.179137}
 RIDER_DIGITS = ("852713", "179137")
 DRIVER_PLACE = {"label": "Driver's own street", "lat": 49.876541, "lng": -97.143219}
-DRIVER_DIGITS = ("876541", "143219", "Driver's own street")
+DRIVER_COORDINATE_DIGITS = ("876541", "143219")
+DRIVER_DIGITS = (*DRIVER_COORDINATE_DIGITS, "Driver's own street")
 
 
 def leaks(text_: str, digits: tuple[str, ...]) -> list[str]:
@@ -173,6 +176,31 @@ async def test_posting_and_searching_log_neither_location(
     assert (posted.status_code, searched.status_code) == (201, 200)
     assert caplog.records
     assert leaks(caplog.text, RIDER_DIGITS + DRIVER_DIGITS) == []
+
+
+async def test_a_database_failure_while_posting_logs_none_of_the_drivers_coordinates(
+    api: API, caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Saving a trip is where the driver's place goes into the database. If that fails, the
+    error is logged with its traceback, and the database's message quotes the failed value."""
+
+    async def failing_add(self: SQLAlchemyTripRepository, trip: Trip) -> None:
+        # A query with the driver's place as a parameter, that the database rejects.
+        await self.session.execute(
+            text("SELECT CAST(:place AS integer)"),
+            {"place": f"{trip.origin.lat},{trip.origin.lng}"},
+        )
+
+    monkeypatch.setattr(SQLAlchemyTripRepository, "add", failing_add)
+
+    with caplog.at_level(logging.DEBUG):
+        posted, _ = await post_and_search(api)
+
+    assert posted.status_code == 500
+    assert "Unhandled error" in caplog.text  # the traceback was logged
+    # Coordinates are taken out of every log line. (A label isn't a number, so it can't
+    # be: labels must never be logged, see docs/architecture/location-privacy.md.)
+    assert leaks(caplog.text, DRIVER_COORDINATE_DIGITS) == []
 
 
 async def test_the_service_engine_doesnt_list_query_parameters_in_errors() -> None:
