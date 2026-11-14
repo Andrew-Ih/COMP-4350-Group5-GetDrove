@@ -1,10 +1,13 @@
 """The contract for leaving out rejected pickup points on the trip detail (#292): the rider's
 rejected points (#136) are passed to Routing so they're never offered again (#29)."""
 
+from typing import Any
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
+from trips.adapters.api.dependencies import get_trip_detail
 from trips.adapters.api.schemas import MAX_EXCLUDED_PICKUPS
 from trips.infrastructure.main import create_app
 
@@ -13,31 +16,38 @@ NEAR = "lat=49.8722&lng=-97.1561"
 
 
 @pytest.fixture
-async def client() -> AsyncClient:
+async def client(fake_trip_detail: Any) -> AsyncClient:
     auth = TestAuth()
     app = create_app()
     auth.install(app)
+    app.dependency_overrides[get_trip_detail] = lambda: fake_trip_detail
     return AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
     )
 
 
 @pytest.mark.parametrize(
-    "query",
+    ("query", "exclude"),
     [
-        f"{NEAR}&exclude=s42",
-        f"{NEAR}&exclude=s42&exclude=s45",
-        "&".join([NEAR, *(f"exclude=s{n}" for n in range(MAX_EXCLUDED_PICKUPS))]),
-        f"{NEAR}",  # without it
-        "exclude=s42",  # ignored without lat and lng
+        (f"{NEAR}&exclude=s42", ["s42"]),
+        (f"{NEAR}&exclude=s42&exclude=s45", ["s42", "s45"]),
+        (
+            "&".join([NEAR, *(f"exclude=s{n}" for n in range(MAX_EXCLUDED_PICKUPS))]),
+            [f"s{n}" for n in range(MAX_EXCLUDED_PICKUPS)],
+        ),
+        (f"{NEAR}", []),  # without it
+        ("exclude=s42", ["s42"]),  # passed on, but without lat and lng there are no pickups
     ],
 )
-async def test_valid_exclude_lists_reach_the_not_yet_implemented_handler(
-    client: AsyncClient, query: str
+async def test_valid_exclude_lists_reach_the_trip_detail(
+    client: AsyncClient, fake_trip_detail: Any, query: str, exclude: list[str]
 ) -> None:
+    """Implemented by #30: the list reaches the service as sent."""
     response = await client.get(f"/{ID}?{query}")
 
-    assert response.status_code == 501, response.text
+    assert response.status_code == 200, response.text
+    [call] = fake_trip_detail.calls
+    assert call["exclude"] == exclude
 
 
 @pytest.mark.parametrize(

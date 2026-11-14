@@ -9,12 +9,13 @@ from pydantic import BaseModel, Field, ValidationError
 
 from trips.application.ports import RouteEstimate
 from trips.domain.errors import RoutingInvalidLocationError, RoutingUnavailableError
-from trips.domain.values import Direction, Location, Point, TripMatch
+from trips.domain.values import Direction, Location, PickupOffer, Point, TripMatch
 
 # Routing accepts at most this many candidate trips per match request (its contract).
 MAX_MATCH_TRIPS = 500
 
 MATCHING_UNAVAILABLE = "Matching is unavailable right now. Please try again."
+PICKUPS_UNAVAILABLE = "Pickup points can't be worked out right now. Please try again."
 
 
 class _Pickup(BaseModel):
@@ -33,6 +34,20 @@ class _Match(BaseModel):
 
 class _MatchResponse(BaseModel):
     matches: list[_Match]
+
+
+class _PickupPoint(BaseModel):
+    id: str = Field(strict=True, min_length=1, max_length=64)
+    label: str = Field(strict=True)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    walk_seconds: int = Field(alias="walkSeconds", strict=True, ge=0)
+    # Routing's name; it's the rest of the route from the point, whatever the direction.
+    meters_to_trip_end: int = Field(alias="riderDistanceMeters", strict=True, ge=0)
+
+
+class _PickupPointsResponse(BaseModel):
+    pickups: list[_PickupPoint]
 
 
 class _RouteResponse(BaseModel):
@@ -125,4 +140,38 @@ class HTTPRoutingService:
                 meters_to_trip_end=match.meters_to_trip_end,
             )
             for match in data.matches
+        ]
+
+    async def pickup_points(
+        self, trip_id: UUID, rider: Point, limit: int, exclude: Sequence[str]
+    ) -> list[PickupOffer]:
+        payload = {
+            "tripId": str(trip_id),
+            "rider": {"lat": rider.lat, "lng": rider.lng},
+            "limit": limit,
+            "exclude": list(exclude),
+        }
+        try:
+            response = await self.client.post("/internal/pickup-points", json=payload)
+            if response.status_code == 404:
+                # The trip has no stored route (e.g. posted before Routing could compute
+                # one): no pickup points, rather than an error for the whole trip detail.
+                return []
+            response.raise_for_status()
+            data = _PickupPointsResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError) as exc:
+            raise RoutingUnavailableError(PICKUPS_UNAVAILABLE) from exc
+
+        # Routing may only answer with what it was asked for.
+        if len(data.pickups) > limit or any(p.id in exclude for p in data.pickups):
+            raise RoutingUnavailableError(PICKUPS_UNAVAILABLE)
+
+        return [
+            PickupOffer(
+                id=point.id,
+                pickup=Location(point.label, point.lat, point.lng),
+                walk_seconds=point.walk_seconds,
+                meters_to_trip_end=point.meters_to_trip_end,
+            )
+            for point in data.pickups
         ]

@@ -1,5 +1,6 @@
 """Dependencies for Trips API handlers."""
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated
 from uuid import UUID
@@ -16,6 +17,7 @@ from trips.adapters.persistence.tables import outbox
 from trips.adapters.routing import HTTPRoutingService
 from trips.application.post_trip import PostTrip
 from trips.application.search_trips import SearchResult, SearchTrips
+from trips.application.trip_detail import GetTripDetail, TripDetailResult
 from trips.application.upcoming_trips import ListUpcomingTrips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, Point
@@ -104,6 +106,38 @@ def get_search_trips(request: Request) -> SearchTripsQuery:
 
 
 SearchTripsService = Annotated[SearchTripsQuery, Depends(get_search_trips)]
+
+
+class TripDetailQuery:
+    """Reads one trip's detail, in its own database session (#30)."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        routing: HTTPRoutingService,
+        pricing: HTTPPricingService,
+    ) -> None:
+        self.session_factory = session_factory
+        self.routing = routing
+        self.pricing = pricing
+
+    async def execute(
+        self, *, trip_id: UUID, viewer_id: UUID, rider: Point | None, exclude: Sequence[str]
+    ) -> TripDetailResult:
+        async with self.session_factory() as session:
+            use_case = GetTripDetail(SQLAlchemyTripRepository(session), self.routing, self.pricing)
+            return await use_case.execute(trip_id, viewer_id, rider, exclude)
+
+
+def get_trip_detail(request: Request) -> TripDetailQuery:
+    return TripDetailQuery(
+        session_factory=request.app.state.session_factory,
+        routing=HTTPRoutingService(request.app.state.routing_client),
+        pricing=HTTPPricingService(request.app.state.payments_client),
+    )
+
+
+TripDetailService = Annotated[TripDetailQuery, Depends(get_trip_detail)]
 
 
 class UpcomingTripsCommand:

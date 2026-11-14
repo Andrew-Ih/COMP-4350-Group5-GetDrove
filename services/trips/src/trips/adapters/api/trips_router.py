@@ -18,6 +18,7 @@ from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
     PostTripService,
     SearchTripsService,
+    TripDetailService,
     UpcomingTripsService,
 )
 from trips.adapters.api.schemas import (
@@ -26,6 +27,7 @@ from trips.adapters.api.schemas import (
     Cost,
     DriverRequestView,
     Pickup,
+    PickupOption,
     PickupPointId,
     Place,
     PostTripRequest,
@@ -406,6 +408,7 @@ def _to_response(trip: TripEntity) -> Trip:
 async def get_trip(
     trip_id: UUID,
     user: AuthenticatedUser,
+    service: TripDetailService,
     lat: Annotated[float | None, Query(ge=-90, le=90, description="Rider's latitude.")] = None,
     lng: Annotated[float | None, Query(ge=-180, le=180, description="Rider's longitude.")] = None,
     exclude: Annotated[
@@ -423,7 +426,35 @@ async def get_trip(
             "Send lat and lng together.",
             errors=[InvalidField(field=missing, message="Send lat and lng together")],
         )
-    _not_implemented()
+    detail = await service.execute(
+        trip_id=trip_id,
+        viewer_id=user.id,
+        rider=Point(lat=lat, lng=lng) if lat is not None and lng is not None else None,
+        exclude=exclude or [],
+    )
+
+    return TripDetail(
+        # The driver sees their own end; everyone else, only the campus end.
+        trip=_to_response(detail.trip) if detail.viewer_is_driver else _for_rider(detail.trip),
+        # The vehicle (from Accounts) and the caller's request come with seat requests (#34).
+        vehicle=None,
+        pickups=[
+            PickupOption(
+                id=priced.offer.id,
+                label=priced.offer.pickup.label,
+                lat=priced.offer.pickup.lat,
+                lng=priced.offer.pickup.lng,
+                walk_seconds=priced.offer.walk_seconds,
+                cost=Cost(
+                    amount_cents=priced.cost.amount_cents, explanation=priced.cost.explanation
+                )
+                if priced.cost
+                else None,
+            )
+            for priced in detail.pickups
+        ],
+        my_request=None,
+    )
 
 
 @router.post(

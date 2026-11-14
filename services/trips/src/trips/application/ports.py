@@ -7,11 +7,23 @@ from typing import Protocol
 from uuid import UUID
 
 from trips.domain.entities import Trip
-from trips.domain.values import Direction, Location, Point, Quote, SearchWindow, TripMatch
+from trips.domain.values import (
+    Direction,
+    Location,
+    PickupOffer,
+    Point,
+    Quote,
+    SearchWindow,
+    TripMatch,
+)
 
 
 class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
+
+    async def get(self, trip_id: UUID) -> Trip | None:
+        """The trip, whatever its status, or None if there's no trip with this ID."""
+        ...
 
     async def search(
         self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
@@ -51,6 +63,14 @@ class RoutingService(Protocol):
     async def match(self, rider: Point, trip_ids: Sequence[UUID]) -> list[TripMatch]:
         """The trips the rider can walk to, with a pickup point for each. Raise
         RoutingUnavailableError if Routing can't answer."""
+        ...
+
+    async def pickup_points(
+        self, trip_id: UUID, rider: Point, limit: int, exclude: Sequence[str]
+    ) -> list[PickupOffer]:
+        """Up to ``limit`` pickup points on the trip's route for the rider, best first, never
+        one in ``exclude`` (#29). Empty if the route doesn't pass within walking distance, or
+        the trip has no route. Raise RoutingUnavailableError if Routing can't answer."""
         ...
 
 

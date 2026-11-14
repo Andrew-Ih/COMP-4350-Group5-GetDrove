@@ -1,12 +1,14 @@
 """Shared test fixtures: Routing failures exercised at both the HTTP boundary and the Trips
-API, and the throwaway test database."""
+API, a fake trip detail service for the contract tests, and the throwaway test database."""
 
 import asyncio
 import json
 import os
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -14,6 +16,37 @@ from alembic import command
 from alembic.config import Config
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine
+
+from trips.application.trip_detail import TripDetailResult
+from trips.domain.entities import Trip
+from trips.domain.values import Direction, Location
+
+
+class FakeTripDetail:
+    """Stands in for the trip detail service (#30) in contract tests, which check validation
+    and routing without a database: records what reached it, returns a trip without pickups."""
+
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    async def execute(self, **kwargs: Any) -> TripDetailResult:
+        self.calls.append(kwargs)
+        trip = Trip.create(
+            driver_id=uuid4(),
+            direction=Direction.TO_CAMPUS,
+            place=Location("Pembina Highway", 49.82, -97.15),
+            departure_at=datetime.now(UTC) + timedelta(days=1),
+            duration_seconds=900,
+            distance_meters=6000,
+            seats_total=3,
+            trip_id=kwargs["trip_id"],
+        )
+        return TripDetailResult(trip, viewer_is_driver=False, pickups=[])
+
+
+@pytest.fixture
+def fake_trip_detail() -> FakeTripDetail:
+    return FakeTripDetail()
 
 
 @pytest.fixture(
