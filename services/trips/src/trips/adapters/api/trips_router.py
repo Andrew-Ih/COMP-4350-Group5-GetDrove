@@ -284,8 +284,10 @@ async def search_trips(
         **REQUEST_NOT_FOUND,
     },
 )
-async def get_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def get_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    return _seat_request_response(await service.get(request_id, user.id))
 
 
 @router.post(

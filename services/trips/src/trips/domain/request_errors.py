@@ -1,6 +1,6 @@
 """Errors raised when a rider requests a seat."""
 
-from common_web.errors import DomainError, InvalidField, InvalidInputError
+from common_web.errors import DomainError, ForbiddenError, InvalidField, InvalidInputError
 
 
 class TripNotFoundError(DomainError):
@@ -144,6 +144,15 @@ class RequestNotFoundError(DomainError):
     title = "Request not found"
 
     def __init__(self, detail: str = "No request with this ID.") -> None:
+        super().__init__(detail)
+
+
+class RequestNotVisibleError(ForbiddenError):
+    """Reading a request (#358) that's neither yours nor on your trip (403 ``forbidden``)."""
+
+    def __init__(
+        self, detail: str = "Only the rider who made this request or the trip's driver can see it."
+    ) -> None:
         super().__init__(detail)
 
 

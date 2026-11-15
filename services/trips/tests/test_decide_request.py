@@ -10,6 +10,7 @@ from trips.application.decide_request import (
     AcceptRequest,
     CancelRequest,
     DeclineRequest,
+    GetSeatRequest,
     RequestActionCommand,
 )
 from trips.domain.entities import Trip
@@ -20,6 +21,7 @@ from trips.domain.request_errors import (
     RequestNotDecidableError,
     RequestNotFoundError,
     RequestNotPendingError,
+    RequestNotVisibleError,
     SeatTakenError,
 )
 from trips.domain.seat_request import RequestStatus, SeatRequest
@@ -446,3 +448,46 @@ async def test_removing_an_accepted_pickup_from_the_middle_closes_the_gap(action
     assert items[middle.id].pickup_order is None
     assert items[first.id].pickup_order == 1
     assert items[last.id].pickup_order == 2
+
+
+# ---------------------------------------------------------------- read one (#358)
+
+
+@pytest.mark.parametrize("status", list(RequestStatus))
+async def test_the_rider_reads_their_request_whatever_its_status(status: RequestStatus) -> None:
+    """So the screen sees it accepted, declined, expired..."""
+    s = Setup(status=status)
+
+    result = await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+        s.request.id, s.request.rider_id
+    )
+
+    assert result == s.request
+
+
+async def test_the_trips_driver_reads_a_request_on_it() -> None:
+    s = Setup()
+
+    result = await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+        s.request.id, s.trip.driver_id
+    )
+
+    assert result == s.request
+
+
+async def test_anyone_else_is_refused() -> None:
+    s = Setup()
+
+    with pytest.raises(RequestNotVisibleError):
+        await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+            s.request.id, uuid4()
+        )
+
+
+async def test_an_unknown_request_is_not_found() -> None:
+    s = Setup()
+
+    with pytest.raises(RequestNotFoundError):
+        await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+            uuid4(), s.request.rider_id
+        )
