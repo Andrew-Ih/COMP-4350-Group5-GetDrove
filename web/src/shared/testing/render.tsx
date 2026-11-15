@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 
 /** Renders a component with the app's providers (a fresh TanStack Query client per test). */
@@ -8,7 +8,11 @@ export function renderWithProviders(ui: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  // A wrapper rather than wrapping `ui`, so `rerender` keeps the same providers and cache.
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return render(ui, { wrapper });
 }
 
 type FakeResponse = { status: number; body?: unknown };

@@ -97,7 +97,7 @@ describe("mock API", () => {
     expect((missing as ApiError).code).toBe("route_not_found");
   });
 
-  const tripDetail = (tripId: string, query?: { lat?: number; lng?: number }) =>
+  const tripDetail = (tripId: string, query?: { lat?: number; lng?: number; exclude?: string[] }) =>
     unwrap(trips.GET("/{trip_id}", { params: { path: { trip_id: tripId }, query } }));
 
   it("returns a trip from the search with 3 pickup points on its route, the search's one first", async () => {
@@ -123,6 +123,19 @@ describe("mock API", () => {
       expect(onRoute).toBe(true);
       expect(p.walkSeconds).toBeLessThan(15 * 60);
     }
+  });
+
+  it("leaves out rejected pickup points: 3 others once, then none (#136)", async () => {
+    const [first] = await search("2026-10-20T13:30:00Z");
+    const near = { lat: 49.88, lng: -97.14 };
+    const firstThree = (await tripDetail(first!.trip.id, near)).pickups.map((p) => p.id);
+
+    const next = (await tripDetail(first!.trip.id, { ...near, exclude: firstThree })).pickups;
+    expect(next).toHaveLength(3);
+    expect(next.some((p) => firstThree.includes(p.id))).toBe(false);
+
+    const none = await tripDetail(first!.trip.id, { ...near, exclude: [...firstThree, ...next.map((p) => p.id)] });
+    expect(none.pickups).toEqual([]);
   });
 
   it("returns a trip without pickup points when opened without a location", async () => {
