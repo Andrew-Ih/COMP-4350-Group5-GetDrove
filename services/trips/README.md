@@ -115,3 +115,5 @@ Trips adapter maps the failure to the existing 503 response and nothing is saved
 Each result is the trip as a rider sees it: the driver's own end (`origin` going to campus, `destination` leaving it) is null, so their home area is never shown. If Routing can't answer, the search fails with 503 `routing_unavailable`; an empty list is a normal result. The rider's location is only passed to Routing, never stored.
 
 Settings: `TRIPS_PAYMENTS_URL` (default `http://localhost:8004`; Docker Compose sets `http://payments:8000`).
+
+`TRIPS_ACCOUNTS_URL` (default `http://localhost:8001`; Docker Compose sets `http://accounts:8000`) is the Accounts service, used for the riders' names, ratings and no-shows on the driver's request list (#139).
