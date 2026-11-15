@@ -41,6 +41,9 @@ class OutboxTripEvents:
                 driver_id=trip.driver_id,
                 departure_at=trip.departure_at,
                 pickup_label=request.pickup.label,
+                # So consumers know whether the label is the pickup (to campus) or the
+                # drop-off (leaving campus, picked up on campus) (#352, #354).
+                direction=trip.direction.value,
                 amount_cents=request.cost.amount_cents,
                 currency=request.cost.currency,
                 auto_accepted=request.auto_accepted,
