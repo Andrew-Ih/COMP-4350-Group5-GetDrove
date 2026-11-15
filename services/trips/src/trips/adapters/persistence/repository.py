@@ -6,8 +6,8 @@ from uuid import UUID
 from sqlalchemy import RowMapping, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trips.adapters.persistence.tables import trips
-from trips.domain.entities import Trip
+from trips.adapters.persistence.tables import trip_series, trips
+from trips.domain.entities import Trip, TripSeries
 from trips.domain.values import Direction, Location, SearchWindow, TripStatus
 
 
@@ -27,6 +27,7 @@ def _trip(row: RowMapping) -> Trip:
         seats_total=row["seats_total"],
         seats_available=row["seats_available"],
         status=TripStatus(row["status"]),
+        series_id=row["series_id"],
     )
 
 
@@ -55,6 +56,7 @@ class SQLAlchemyTripRepository:
                 seats_total=trip.seats_total,
                 seats_available=trip.seats_available,
                 status=trip.status.value,
+                series_id=trip.series_id,
             )
         )
 
@@ -85,3 +87,51 @@ class SQLAlchemyTripRepository:
             .order_by(trips.c.departure_at, trips.c.id)
         )
         return [_trip(row) for row in result.mappings()]
+
+
+class SQLAlchemyTripSeriesRepository:
+    """Store recurring trip series in PostgreSQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def add(self, series: TripSeries) -> None:
+        await self.session.execute(
+            insert(trip_series).values(
+                id=series.id,
+                driver_id=series.driver_id,
+                direction=series.direction.value,
+                place_label=series.place.label,
+                place_lat=series.place.lat,
+                place_lng=series.place.lng,
+                departure_at=series.departure_at,
+                seats_total=series.seats_total,
+                weekdays=list(series.weekdays),
+                end_date=series.end_date,
+            )
+        )
+
+    async def get_by_id(self, series_id: UUID) -> TripSeries | None:
+        result = await self.session.execute(
+            select(trip_series).where(trip_series.c.id == series_id)
+        )
+
+        row = result.mappings().one_or_none()
+
+        if row is None:
+            return None
+
+        return TripSeries(
+            id=row["id"],
+            driver_id=row["driver_id"],
+            direction=Direction(row["direction"]),
+            place=Location(
+                row["place_label"],
+                row["place_lat"],
+                row["place_lng"],
+            ),
+            departure_at=row["departure_at"],
+            seats_total=row["seats_total"],
+            weekdays=tuple(row["weekdays"]),
+            end_date=row["end_date"],
+        )

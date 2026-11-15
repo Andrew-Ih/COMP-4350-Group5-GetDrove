@@ -173,6 +173,7 @@ async def test_post_trip_uses_injected_service() -> None:
                 seats_total=3,
                 seats_available=3,
                 status="scheduled",
+                series_id=None,
             )
 
     fake_service = FakePostTripService()
@@ -237,6 +238,7 @@ async def test_my_trips_returns_upcoming_trips() -> None:
         seats_total=3,
         seats_available=3,
         status="scheduled",
+        series_id=None,
     )
 
     class FakeUpcomingTripsService:
