@@ -46,6 +46,7 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
 ]
 IMPLEMENTED = {
     ("POST", f"/{ID}/requests"),
+    ("GET", f"/requests/{ID}"),
     ("POST", f"/requests/{ID}/accept"),
     ("POST", f"/requests/{ID}/decline"),
     ("POST", f"/requests/{ID}/cancel"),

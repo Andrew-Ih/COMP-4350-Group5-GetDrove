@@ -1,4 +1,4 @@
-"""Accept, decline or cancel a seat request (#138)."""
+"""Accept, decline or cancel a seat request (#138), or read one (#358)."""
 
 from dataclasses import dataclass, replace
 from datetime import datetime
@@ -13,6 +13,7 @@ from trips.domain.request_errors import (
     RequestNotDecidableError,
     RequestNotFoundError,
     RequestNotPendingError,
+    RequestNotVisibleError,
     SeatTakenError,
 )
 from trips.domain.seat_request import RequestStatus, SeatRequest
@@ -50,6 +51,29 @@ class _RequestAction:
         if trip is None:
             raise RequestNotFoundError()
         return request, trip
+
+
+class GetSeatRequest:
+    """``GET /requests/{id}`` (#358): one request, for the rider who made it or the trip's
+    driver, whatever its status, so the rider's screen sees it accepted or declined. Anyone
+    else gets 403; an unknown ID 404."""
+
+    def __init__(self, *, trips: TripRepository, requests: SeatRequestRepository) -> None:
+        self.trips = trips
+        self.requests = requests
+
+    async def execute(self, request_id: UUID, user_id: UUID) -> SeatRequest:
+        request = await self.requests.get(request_id)
+        if request is None:
+            raise RequestNotFoundError()
+        if request.rider_id == user_id:
+            return request
+        trip = await self.trips.get(request.trip_id)
+        if trip is None:
+            raise RequestNotFoundError()
+        if trip.driver_id != user_id:
+            raise RequestNotVisibleError()
+        return request
 
 
 class AcceptRequest(_RequestAction):

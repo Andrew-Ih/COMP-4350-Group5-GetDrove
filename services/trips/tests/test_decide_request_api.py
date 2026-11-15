@@ -361,3 +361,76 @@ async def test_cancelling_twice_publishes_once_and_frees_one_seat(api: API) -> N
     assert second.json()["code"] == "request_not_cancellable"
     assert await seats_left(api, trip) == 3
     assert len(await saved_events(api)) == 1
+
+
+# ---------------------------------------------------------------- read one (#358)
+
+
+async def read(api: API, request_id: UUID, user_id: UUID | None = None) -> httpx.Response:
+    app, auth, _ = api
+    headers = auth.headers() if user_id is None else auth.headers(user_id=user_id)
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+        headers=headers,
+    ) as client:
+        return await client.get(f"/requests/{request_id}")
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        RequestStatus.PENDING,
+        RequestStatus.ACCEPTED,
+        RequestStatus.DECLINED,
+        RequestStatus.CANCELLED,
+        RequestStatus.EXPIRED,
+        RequestStatus.PAYMENT_FAILED,
+    ],
+)
+async def test_the_rider_reads_their_request(api: API, status: RequestStatus) -> None:
+    _, request = await seed(api, as_driver=False, status=status)
+
+    response = await read(api, request.id)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == str(request.id)
+    assert response.json()["status"] == status.value
+
+
+async def test_the_rider_sees_their_request_accepted(api: API) -> None:
+    """What the trip screen's polling sees once the driver accepts."""
+    _, request = await seed(api, as_driver=False)
+    assert (await read(api, request.id)).json()["status"] == "pending"
+
+    async with async_sessionmaker(api[2], expire_on_commit=False)() as session, session.begin():
+        repository = SQLAlchemySeatRequestRepository(session)
+        accepted = request.accept(datetime.now(UTC))
+        assert await repository.save_decision(accepted, expected=RequestStatus.PENDING)
+
+    assert (await read(api, request.id)).json()["status"] == "accepted"
+
+
+async def test_the_trips_driver_reads_a_request_on_it(api: API) -> None:
+    _, request = await seed(api, as_driver=True)
+
+    response = await read(api, request.id)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["riderId"] == str(request.rider_id)
+
+
+async def test_someone_else_gets_403(api: API) -> None:
+    _, request = await seed(api, as_driver=True)
+
+    response = await read(api, request.id, user_id=uuid4())
+
+    assert response.status_code == 403, response.text
+    assert response.json()["code"] == "forbidden"
+
+
+async def test_an_unknown_request_is_404(api: API) -> None:
+    response = await read(api, uuid4())
+
+    assert response.status_code == 404, response.text
+    assert response.json()["code"] == "request_not_found"

@@ -25,6 +25,7 @@ from trips.application.decide_request import (
     AcceptRequest,
     CancelRequest,
     DeclineRequest,
+    GetSeatRequest,
     RequestActionCommand,
 )
 from trips.application.list_trip_requests import (
@@ -264,6 +265,12 @@ class DecideRequestRunner:
             OutboxPublisher(session, outbox, producer="trips", correlation_id=current_request_id())
         )
         return SQLAlchemyTripRepository(session), SQLAlchemySeatRequestRepository(session), events
+
+    async def get(self, request_id: UUID, user_id: UUID) -> SeatRequest:
+        """Reads one request (#358); nothing is written."""
+        async with self.session_factory() as session:
+            trips, requests, _ = self._parts(session)
+            return await GetSeatRequest(trips=trips, requests=requests).execute(request_id, user_id)
 
     async def accept(self, command: RequestActionCommand) -> SeatRequest:
         async with self.session_factory() as session:
