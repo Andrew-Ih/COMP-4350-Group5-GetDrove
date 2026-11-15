@@ -27,6 +27,9 @@ class Settings(BaseSettings):
 
     # How long before departure an accepted rider is reminded of their trip (#148).
     reminder_lead_minutes: int = Field(default=30, ge=1, le=24 * 60)
+    # Accounts, for the names and emails of the people a notification is for (#146). Inside
+    # Docker this is http://accounts:8000; its /internal paths aren't public.
+    accounts_url: str = "http://localhost:8001"
 
 
 def get_settings() -> Settings:

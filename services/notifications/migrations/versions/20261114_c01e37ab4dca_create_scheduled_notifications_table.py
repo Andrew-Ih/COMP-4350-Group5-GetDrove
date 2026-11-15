@@ -1,7 +1,7 @@
 """create scheduled_notifications table
 
 Revision ID: c01e37ab4dca
-Revises: 2fbb4481a682
+Revises: 3218996b168e
 Create Date: 2026-11-14 15:00:00.000000
 """
 
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = 'c01e37ab4dca'
-down_revision: str | None = '2fbb4481a682'
+down_revision: str | None = '3218996b168e'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

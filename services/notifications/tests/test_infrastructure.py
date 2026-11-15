@@ -49,7 +49,11 @@ def test_redis_reads_outlast_the_consumers_wait() -> None:
     assert timeout > CONSUMER_BLOCK_MS / 1000
 
 
-def test_reads_trips_events_for_reminders() -> None:
-    """Reminders (#148) follow Trips' events; verification emails follow Accounts'."""
-    assert stream_name("trips") in CONSUMED_STREAMS
-    assert stream_name("accounts") in CONSUMED_STREAMS
+def test_reads_the_streams_notifications_come_from() -> None:
+    """Accounts (verification emails, driver approval), Trips (requests and trips) and
+    Payments (failed holds), #146."""
+    assert set(CONSUMED_STREAMS) == {
+        stream_name("accounts"),
+        stream_name("trips"),
+        stream_name("payments"),
+    }
