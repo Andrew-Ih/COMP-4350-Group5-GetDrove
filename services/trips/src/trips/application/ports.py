@@ -26,7 +26,7 @@ class TripRepository(Protocol):
 class TripCancellationRepository(Protocol):
     async def get_for_update(self, trip_id: UUID) -> Trip | None: ...
 
-    async def save_cancellation(self, trip: Trip, cancelled_at: datetime) -> list[UUID]:
+    async def save_cancellation(self, trip: Trip) -> list[UUID]:
         """Persist the cancellation and return the riders whose requests were closed."""
         ...
 

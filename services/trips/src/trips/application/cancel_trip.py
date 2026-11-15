@@ -27,7 +27,7 @@ class CancelTrip:
 
         cancelled_at = self.clock()
         is_late = trip.cancel(driver_id, cancelled_at)
-        rider_ids = await self.repository.save_cancellation(trip, cancelled_at)
+        rider_ids = await self.repository.save_cancellation(trip)
         await self.events.trip_cancelled(trip, rider_ids)
         if is_late:
             await self.events.driver_late_cancellation(trip, cancelled_at)

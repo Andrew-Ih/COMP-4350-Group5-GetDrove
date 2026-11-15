@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select, update
+from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import seat_requests, trips
@@ -65,7 +65,7 @@ class SQLAlchemyTripRepository:
         row = result.mappings().one_or_none()
         return _trip(row) if row is not None else None
 
-    async def save_cancellation(self, trip: Trip, cancelled_at: datetime) -> list[UUID]:
+    async def save_cancellation(self, trip: Trip) -> list[UUID]:
         await self.session.execute(
             update(trips).where(trips.c.id == trip.id).values(status=trip.status.value)
         )
@@ -75,7 +75,7 @@ class SQLAlchemyTripRepository:
                 seat_requests.c.trip_id == trip.id,
                 seat_requests.c.status.in_(("pending", "accepted")),
             )
-            .values(status="cancelled", decided_at=cancelled_at)
+            .values(status="cancelled", decided_at=func.now(), pickup_order=None)
             .returning(seat_requests.c.rider_id)
         )
         return sorted(result.scalars())

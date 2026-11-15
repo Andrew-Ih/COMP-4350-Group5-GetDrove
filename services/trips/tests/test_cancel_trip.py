@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, tzinfo
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -12,6 +12,7 @@ from common_security.testing import TestAuth
 from trips.adapters.api.dependencies import CancelTripCommand, get_cancel_trip
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox, seat_requests, trips
+from trips.application import cancel_trip as cancel_trip_module
 from trips.application.cancel_trip import CancelTrip
 from trips.domain.entities import Trip
 from trips.domain.errors import TripNotCancellableError
@@ -69,7 +70,7 @@ async def test_cancel_trip(minutes, status, owner, expected, code):
     repository.get_for_update.assert_awaited_once_with(trip.id)
     if expected == 200:
         assert response.json()["status"] == "cancelled"
-        repository.save_cancellation.assert_awaited_once_with(trip, NOW)
+        repository.save_cancellation.assert_awaited_once_with(trip)
         events.trip_cancelled.assert_awaited_once_with(trip, riders)
         if minutes < 60:
             events.driver_late_cancellation.assert_awaited_once_with(trip, NOW)
@@ -81,13 +82,21 @@ async def test_cancel_trip(minutes, status, owner, expected, code):
         assert not events.mock_calls
 
 
-async def test_cancellation_closes_requests_and_records_events_once(trips_database):
+async def test_cancellation_closes_requests_and_records_events_once(trips_database, monkeypatch):
     engine = create_async_engine(trips_database)
     sessions = async_sessionmaker(engine)
     now = datetime.now(UTC)
+    app_now = now - timedelta(minutes=10)
     trip = make_trip(uuid4(), now + timedelta(minutes=30))
     pending, accepted, declined = uuid4(), uuid4(), uuid4()
     trip_events = outbox.c.envelope["payload"]["tripId"].astext == str(trip.id)
+
+    class SkewedDateTime(datetime):
+        @classmethod
+        def now(cls, tz: tzinfo | None = None) -> datetime:
+            return app_now.astimezone(tz)
+
+    monkeypatch.setattr(cancel_trip_module, "datetime", SkewedDateTime)
 
     try:
         async with sessions.begin() as session:
@@ -100,6 +109,7 @@ async def test_cancellation_closes_requests_and_records_events_once(trips_databa
                         "trip_id": trip.id,
                         "rider_id": rider,
                         "status": status,
+                        "pickup_order": 1 if status == "accepted" else None,
                         "pickup_label": "Campus",
                         "pickup_lat": 49.8,
                         "pickup_lng": -97.1,
@@ -141,6 +151,8 @@ async def test_cancellation_closes_requests_and_records_events_once(trips_databa
             rows = {row.rider_id: row for row in requests}
             assert rows[pending].status == rows[accepted].status == "cancelled"
             assert rows[pending].decided_at == rows[accepted].decided_at
+            assert app_now < rows[accepted].created_at <= rows[accepted].decided_at
+            assert rows[accepted].pickup_order is None
             assert rows[declined].status == "declined"
 
             events = await session.scalars(
@@ -150,6 +162,7 @@ async def test_cancellation_closes_requests_and_records_events_once(trips_databa
             assert cancellation["type"] == "TripCancelled"
             assert set(cancellation["payload"]["riderIds"]) == {str(pending), str(accepted)}
             assert late["type"] == "DriverLateCancellation"
+            assert datetime.fromisoformat(late["payload"]["cancelledAt"]) == app_now
     finally:
         # Both commands use independent transactions, so their committed rows need cleanup.
         try:
