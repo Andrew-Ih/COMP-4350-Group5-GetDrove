@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select
+from sqlalchemy import RowMapping, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import trip_series, trips
@@ -36,6 +36,13 @@ class SQLAlchemyTripRepository:
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def lock_driver(self, driver_id: UUID) -> None:
+        """Serialize recurring posts for this driver until the transaction ends."""
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:driver_id, 0))"),
+            {"driver_id": str(driver_id)},
+        )
 
     async def add(self, trip: Trip) -> None:
         await self.session.execute(

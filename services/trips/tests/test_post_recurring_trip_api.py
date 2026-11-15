@@ -5,6 +5,7 @@ import json
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -132,26 +133,48 @@ async def saved_rows(
     return saved_series, saved_trips, saved_events
 
 
-async def test_post_series_creates_trips_and_events(
+async def test_post_series_creates_searchable_trips_and_events(
     api: tuple[Any, TestAuth, Any],
 ) -> None:
     app, auth, engine = api
-    routing_calls = 0
+    routed_ids: set[str] = set()
 
-    def counting_route(
-        request: httpx.Request,
-    ) -> httpx.Response:
-        nonlocal routing_calls
-        routing_calls += 1
-        return route(request)
+    def routing(request: httpx.Request) -> httpx.Response:
+        data = json.loads(request.content)
+        if request.url.path == "/internal/routes":
+            routed_ids.add(data["tripId"])
+            return route(request)
+        assert request.url.path == "/internal/matches"
+        return httpx.Response(
+            200,
+            json={
+                "matches": [
+                    {
+                        "tripId": trip_id,
+                        "pickup": {"label": "Pembina Highway", "lat": 49.82, "lng": -97.15},
+                        "walkSeconds": 60,
+                        "riderDistanceMeters": 4000,
+                    }
+                    for trip_id in data["tripIds"]
+                    if trip_id in routed_ids
+                ],
+            },
+        )
 
     body = series_payload()
 
-    async with httpx.AsyncClient(
-        transport=httpx.MockTransport(counting_route),
-        base_url="http://routing:8000",
-    ) as routing_client:
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(routing),
+            base_url="http://routing:8000",
+        ) as routing_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(lambda request: httpx.Response(503)),
+            base_url="http://payments:8000",
+        ) as payments_client,
+    ):
         app.state.routing_client = routing_client
+        app.state.payments_client = payments_client
 
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(
@@ -165,14 +188,27 @@ async def test_post_series_creates_trips_and_events(
             },
         ) as client:
             response = await client.post("/series", json=body)
+            assert response.status_code == 201, response.text
+            occurrence = response.json()["trips"][0]
+            search = await client.get(
+                "/search",
+                params={
+                    "lat": 49.82,
+                    "lng": -97.15,
+                    "direction": "to_campus",
+                    "time": occurrence["estimatedArrivalAt"],
+                },
+                headers=auth.headers(user_id=uuid4()),
+            )
 
-    assert response.status_code == 201, response.text
+    assert search.status_code == 200, search.text
+    assert [result["trip"]["id"] for result in search.json()] == [occurrence["id"]]
 
     result = response.json()
 
     assert len(result["trips"]) == 3
     assert result["skippedDates"] == []
-    assert routing_calls == 1
+    assert routed_ids == {trip["id"] for trip in result["trips"]}
 
     series_id = result["seriesId"]
 
@@ -264,7 +300,7 @@ async def test_concurrent_series_do_not_duplicate_trips(
 
     assert sorted(len(result["skippedDates"]) for result in results) == [0, 3]
 
-    assert routing_calls == 2
+    assert routing_calls == 6
 
     series_ids = {result["seriesId"] for result in results}
 
@@ -302,10 +338,15 @@ async def test_post_series_rolls_back_when_routing_fails(
 ) -> None:
     """A routing failure must not persist a partial series."""
     app, auth, engine = api
+    routing_calls = 0
 
     def failing_route(
         request: httpx.Request,
     ) -> httpx.Response:
+        nonlocal routing_calls
+        routing_calls += 1
+        if routing_calls == 1:
+            return route(request)
         assert request.url.path == "/internal/routes"
         return httpx.Response(
             503,
@@ -333,7 +374,9 @@ async def test_post_series_rolls_back_when_routing_fails(
         ) as client:
             response = await client.post("/series", json=body)
 
-    assert response.status_code >= 500, response.text
+    assert response.status_code == 503, response.text
+    assert response.json()["code"] == "routing_unavailable"
+    assert routing_calls == 2
 
     saved_series, saved_trips, saved_events = await saved_rows(engine, auth.user_id)
 

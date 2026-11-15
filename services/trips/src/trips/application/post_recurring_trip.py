@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from trips.application.ports import (
@@ -40,58 +40,50 @@ class PostRecurringTrip:
         self.events = events
         self.clock = clock or (lambda: datetime.now(UTC))
 
-    async def execute(
-        self,
-        series: TripSeries,
-    ) -> PostRecurringTripResult:
-        now = self.clock()
-
-        if series.departure_at <= now:
+    async def prepare(self, series: TripSeries) -> list[Trip]:
+        """Store a route under each candidate occurrence's ID before database work."""
+        if series.departure_at <= self.clock():
             raise DepartureInPastError()
 
-        departures = expand_trip_series(series)
+        origin, destination = trip_ends(series.direction, series.place)
+        candidates = []
+        for departure in expand_trip_series(series):
+            trip_id = uuid4()
+            route = await self.routing.compute_route(trip_id, origin, destination)
+            candidates.append(
+                Trip.create(
+                    driver_id=series.driver_id,
+                    direction=series.direction,
+                    place=series.place,
+                    departure_at=departure,
+                    duration_seconds=route.duration_seconds,
+                    distance_meters=route.distance_meters,
+                    seats_total=series.seats_total,
+                    series_id=series.id,
+                    trip_id=trip_id,
+                )
+            )
+        return candidates
 
+    async def execute(self, series: TripSeries, candidates: list[Trip]) -> PostRecurringTripResult:
+        """Check clashes and save prepared trips under the caller's transaction and lock."""
+        now = self.clock()
+        if series.departure_at <= now:
+            raise DepartureInPastError()
         existing_trips = await self.trip_repository.get_active_or_upcoming_by_driver(
-            series.driver_id,
-            now,
+            series.driver_id, now
         )
-
-        origin, destination = trip_ends(
-            series.direction,
-            series.place,
-        )
-
-        # Compute the route once for the entire series.
-        route = await self.routing.compute_route(
-            trip_id=uuid4(),
-            origin=origin,
-            destination=destination,
-        )
-
         created_trips: list[Trip] = []
         skipped_departures: list[datetime] = []
 
-        for departure in departures:
-            arrival = departure + timedelta(seconds=route.duration_seconds)
-
+        for trip in candidates:
             if has_trip_conflict(
-                departure,
-                arrival,
+                trip.departure_at,
+                trip.estimated_arrival_at,
                 existing_trips + created_trips,
             ):
-                skipped_departures.append(departure)
+                skipped_departures.append(trip.departure_at)
                 continue
-
-            trip = Trip.create(
-                driver_id=series.driver_id,
-                direction=series.direction,
-                place=series.place,
-                departure_at=departure,
-                duration_seconds=route.duration_seconds,
-                distance_meters=route.distance_meters,
-                seats_total=series.seats_total,
-                series_id=series.id,
-            )
 
             created_trips.append(trip)
 

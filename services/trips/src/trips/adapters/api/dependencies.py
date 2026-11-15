@@ -5,7 +5,6 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, Request
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from common_web import current_request_id
@@ -27,17 +26,6 @@ from trips.application.search_trips import SearchResult, SearchTrips
 from trips.application.upcoming_trips import ListUpcomingTrips
 from trips.domain.entities import Trip, TripSeries
 from trips.domain.values import Direction, Location, Point
-
-
-async def lock_driver_trips(
-    session: AsyncSession,
-    driver_id: UUID,
-) -> None:
-    """Serialize trip creation for a driver within a transaction."""
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtextextended(:driver_id, 0))"),
-        {"driver_id": str(driver_id)},
-    )
 
 
 class PostTripCommand:
@@ -74,8 +62,6 @@ class PostTripCommand:
             use_case = PostTrip(repository, self.routing, events)
 
             async with session.begin():
-                await lock_driver_trips(session, driver_id)
-
                 return await use_case.execute(
                     driver_id=driver_id,
                     direction=direction,
@@ -131,10 +117,10 @@ class PostRecurringTripCommand:
                 events=events,
             )
 
+            candidates = await use_case.prepare(series)
             async with session.begin():
-                await lock_driver_trips(session, series.driver_id)
-
-                return await use_case.execute(series)
+                await trip_repository.lock_driver(series.driver_id)
+                return await use_case.execute(series, candidates)
 
 
 def get_post_recurring_trip(
@@ -166,25 +152,11 @@ class SearchTripsQuery:
         self.pricing = pricing
 
     async def execute(
-        self,
-        *,
-        rider_id: UUID,
-        rider: Point,
-        direction: Direction,
-        time: datetime,
+        self, *, rider_id: UUID, rider: Point, direction: Direction, time: datetime
     ) -> list[SearchResult]:
         async with self.session_factory() as session:
-            use_case = SearchTrips(
-                SQLAlchemyTripRepository(session),
-                self.routing,
-                self.pricing,
-            )
-            return await use_case.execute(
-                rider_id,
-                rider,
-                direction,
-                time,
-            )
+            use_case = SearchTrips(SQLAlchemyTripRepository(session), self.routing, self.pricing)
+            return await use_case.execute(rider_id, rider, direction, time)
 
 
 def get_search_trips(request: Request) -> SearchTripsQuery:
@@ -207,11 +179,7 @@ class UpcomingTripsCommand:
     ) -> None:
         self.session_factory = session_factory
 
-    async def execute(
-        self,
-        *,
-        driver_id: UUID,
-    ) -> list[Trip]:
+    async def execute(self, *, driver_id: UUID) -> list[Trip]:
         async with self.session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
             use_case = ListUpcomingTrips(repository)
@@ -224,7 +192,4 @@ def get_upcoming_trips(request: Request) -> UpcomingTripsCommand:
     )
 
 
-UpcomingTripsService = Annotated[
-    UpcomingTripsCommand,
-    Depends(get_upcoming_trips),
-]
+UpcomingTripsService = Annotated[UpcomingTripsCommand, Depends(get_upcoming_trips)]

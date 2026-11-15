@@ -56,12 +56,12 @@ class FakeEvents:
 
 class FakeRouting:
     def __init__(self) -> None:
-        self.calls = 0
+        self.trip_ids: list[UUID] = []
 
     async def compute_route(
         self, trip_id: UUID, origin: Location, destination: Location
     ) -> RouteEstimate:
-        self.calls += 1
+        self.trip_ids.append(trip_id)
         return RouteEstimate(
             distance_meters=6000,
             duration_seconds=1800,
@@ -106,7 +106,7 @@ async def test_creates_recurring_trips() -> None:
     use_case, trips, series_repo, routing, events = setup_use_case()
     series = make_series()
 
-    result = await use_case.execute(series)
+    result = await use_case.execute(series, await use_case.prepare(series))
 
     assert len(result.created_trips) == 6
     assert len(result.skipped_departures) == 0
@@ -114,7 +114,7 @@ async def test_creates_recurring_trips() -> None:
     assert series_repo.saved == [series]
     assert trips.saved == result.created_trips
 
-    assert routing.calls == 1
+    assert routing.trip_ids == [trip.id for trip in result.created_trips]
 
     assert all(trip.series_id == series.id for trip in result.created_trips)
 
@@ -137,7 +137,8 @@ async def test_skips_overlapping_departure() -> None:
 
     use_case, trips, _, routing, events = setup_use_case(existing=[existing])
 
-    result = await use_case.execute(series)
+    candidates = await use_case.prepare(series)
+    result = await use_case.execute(series, candidates)
 
     assert len(result.created_trips) == 5
     assert len(result.skipped_departures) == 1
@@ -146,7 +147,7 @@ async def test_skips_overlapping_departure() -> None:
 
     assert len(trips.saved) == 5
     assert len(events.posted) == 5
-    assert routing.calls == 1
+    assert routing.trip_ids == [trip.id for trip in candidates]
 
 
 async def test_allows_adjacent_trip() -> None:
@@ -165,7 +166,7 @@ async def test_allows_adjacent_trip() -> None:
 
     use_case, _, _, _, _ = setup_use_case([existing])
 
-    result = await use_case.execute(series)
+    result = await use_case.execute(series, await use_case.prepare(series))
 
     assert len(result.created_trips) == 6
     assert result.skipped_departures == []
@@ -174,7 +175,8 @@ async def test_allows_adjacent_trip() -> None:
 async def test_preserves_trip_duration() -> None:
     use_case, _, _, _, _ = setup_use_case()
 
-    result = await use_case.execute(make_series())
+    series = make_series()
+    result = await use_case.execute(series, await use_case.prepare(series))
 
     for trip in result.created_trips:
         assert trip.estimated_arrival_at - trip.departure_at == timedelta(minutes=30)
@@ -186,9 +188,9 @@ async def test_rejects_past_departure() -> None:
     series = make_series(departure_at=datetime(2026, 11, 13, 8, tzinfo=WINNIPEG_TZ))
 
     with pytest.raises(DepartureInPastError):
-        await use_case.execute(series)
+        await use_case.prepare(series)
 
     assert trips.saved == []
     assert series_repo.saved == []
-    assert routing.calls == 0
+    assert routing.trip_ids == []
     assert events.posted == []

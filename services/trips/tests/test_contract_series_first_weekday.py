@@ -27,17 +27,7 @@ async def client() -> AsyncClient:
     app = create_app()
     auth.install(app)
 
-    # Fake service so contract tests don't need a database
-    class FakeRecurringService:
-        async def execute(self, *, series):
-            from fastapi import HTTPException
-
-            raise HTTPException(
-                status_code=501,
-                detail="Contract test stub",
-            )
-
-    app.dependency_overrides[get_post_recurring_trip] = lambda: FakeRecurringService()
+    app.dependency_overrides[get_post_recurring_trip] = object
 
     return AsyncClient(
         transport=ASGITransport(app=app),
@@ -55,12 +45,18 @@ async def client() -> AsyncClient:
         {"departureAt": "2026-11-17T01:30:00Z", "weekdays": ["mon"]},
     ],
 )
-async def test_a_first_departure_on_a_chosen_weekday_reaches_the_handler(
-    client: AsyncClient, change: dict[str, Any]
-) -> None:
-    response = await client.post("/series", json={**SERIES, **change})
+def test_a_first_departure_on_a_chosen_weekday_is_valid(change: dict[str, Any]) -> None:
+    PostTripSeriesRequest.model_validate({**SERIES, **change})
 
-    assert response.status_code == 501, response.text
+
+@pytest.mark.parametrize("end_date", ["2026-11-15", "2026-11-16", "2027-03-09"])
+async def test_invalid_end_date_identifies_the_field(client: AsyncClient, end_date: str) -> None:
+    response = await client.post("/series", json={**SERIES, "endDate": end_date})
+
+    assert response.status_code == 422, response.text
+    body = response.json()
+    assert body["code"] == "invalid_input"
+    assert [error["field"] for error in body["errors"]] == ["endDate"]
 
 
 @pytest.mark.parametrize(

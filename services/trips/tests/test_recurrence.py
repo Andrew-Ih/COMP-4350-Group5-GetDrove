@@ -61,13 +61,18 @@ def test_uses_winnipeg_weekday_not_utc_weekday() -> None:
 
 def test_preserves_local_time_across_dst() -> None:
     series = make_series(
-        departure_at=datetime(2027, 3, 8, 8, tzinfo=WINNIPEG_TZ),
+        departure_at=datetime(2026, 3, 2, 8, tzinfo=WINNIPEG_TZ),
         weekdays=("mon",),
-        end_date=date(2027, 3, 15),
+        end_date=date(2026, 3, 9),
     )
 
     departures = expand_trip_series(series)
 
-    assert len(departures) == 2
-
-    assert all(departure.astimezone(WINNIPEG_TZ).hour == 8 for departure in departures)
+    assert [
+        (local.hour, local.minute)
+        for local in (departure.astimezone(WINNIPEG_TZ) for departure in departures)
+    ] == [(8, 0), (8, 0)]
+    assert [departure.astimezone(UTC) for departure in departures] == [
+        datetime(2026, 3, 2, 14, tzinfo=UTC),
+        datetime(2026, 3, 9, 13, tzinfo=UTC),
+    ]
