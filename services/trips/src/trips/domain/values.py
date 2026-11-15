@@ -89,12 +89,26 @@ class TripMatch:
     meters_to_trip_end: int  # along the route, from the pickup to the end of the trip
 
 
-def ride_meters(direction: Direction, trip_distance_meters: int, match: TripMatch) -> int:
-    """How far the rider rides, which their share is priced on. Going to campus they ride
-    from the pickup to the end; leaving campus, from the start (campus) to the drop-off."""
+@dataclass(frozen=True)
+class PickupOffer:
+    """One of Routing's pickup points for a rider on a trip (#29, #30): where they'd be
+    picked up going to campus, or dropped off leaving it. ``id`` is Routing's, sent back when
+    the rider requests a seat or rejects the point."""
+
+    id: str
+    pickup: Location
+    walk_seconds: int
+    meters_to_trip_end: int  # along the route, from the pickup to the end of the trip
+
+
+def ride_meters(direction: Direction, trip_distance_meters: int, meters_to_trip_end: int) -> int:
+    """How far the rider rides, which their share is priced on, from Routing's distance from
+    the pickup to the trip's end. Going to campus they ride from the pickup to the end; leaving
+    campus, from the start (campus) to the drop-off. Search and the trip detail both use it, so
+    a pickup point costs the same in both."""
     if direction == Direction.TO_CAMPUS:
-        return match.meters_to_trip_end
-    return max(0, trip_distance_meters - match.meters_to_trip_end)
+        return meters_to_trip_end
+    return max(0, trip_distance_meters - meters_to_trip_end)
 
 
 @dataclass(frozen=True)

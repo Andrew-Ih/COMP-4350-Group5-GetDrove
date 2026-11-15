@@ -70,6 +70,7 @@ Endpoints return 501 until the task in brackets implements them.
 | `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
 | `DriverApproved`, `DriverRejected` | Accounts | Trips, Notifications | Written |
 | `PaymentHeld`, `PaymentFailed`, `PaymentReleased` | Payments | Trips, Notifications | Written |
+| Which way an accepted trip goes: optional `direction` on `RequestAccepted`, so `pickupLabel` can be told apart as the pickup (to campus) or the drop-off (from campus) (#352, for #146 and #149) | Trips | Notifications | Written |
 
 Changes to Sprint 1 contracts: `Trip` gains `seriesId`; `GET /api/trips/{tripId}` returns a
 `TripDetail` instead of a `Trip`; `GET /api/trips/mine` only takes `role=driver` (a rider's

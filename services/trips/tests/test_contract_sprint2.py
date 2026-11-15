@@ -1,5 +1,6 @@
 """The Sprint 2 Trips contract (#262): every new endpoint exists, validates its input,
-needs a token and returns 501 until its task implements it."""
+needs a token and returns 501 until its task implements it. The trip detail is implemented
+(#30), so it's tested in test_trip_detail_api.py; here only its validation."""
 
 from typing import Any
 
@@ -7,7 +8,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
-from trips.adapters.api.dependencies import get_upcoming_trips
+from trips.adapters.api.dependencies import get_trip_detail, get_upcoming_trips
 from trips.adapters.api.schemas import AutoAcceptRules, PostTripSeriesRequest, SeatRequestBody
 from trips.infrastructure.main import create_app
 
@@ -30,8 +31,6 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("GET", "/requests/mine?when=past", {}),
     ("GET", "/auto-accept", {}),
     ("PUT", "/auto-accept", {"json": RULES}),
-    ("GET", f"/{ID}", {}),
-    ("GET", f"/{ID}?lat=49.8722&lng=-97.1561", {}),
     ("POST", f"/{ID}/cancel", {}),
     ("POST", f"/series/{ID}/cancel", {}),
     ("POST", f"/{ID}/requests", {"json": SEAT_REQUEST}),
@@ -44,12 +43,14 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
 
 
 @pytest.fixture
-async def client() -> AsyncClient:
+async def client(fake_trip_detail: Any) -> AsyncClient:
     auth = TestAuth()
     app = create_app()
     auth.install(app)
     # /mine?when=past reaches the handler before the 501, so it needs a service.
     app.dependency_overrides[get_upcoming_trips] = lambda: object()
+    # The trip detail is implemented (#30): see test_trip_detail_api.py.
+    app.dependency_overrides[get_trip_detail] = lambda: fake_trip_detail
     return AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
     )

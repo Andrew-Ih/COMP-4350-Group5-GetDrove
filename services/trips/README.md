@@ -115,3 +115,15 @@ Trips adapter maps the failure to the existing 503 response and nothing is saved
 Each result is the trip as a rider sees it: the driver's own end (`origin` going to campus, `destination` leaving it) is null, so their home area is never shown. If Routing can't answer, the search fails with 503 `routing_unavailable`; an empty list is a normal result. The rider's location is only passed to Routing, never stored.
 
 Settings: `TRIPS_PAYMENTS_URL` (default `http://localhost:8004`; Docker Compose sets `http://payments:8000`).
+
+## Trip detail (#30)
+
+`GET /{tripId}?lat=&lng=&exclude=` (gateway: `GET /api/trips/{tripId}`) requires authentication and returns one trip, whatever its status:
+
+- **`trip`:** the driver's own end (`origin` going to campus, `destination` leaving it) is `null` for everyone but the trip's driver, as in search.
+- **`pickups`:** with the rider's `lat` and `lng`, up to 3 pickup points from Routing (`POST /internal/pickup-points`, #29), best first, each with its walking time and the rider's `cost`. Priced like search (`ride_meters`: from the pickup to campus going to campus, from campus to the drop-off leaving it), so the first point and its cost match what search showed for the same trip and spot. `exclude` (the IDs of points the rider rejected, #136) is passed on to Routing, which then offers the next best.
+  - Empty without `lat`/`lng`, for the trip's own driver (they can't ride it), for a trip that isn't scheduled any more, and for a trip with no stored route (Routing's 404).
+  - If Payments can't price a point, it's still shown, with `cost: null`.
+- **`vehicle`** and **`myRequest`** are `null` for now: they come with seat requests (#34) and the driver's vehicle from Accounts.
+
+404 `trip_not_found` for an unknown trip, 422 if only one of `lat` and `lng` is sent, 503 `routing_unavailable` if Routing can't work out the pickup points. The rider's location is only passed to Routing, never stored.
