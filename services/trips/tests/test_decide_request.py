@@ -1,5 +1,6 @@
 """Accept, decline and cancel use case tests (#138)."""
 
+from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -13,7 +14,9 @@ from trips.application.decide_request import (
     GetSeatRequest,
     RequestActionCommand,
 )
+from trips.application.request_routing import DetourEstimate
 from trips.domain.entities import Trip
+from trips.domain.errors import RoutingUnavailableError
 from trips.domain.request_errors import (
     NotTripDriverError,
     NotYourRequestError,
@@ -87,6 +90,17 @@ class FakeRequests:
     def __init__(self, trip: Trip, request: SeatRequest) -> None:
         self.trip = trip
         self.items = {request.id: request}
+        self.locked: list[UUID] = []
+
+    async def lock_trip(self, trip_id: UUID) -> None:
+        self.locked.append(trip_id)
+
+    async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]:
+        accepted = sorted(
+            (item for item in self.items.values() if item.status is RequestStatus.ACCEPTED),
+            key=lambda item: item.pickup_order or 0,
+        )
+        return [item.pickup for item in accepted]
 
     async def get(self, request_id: UUID) -> SeatRequest | None:
         return self.items.get(request_id)
@@ -131,6 +145,23 @@ class FakeRequests:
             self.items[item.id] = replace(item, pickup_order=number)
 
 
+class FakeRouting:
+    """Routing's detour estimate when accepting (#360). With no ``positions`` it can't
+    answer, like Routing being down, so the position saved with the request is used."""
+
+    def __init__(self, positions: list[int] | None = None) -> None:
+        self.positions = list(positions) if positions is not None else None
+        self.calls: list[int] = []  # how many accepted pickups it was given each time
+
+    async def estimate_detour(
+        self, *, trip_id: UUID, accepted_pickups: Sequence[Location], new_pickup: Location
+    ) -> DetourEstimate:
+        self.calls.append(len(accepted_pickups))
+        if self.positions is None:
+            raise RoutingUnavailableError()
+        return DetourEstimate(added_seconds=60, position=self.positions.pop(0), total_seconds=900)
+
+
 class FakeEvents:
     def __init__(self) -> None:
         self.calls: list[tuple[str, UUID, bool | None]] = []
@@ -161,9 +192,15 @@ class Setup:
         self.request = make_request(self.trip, status)
         self.requests = FakeRequests(self.trip, self.request)
         self.events = FakeEvents()
+        self.routing = FakeRouting()
 
     def accept(self) -> AcceptRequest:
-        return AcceptRequest(trips=FakeTrips(self.trip), requests=self.requests, events=self.events)
+        return AcceptRequest(
+            trips=FakeTrips(self.trip),
+            requests=self.requests,
+            events=self.events,
+            routing=self.routing,
+        )
 
     def decline(self) -> DeclineRequest:
         return DeclineRequest(
@@ -491,3 +528,53 @@ async def test_an_unknown_request_is_not_found() -> None:
         await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
             uuid4(), s.request.rider_id
         )
+
+
+# ---------------------------------------------------------------- placing on accept (#360)
+
+
+async def test_accepting_places_the_pickup_where_the_route_is_now() -> None:
+    """Both asked before anyone was accepted, so both saved position 0. Accepting the second
+    puts it where Routing places it now, after the first, not at the stale 0."""
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    second = add_pending(setup, 0)
+    setup.routing = FakeRouting(positions=[0, 1])
+
+    await setup.accept().execute(by_driver(setup, first))
+    await setup.accept().execute(by_driver(setup, second))
+
+    assert setup.requests.items[first.id].pickup_order == 1
+    assert setup.requests.items[second.id].pickup_order == 2
+    # Routing was given the pickups accepted at that moment: none, then the first one.
+    assert setup.routing.calls == [0, 1]
+    assert setup.requests.locked == [setup.trip.id, setup.trip.id]
+
+
+async def test_with_routing_down_the_position_from_the_request_is_used(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    second = add_pending(setup, 0)
+
+    await setup.accept().execute(by_driver(setup, first))
+    accepted = await setup.accept().execute(by_driver(setup, second))
+
+    assert accepted.status is RequestStatus.ACCEPTED
+    assert setup.requests.items[second.id].pickup_order == 1  # saved position 0
+    assert setup.events.calls[-1] == ("accepted", second.id, None)
+    assert "using its position from when it was requested" in caplog.text
+    assert str(second.id) in caplog.text
+
+
+async def test_a_request_that_isnt_pending_doesnt_ask_routing() -> None:
+    setup = Setup(status=RequestStatus.DECLINED)
+
+    with pytest.raises(RequestNotPendingError):
+        await setup.accept().execute(setup.command(setup.trip.driver_id))
+
+    assert setup.routing.calls == []
+    assert setup.requests.locked == []

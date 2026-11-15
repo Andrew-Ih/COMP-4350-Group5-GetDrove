@@ -1,11 +1,14 @@
 """Accept, decline or cancel a seat request (#138), or read one (#358)."""
 
+import logging
 from dataclasses import dataclass, replace
 from datetime import datetime
 from uuid import UUID
 
 from trips.application.ports import SeatRequestEvents, SeatRequestRepository, TripRepository
+from trips.application.request_routing import RequestRoutingService
 from trips.domain.entities import Trip
+from trips.domain.errors import RoutingUnavailableError
 from trips.domain.request_errors import (
     NotTripDriverError,
     NotYourRequestError,
@@ -18,6 +21,8 @@ from trips.domain.request_errors import (
 )
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import TripStatus
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -77,23 +82,63 @@ class GetSeatRequest:
 
 
 class AcceptRequest(_RequestAction):
+    """The driver accepts (#138). The pickup goes where Routing places it on the route as it
+    is now, with the pickups accepted so far (#360), not where it was placed when the rider
+    asked: others may have been accepted since. If Routing can't answer, the position from
+    the request is used, so a slow Routing never stops a driver accepting."""
+
+    def __init__(
+        self,
+        *,
+        trips: TripRepository,
+        requests: SeatRequestRepository,
+        events: SeatRequestEvents,
+        routing: RequestRoutingService,
+    ) -> None:
+        super().__init__(trips=trips, requests=requests, events=events)
+        self.routing = routing
+
     async def execute(self, command: RequestActionCommand) -> SeatRequest:
         request, trip = await self._load(command.request_id)
         if trip.driver_id != command.user_id:
             raise NotTripDriverError()
         if _started(trip, command.now):
             raise RequestNotPendingError("This trip has already started or been cancelled.")
+        if request.status is not RequestStatus.PENDING:
+            raise RequestNotPendingError()  # before asking Routing for nothing
+
+        # The trip stays locked until the end, so the accepted pickups Routing is given are
+        # still the accepted pickups when this one is placed.
+        await self.requests.lock_trip(trip.id)
+        position = await self._position_now(request)
 
         accepted = request.accept(command.now)
         if not await self.requests.save_decision(accepted, expected=RequestStatus.PENDING):
             raise RequestNotPendingError()
         if not await self.requests.take_seat(trip.id):
             raise SeatTakenError()
-        order = await self.requests.place_accepted(accepted, position=request.detour_position)
+        order = await self.requests.place_accepted(accepted, position=position)
         accepted = replace(accepted, pickup_order=order)
 
         await self.events.request_accepted(accepted, trip)
         return accepted
+
+    async def _position_now(self, request: SeatRequest) -> int | None:
+        accepted_pickups = await self.requests.list_accepted_pickups(request.trip_id)
+        try:
+            detour = await self.routing.estimate_detour(
+                trip_id=request.trip_id,
+                accepted_pickups=accepted_pickups,
+                new_pickup=request.pickup,
+            )
+        except RoutingUnavailableError:
+            logger.warning(
+                "Routing couldn't place request %s when accepting; using its position from "
+                "when it was requested",
+                request.id,
+            )
+            return request.detour_position
+        return detour.position
 
 
 class DeclineRequest(_RequestAction):

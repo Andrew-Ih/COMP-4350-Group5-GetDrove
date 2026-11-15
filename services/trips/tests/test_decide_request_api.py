@@ -1,7 +1,8 @@
 """Accept, decline and cancel endpoints with real PostgreSQL."""
 
 import asyncio
-from collections.abc import AsyncIterator
+import json
+from collections.abc import AsyncIterator, Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -39,9 +40,15 @@ async def api() -> AsyncIterator[API]:
     auth.install(app)
     engine = create_async_engine(get_settings().database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    # Accepting asks Routing where the pickup goes on the route (#360): by default, last.
+    app.state.routing_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(detours(lambda accepted: accepted)),
+        base_url="http://routing:8000",
+    )
     try:
         yield app, auth, engine
     finally:
+        await app.state.routing_client.aclose()
         try:
             async with engine.begin() as connection:
                 mine = await connection.execute(
@@ -62,6 +69,36 @@ async def api() -> AsyncIterator[API]:
                 await connection.execute(delete(trips).where(trips.c.id.in_(trip_ids)))
         finally:
             await engine.dispose()
+
+
+def detours(position: Callable[[int], int] | None) -> Callable[[httpx.Request], httpx.Response]:
+    """Routing's ``/internal/detours``: the position for the new pickup, from how many are
+    accepted already; ``None`` means Routing is down."""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/internal/detours"
+        if position is None:
+            return httpx.Response(503, json={"code": "routing_engine_unavailable"})
+        accepted = len(json.loads(request.content)["acceptedPickups"])
+        return httpx.Response(
+            200, json={"addedSeconds": 60, "position": position(accepted), "totalSeconds": 900}
+        )
+
+    return handler
+
+
+def use_routing(api: API, handler: Callable[[httpx.Request], httpx.Response]) -> None:
+    api[0].state.routing_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://routing:8000"
+    )
+
+
+async def pickup_order(api: API, request: SeatRequest) -> int | None:
+    async with api[2].connect() as connection:
+        result = await connection.execute(
+            select(seat_requests.c.pickup_order).where(seat_requests.c.id == request.id)
+        )
+        return result.scalar_one()
 
 
 async def add_request(
@@ -434,3 +471,40 @@ async def test_an_unknown_request_is_404(api: API) -> None:
 
     assert response.status_code == 404, response.text
     assert response.json()["code"] == "request_not_found"
+
+
+# ---------------------------------------------------------------- placing on accept (#360)
+
+
+async def test_accepting_places_the_pickup_where_routing_says_now(api: API) -> None:
+    """Routing puts each new pickup first on the route; the saved positions (none) would have
+    put them last."""
+    trip, first = await seed(api, as_driver=True)
+    second = await add_request(api, trip, uuid4())
+    original = api[0].state.routing_client
+    use_routing(api, detours(lambda accepted: 0))
+    try:
+        assert (await act(api, "accept", first.id)).status_code == 200
+        assert (await act(api, "accept", second.id)).status_code == 200
+    finally:
+        await api[0].state.routing_client.aclose()
+        api[0].state.routing_client = original
+
+    assert await pickup_order(api, second) == 1
+    assert await pickup_order(api, first) == 2
+
+
+async def test_with_routing_down_accepting_still_works(api: API) -> None:
+    trip, request = await seed(api, as_driver=True)
+    original = api[0].state.routing_client
+    use_routing(api, detours(None))
+    try:
+        response = await act(api, "accept", request.id)
+    finally:
+        await api[0].state.routing_client.aclose()
+        api[0].state.routing_client = original
+
+    assert response.status_code == 200, response.text
+    assert response.json()["status"] == "accepted"
+    assert await pickup_order(api, request) == 1
+    assert await seats_left(api, trip) == 2
