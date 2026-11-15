@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -104,3 +105,18 @@ async def test_the_database_rejects_an_unknown_type(session: AsyncSession) -> No
             )
         )
     await session.rollback()
+
+
+async def test_the_unread_count_has_an_index_of_unread_rows_only(session: AsyncSession) -> None:
+    """The bell polls the unread count every few seconds; a partial index means the count
+    only reads unread rows, however many old notifications a user has."""
+    definition = await session.scalar(
+        text(
+            "SELECT indexdef FROM pg_indexes WHERE schemaname = 'notifications' "
+            "AND indexname = 'ix_notifications_unread_user_id'"
+        )
+    )
+
+    assert definition is not None
+    assert "(user_id)" in definition
+    assert "WHERE (read_at IS NULL)" in definition

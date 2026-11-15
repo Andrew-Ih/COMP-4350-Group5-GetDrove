@@ -14,6 +14,7 @@ from sqlalchemy import (
     Table,
     Text,
     Uuid,
+    text,
 )
 
 from events.consumer import consumer_tables
@@ -54,4 +55,7 @@ notifications = Table(
     CheckConstraint(f"type IN ({_TYPES})", name="valid_type"),
     # The bell lists a user's newest notifications.
     Index("ix_notifications_user_id_created_at", "user_id", "created_at"),
+    # The bell polls the unread count every few seconds while open; this index holds only
+    # unread rows, so counting doesn't read everything the user has ever been sent.
+    Index("ix_notifications_unread_user_id", "user_id", postgresql_where=text("read_at IS NULL")),
 )

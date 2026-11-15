@@ -32,8 +32,10 @@ def upgrade() -> None:
     schema='notifications'
     )
     op.create_index('ix_notifications_user_id_created_at', 'notifications', ['user_id', 'created_at'], unique=False, schema='notifications')
+    op.create_index('ix_notifications_unread_user_id', 'notifications', ['user_id'], unique=False, schema='notifications', postgresql_where=sa.text('read_at IS NULL'))
 
 
 def downgrade() -> None:
+    op.drop_index('ix_notifications_unread_user_id', table_name='notifications', schema='notifications', postgresql_where=sa.text('read_at IS NULL'))
     op.drop_index('ix_notifications_user_id_created_at', table_name='notifications', schema='notifications')
     op.drop_table('notifications', schema='notifications')
