@@ -83,6 +83,7 @@ All secrets live in **GitHub → Settings → Secrets and variables → Actions*
 | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` | Server address, user and the deploy key ([Server setup](server-setup.md#8-deploy-key-for-github-actions)) |
 | `POSTGRES_PASSWORD` | Database admin password |
 | `ACCOUNTS_DB_PASSWORD`, `TRIPS_DB_PASSWORD`, `ROUTING_DB_PASSWORD`, `PAYMENTS_DB_PASSWORD`, `NOTIFICATIONS_DB_PASSWORD` | One database password per service |
+| `PAYMENTS_STRIPE_SECRET_KEY` | Stripe test secret key (`sk_test_...`); see [Payments setup](../../services/payments/README.md#stripe-test-mode) |
 | `ACCOUNTS_JWT_PRIVATE_KEY` | Accounts' private key for signing access tokens (PEM, RSA 2048) |
 | `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD` | Brevo's SMTP login and SMTP key (see [Email](#email-brevo)) |
 | `NOTIFICATIONS_EMAIL_FROM` | The From address, a sender verified in Brevo, e.g. `GetDrove <team@example.com>` |

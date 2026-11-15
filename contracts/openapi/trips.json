@@ -213,7 +213,7 @@
             }
           },
           "422": {
-            "description": "Invalid input, including a weekday listed twice, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`)",
+            "description": "Invalid input, including a weekday listed twice, a first departure that isn't on one of the weekdays, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2009,6 +2009,25 @@
                 }
               }
             }
+          },
+          "503": {
+            "description": "The riders' details can't be loaded right now (code `accounts_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "The riders' details can't be loaded right now",
+                  "instance": "/{trip_id}/requests",
+                  "code": "accounts_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
           }
         }
       }
@@ -2476,7 +2495,7 @@
             "maxItems": 5,
             "minItems": 1,
             "title": "Weekdays",
-            "description": "The weekdays it repeats on. Each one at most once.",
+            "description": "The weekdays it repeats on. Each one at most once. The first departure must be on one of them (its Winnipeg day).",
             "examples": [
               [
                 "mon",

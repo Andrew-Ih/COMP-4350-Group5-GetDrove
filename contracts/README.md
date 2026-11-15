@@ -63,11 +63,14 @@ Endpoints return 501 until the task in brackets implements them.
 | Leaving out rejected pickup points: `exclude` on `POST /internal/pickup-points` and `GET /api/trips/{tripId}` (#292, for #29 and #136) | Routing, Trips | Trips, frontend | Written |
 | Leaving out rejected pickup points when requesting a seat: `exclude` on `POST /api/trips/{tripId}/requests` (#299, for #136 and #137) | Trips | Frontend | Written |
 | Payments down when requesting a seat: 503 `payments_unavailable` on `POST /api/trips/{tripId}/requests` (#301, for #137) | Trips | Frontend | Written |
+| Accounts down on the driver's request list: 503 `accounts_unavailable` on `GET /api/trips/{tripId}/requests` (#309, for #139) | Trips | Frontend | Written |
+| A series' first departure must be on one of its weekdays: `POST /api/trips/series` (#315, for #16 and #17) | Trips | Frontend | Written |
 | Card setup and saved cards (#151), internal "has a card" check | Payments | Frontend, Trips | Written |
 | Notifications list, mark read, mark all read (#145) | Notifications | Frontend | Written |
 | `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
 | `DriverApproved`, `DriverRejected` | Accounts | Trips, Notifications | Written |
 | `PaymentHeld`, `PaymentFailed`, `PaymentReleased` | Payments | Trips, Notifications | Written |
+| Which way an accepted trip goes: optional `direction` on `RequestAccepted`, so `pickupLabel` can be told apart as the pickup (to campus) or the drop-off (from campus) (#352, for #146 and #149) | Trips | Notifications | Written |
 
 Changes to Sprint 1 contracts: `Trip` gains `seriesId`; `GET /api/trips/{tripId}` returns a
 `TripDetail` instead of a `Trip`; `GET /api/trips/mine` only takes `role=driver` (a rider's
