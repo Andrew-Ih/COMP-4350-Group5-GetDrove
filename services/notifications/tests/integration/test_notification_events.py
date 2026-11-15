@@ -230,7 +230,7 @@ async def test_auto_accept_tells_the_rider_and_the_driver_once(
     await handle_new_events(new_consumer())
 
     assert sorted(await told(session)) == sorted(
-        [(RIDER, "request_accepted"), (DRIVER, "request_accepted")]
+        [(RIDER, "request_accepted"), (DRIVER, "seat_requested")]
     )
     assert sorted(message.to for message in sender.sent) == [
         "ada@myumanitoba.ca",

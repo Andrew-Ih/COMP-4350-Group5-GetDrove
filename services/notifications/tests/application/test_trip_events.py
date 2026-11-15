@@ -89,7 +89,8 @@ async def test_an_auto_accepted_rider_is_news_to_the_driver_too(world: World) ->
 
     assert world.told() == [
         (RIDER, NotificationType.REQUEST_ACCEPTED),
-        (DRIVER, NotificationType.REQUEST_ACCEPTED),
+        # seat_requested, so the bell opens the driver's trip page, not the rider's view.
+        (DRIVER, NotificationType.SEAT_REQUESTED),
     ]
     assert [email.to for email in world.sender.sent] == [
         "ada@myumanitoba.ca",
