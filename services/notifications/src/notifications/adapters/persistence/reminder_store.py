@@ -1,8 +1,10 @@
 """PostgreSQL implementation of ``ReminderStore`` (#148)."""
 
+from collections.abc import Collection
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, update
+from sqlalchemy import ColumnElement, RowMapping, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +14,21 @@ from notifications.domain.reminders import (
     ScheduledNotificationType,
     TripReminder,
 )
+
+
+def _reminder(row: RowMapping) -> TripReminder:
+    return TripReminder(
+        id=row["id"],
+        type=ScheduledNotificationType(row["type"]),
+        rider_id=row["rider_id"],
+        trip_id=row["trip_id"],
+        request_id=row["request_id"],
+        departure_at=row["departure_at"],
+        pickup_label=row["pickup_label"],
+        send_at=row["send_at"],
+        driver_id=row["driver_id"],
+        status=ReminderStatus(row["status"]),
+    )
 
 
 class SQLAlchemyReminderStore:
@@ -31,6 +48,7 @@ class SQLAlchemyReminderStore:
                 departure_at=reminder.departure_at,
                 pickup_label=reminder.pickup_label,
                 send_at=reminder.send_at,
+                driver_id=reminder.driver_id,
                 status=reminder.status.value,
             )
             .on_conflict_do_nothing(index_elements=[table.c.type, table.c.request_id])
@@ -57,3 +75,38 @@ class SQLAlchemyReminderStore:
             .returning(table.c.id)
         )
         return len(result.all())
+
+    async def claim_next_due(
+        self, now: datetime, skip: Collection[UUID] = ()
+    ) -> TripReminder | None:
+        table = scheduled_notifications
+        query = (
+            select(table)
+            .where(
+                table.c.type == ScheduledNotificationType.TRIP_REMINDER.value,
+                table.c.status == ReminderStatus.PENDING.value,
+                table.c.send_at <= now,
+            )
+            .order_by(table.c.send_at, table.c.id)
+            .limit(1)
+            # Another worker's reminder is passed over, not waited for.
+            .with_for_update(skip_locked=True)
+        )
+        if skip:
+            query = query.where(table.c.id.not_in(list(skip)))
+        row = (await self.session.execute(query)).mappings().first()
+        return _reminder(row) if row is not None else None
+
+    async def mark_sent(self, reminder_id: UUID, at: datetime) -> None:
+        await self._finish(reminder_id, ReminderStatus.SENT, at)
+
+    async def mark_skipped(self, reminder_id: UUID, at: datetime) -> None:
+        await self._finish(reminder_id, ReminderStatus.SKIPPED, at)
+
+    async def _finish(self, reminder_id: UUID, status: ReminderStatus, at: datetime) -> None:
+        table = scheduled_notifications
+        await self.session.execute(
+            update(table)
+            .where(table.c.id == reminder_id, table.c.status == ReminderStatus.PENDING.value)
+            .values(status=status.value, handled_at=at)
+        )

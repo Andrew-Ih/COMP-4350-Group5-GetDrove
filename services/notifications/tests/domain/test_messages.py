@@ -138,3 +138,36 @@ def test_a_rider_is_told_why_their_payment_failed(
     assert message.user_id == RIDER
     assert message.type is NotificationType.PAYMENT_FAILED
     assert message.body.startswith(problem)
+
+
+def test_the_reminder_names_the_driver_and_the_pickup_point() -> None:
+    message = messages.trip_reminder(
+        rider_id=RIDER,
+        trip_id=TRIP,
+        request_id=REQUEST,
+        departure_at=DEPARTURE,
+        pickup_label="Pembina Hwy at Chancellor Matheson Rd",
+        driver_first_name="Maya",
+    )
+
+    assert message.user_id == RIDER
+    assert message.type is NotificationType.TRIP_REMINDER
+    assert message.title == "Your trip leaves soon"
+    assert message.body == (
+        "Maya leaves on Mon, Jul 6 at 7:45 AM. "
+        "Be at your pickup point: Pembina Hwy at Chancellor Matheson Rd."
+    )
+    assert (message.trip_id, message.request_id) == (TRIP, REQUEST)
+
+
+def test_a_reminder_without_the_drivers_name_says_your_driver() -> None:
+    message = messages.trip_reminder(
+        rider_id=RIDER,
+        trip_id=TRIP,
+        request_id=REQUEST,
+        departure_at=DEPARTURE,
+        pickup_label="Pembina Hwy",
+        driver_first_name=None,
+    )
+
+    assert message.body.startswith("Your driver leaves on")

@@ -42,6 +42,9 @@ class TripReminder:
     departure_at: datetime
     pickup_label: str  # the pickup point's label, never the rider's own location
     send_at: datetime
+    # The trip's driver, so the reminder can say who's picking them up (#149). None for
+    # reminders stored before it was kept.
+    driver_id: UUID | None = None
     status: ReminderStatus = ReminderStatus.PENDING
     type: ScheduledNotificationType = ScheduledNotificationType.TRIP_REMINDER
     id: UUID = field(default_factory=uuid4)
@@ -56,6 +59,7 @@ class TripReminder:
         departure_at: datetime,
         pickup_label: str,
         lead: timedelta,
+        driver_id: UUID | None = None,
     ) -> "TripReminder":
         return cls(
             rider_id=rider_id,
@@ -64,4 +68,11 @@ class TripReminder:
             departure_at=departure_at,
             pickup_label=pickup_label,
             send_at=reminder_due_at(departure_at, lead),
+            driver_id=driver_id,
         )
+
+
+def has_departed(reminder: TripReminder, now: datetime) -> bool:
+    """Too late to remind: the trip has left (e.g. Notifications was down when the reminder
+    was due, #149). Such a reminder is skipped, not sent."""
+    return reminder.departure_at <= now

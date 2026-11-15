@@ -60,6 +60,10 @@ scheduled_notifications = Table(
     Column("send_at", DateTime(timezone=True), nullable=False),
     Column("status", String(20), nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # Who drives, so the reminder can name them (#149). Null for reminders stored before.
+    Column("driver_id", Uuid, nullable=True),
+    # When it was sent or skipped (#149).
+    Column("handled_at", DateTime(timezone=True), nullable=True),
     CheckConstraint(f"status IN ({_STATUSES})", name="valid_status"),
     CheckConstraint(f"type IN ({_SCHEDULED_TYPES})", name="valid_type"),
     # A request accepted twice (a repeated event) still gets one reminder.

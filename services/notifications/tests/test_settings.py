@@ -60,3 +60,7 @@ def test_the_reminder_lead_time_must_be_sensible(
 
     with pytest.raises(ValueError, match="reminder_lead_minutes"):
         Settings()
+
+
+def test_reminders_are_looked_for_every_30_seconds_by_default() -> None:
+    assert Settings().reminder_interval_seconds == 30

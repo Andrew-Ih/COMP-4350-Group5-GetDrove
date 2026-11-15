@@ -57,6 +57,7 @@ def reminder_handlers(lead: timedelta) -> HandlerMap:
             request_id=data.request_id,
             departure_at=data.departure_at,
             pickup_label=data.pickup_label,
+            driver_id=data.driver_id,
         )
 
     return {

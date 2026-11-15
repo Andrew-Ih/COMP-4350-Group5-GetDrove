@@ -100,6 +100,7 @@ async def test_an_accepted_request_schedules_a_reminder(
     reminder = (await reminders(session))[request]
     assert reminder["type"] == "trip_reminder"
     assert reminder["rider_id"] == rider
+    assert reminder["driver_id"] == DRIVER  # so the reminder can name them (#149)
     assert reminder["trip_id"] == TRIP
     assert reminder["send_at"] == DEPARTURE - timedelta(minutes=30)
     assert reminder["departure_at"] == DEPARTURE

@@ -81,7 +81,15 @@ Consumed from the `events.trips` stream, to keep trip reminders in step ([#148](
 | [`RequestDeclined`](../../contracts/events/request-declined.v1.json) | Cancels the reminder if the rider had a seat (`wasAccepted`) |
 | [`TripCancelled`](../../contracts/events/trip-cancelled.v1.json) | Cancels every reminder on the trip |
 
-Reminders are rows in `scheduled_notifications` with `type` = `trip_reminder` (the only type so far; the table is meant for anything sent at a set time). There is one per accepted request (`type` + `request_id` is unique, so an acceptance that arrives twice still makes one), with a status of `pending`, `sent`, `skipped` or `cancelled`. Only pending reminders are cancelled. A reminder stores the pickup point's label, never the rider's own location. Sending them when due is [#149](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/149).
+Reminders are rows in `scheduled_notifications` with `type` = `trip_reminder` (the only type so far; the table is meant for anything sent at a set time). There is one per accepted request (`type` + `request_id` is unique, so an acceptance that arrives twice still makes one), with a status of `pending`, `sent`, `skipped` or `cancelled`. Only pending reminders are cancelled. A reminder stores the pickup point's label, never the rider's own location. Each also keeps the driver (`driver_id`), so the reminder can name them.
+
+**Sending them ([#149](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/149)).** While the service runs, `adapters/reminder_scheduler.py` looks for due reminders every `NOTIFICATIONS_REMINDER_INTERVAL_SECONDS` (default 30):
+
+- It claims one due reminder at a time (`status = 'pending' AND send_at <= now()`, `FOR UPDATE SKIP LOCKED`), so two workers never send the same one.
+- The rider gets it in the bell and by email: "Maya leaves on Mon, Jul 6 at 7:45 AM. Be at your pickup point: …" (the driver's first name from Accounts, or "Your driver"; the time is the trip's departure). It's then marked `sent`, with `handled_at`, in the same transaction.
+- **After an outage** nothing is lost: the first pass after a restart sends every overdue reminder whose trip hasn't left yet, and marks the rest `skipped`.
+- **Cancelled** reminders (cancelled request or trip) are never claimed, so a cancelled trip gets none.
+- If one can't be sent (Accounts or the mail server is down), it stays `pending` and is retried on the next pass; the others still go out.
 
 Each event is handled once: it's recorded in `processed_events` in the same transaction as the handler, so a repeat delivery or a restart skips it. A failed send is retried, and after 5 tries the event is parked in `failed_events`. If the service dies after the mail server accepted an email but before that commit, the email is sent once more on restart.
 

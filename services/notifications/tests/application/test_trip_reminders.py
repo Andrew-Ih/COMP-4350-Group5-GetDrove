@@ -5,38 +5,11 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 from notifications.application.trip_reminders import CancelTripReminders, ScheduleTripReminder
-from notifications.domain.reminders import ReminderStatus, TripReminder
+from notifications.domain.reminders import ReminderStatus
+from notifications.testing import InMemoryReminderStore
 
 DEPARTURE = datetime(2026, 11, 16, 7, 45, tzinfo=UTC)
 TRIP = uuid4()
-
-
-class InMemoryReminderStore:
-    """``ReminderStore`` in a dict keyed by request, behaving like the PostgreSQL one."""
-
-    def __init__(self) -> None:
-        self.reminders: dict[UUID, TripReminder] = {}
-
-    async def add(self, reminder: TripReminder) -> bool:
-        if reminder.request_id in self.reminders:
-            return False
-        self.reminders[reminder.request_id] = reminder
-        return True
-
-    async def cancel_for_request(self, request_id: UUID) -> int:
-        return self._cancel([r for r in self.reminders.values() if r.request_id == request_id])
-
-    async def cancel_for_trip(self, trip_id: UUID) -> int:
-        return self._cancel([r for r in self.reminders.values() if r.trip_id == trip_id])
-
-    def _cancel(self, reminders: list[TripReminder]) -> int:
-        pending = [r for r in reminders if r.status is ReminderStatus.PENDING]
-        for reminder in pending:
-            self.reminders[reminder.request_id] = replace(reminder, status=ReminderStatus.CANCELLED)
-        return len(pending)
-
-    def status(self, request_id: UUID) -> ReminderStatus:
-        return self.reminders[request_id].status
 
 
 async def accept(
