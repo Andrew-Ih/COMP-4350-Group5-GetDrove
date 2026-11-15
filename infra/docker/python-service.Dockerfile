@@ -54,6 +54,9 @@ COPY services/${SERVICE}/migrations /app/migrations
 COPY infra/docker/entrypoint.sh /app/entrypoint.sh
 # Files can arrive owner-only depending on the host; make everything readable for the app user.
 RUN chmod -R a+rX /app && chmod 755 /app/entrypoint.sh
+# Writable data for the app user, e.g. Accounts' driver documents (#9). A new Docker volume
+# mounted here takes this owner, so the service can write to it.
+RUN install -d -o app -g app /data /data/driver-documents
 
 USER app
 EXPOSE 8000

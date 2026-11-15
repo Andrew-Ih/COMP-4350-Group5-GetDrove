@@ -86,3 +86,24 @@ class DriverNotFoundError(NotFoundError):
 
     code = "driver_not_found"
     title = "No driver application"
+
+
+class UnsupportedFileTypeError(InvalidInputError):
+    """Not a PDF, JPEG or PNG (422)."""
+
+    code = "unsupported_file_type"
+    title = "Unsupported file type"
+
+
+class FileTooLargeError(InvalidInputError):
+    """Over 5 MB, or empty (422)."""
+
+    code = "file_too_large"
+    title = "File too large"
+
+
+class DocumentNotFoundError(NotFoundError):
+    """No document of this kind has been uploaded (404)."""
+
+    code = "document_not_found"
+    title = "No document"

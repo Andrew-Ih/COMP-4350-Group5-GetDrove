@@ -68,3 +68,6 @@ web/public/maplibre/
 .idea/
 .vscode/
 
+
+# Driver documents uploaded while running Accounts locally (#9)
+data/driver-documents/

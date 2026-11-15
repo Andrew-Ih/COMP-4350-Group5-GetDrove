@@ -116,12 +116,16 @@ async def session(database_url: str) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-async def api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+async def api(
+    session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[AsyncClient]:
     """The real Accounts app on the test database, called over HTTP (no server needed).
 
     Its startup (the outbox relay) doesn't run here, so events stay in the outbox where
     tests can check them.
     """
+    # Uploaded driver documents go to a folder that's deleted after the test.
+    monkeypatch.setenv("ACCOUNTS_DOCUMENTS_DIR", str(tmp_path / "documents"))
     app = create_app()  # ACCOUNTS_DATABASE_URL points at the test database
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
