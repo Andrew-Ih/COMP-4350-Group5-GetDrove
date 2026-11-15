@@ -19,6 +19,7 @@ from trips.domain.errors import (
     RoutingUnavailableError,
     TripNotFoundError,
 )
+from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Direction, Location, PickupOffer, Point, Quote, TripStatus
 
 type Handler = Callable[[httpx.Request], httpx.Response]
@@ -84,10 +85,47 @@ class FakePricing:
         return Quote(distance_meters * 45 // 1000, "CAD", f"{distance_meters / 1000:.1f} km")
 
 
+class FakeRequests:
+    """Seat requests by (trip, rider); like the real one, only pending or accepted ones count."""
+
+    def __init__(self, *requests: SeatRequest) -> None:
+        self.requests = {(r.trip_id, r.rider_id): r for r in requests}
+        self.asked: list[tuple[UUID, UUID]] = []
+
+    async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
+        self.asked.append((trip_id, rider_id))
+        found = self.requests.get((trip_id, rider_id))
+        active = (RequestStatus.PENDING, RequestStatus.ACCEPTED)
+        return found if found and found.status in active else None
+
+
+def seat_request(
+    the_trip: Trip, rider_id: UUID = RIDER_ID, status: RequestStatus = RequestStatus.PENDING
+) -> SeatRequest:
+    request = SeatRequest.create(
+        trip_id=the_trip.id,
+        rider_id=rider_id,
+        pickup=Location("Pembina Highway", 49.84, -97.15),
+        walk_seconds=120,
+        rider_distance_meters=4000,
+        detour_seconds=180,
+        cost=Quote(180, "CAD", "4.0 km"),
+        now=datetime.now(UTC),
+    )
+    if status is RequestStatus.PENDING:
+        return request
+    return replace(request, status=status, decided_at=request.created_at)
+
+
 def detail(
-    the_trip: Trip, routing: FakeRouting, pricing: FakePricing | None = None
+    the_trip: Trip,
+    routing: FakeRouting,
+    pricing: FakePricing | None = None,
+    requests: FakeRequests | None = None,
 ) -> GetTripDetail:
-    return GetTripDetail(FakeRepository(the_trip), routing, pricing or FakePricing())
+    return GetTripDetail(
+        FakeRepository(the_trip), routing, pricing or FakePricing(), requests or FakeRequests()
+    )
 
 
 # ---------------------------------------------------------------- the use case
@@ -192,6 +230,97 @@ async def test_routing_down_is_an_error() -> None:
 
     with pytest.raises(RoutingUnavailableError):
         await detail(the_trip, routing).execute(the_trip.id, RIDER_ID, RIDER)
+
+
+# ---------------------------------------------------------------- the viewer's own request (#350)
+
+
+@pytest.mark.parametrize("status", [RequestStatus.PENDING, RequestStatus.ACCEPTED])
+async def test_a_rider_gets_their_request_and_no_new_pickups(status: RequestStatus) -> None:
+    """A reload still shows the request; its pickup is the one that counts, so Routing isn't
+    asked (and can't hide the request by being down)."""
+    the_trip = trip()
+    mine = seat_request(the_trip, status=status)
+    routing = FakeRouting([offer("s12", 120, 4000)], error=RoutingUnavailableError())
+
+    result = await detail(the_trip, routing, requests=FakeRequests(mine)).execute(
+        the_trip.id, RIDER_ID, RIDER
+    )
+
+    assert result.my_request == mine
+    assert result.pickups == []
+    assert routing.calls == []
+
+
+async def test_a_rider_without_a_request_gets_pickups_and_no_request() -> None:
+    the_trip = trip()
+    requests = FakeRequests()
+
+    result = await detail(
+        the_trip, FakeRouting([offer("s12", 120, 4000)]), requests=requests
+    ).execute(the_trip.id, RIDER_ID, RIDER)
+
+    assert result.my_request is None
+    assert [p.offer.id for p in result.pickups] == ["s12"]
+    assert requests.asked == [(the_trip.id, RIDER_ID)]
+
+
+@pytest.mark.parametrize(
+    "status",
+    [
+        RequestStatus.DECLINED,
+        RequestStatus.CANCELLED,
+        RequestStatus.EXPIRED,
+        RequestStatus.PAYMENT_FAILED,
+    ],
+)
+async def test_a_decided_request_isnt_returned_and_the_rider_can_ask_again(
+    status: RequestStatus,
+) -> None:
+    the_trip = trip()
+    old = seat_request(the_trip, status=status)
+
+    result = await detail(
+        the_trip, FakeRouting([offer("s12", 120, 4000)]), requests=FakeRequests(old)
+    ).execute(the_trip.id, RIDER_ID, RIDER)
+
+    assert result.my_request is None
+    assert [p.offer.id for p in result.pickups] == ["s12"]
+
+
+async def test_someone_elses_request_is_never_returned() -> None:
+    the_trip = trip()
+    theirs = seat_request(the_trip, rider_id=uuid4())
+
+    result = await detail(
+        the_trip, FakeRouting([offer("s12", 120, 4000)]), requests=FakeRequests(theirs)
+    ).execute(the_trip.id, RIDER_ID, RIDER)
+
+    assert result.my_request is None
+
+
+async def test_the_driver_has_no_request_and_none_is_looked_up() -> None:
+    the_trip = trip()
+    requests = FakeRequests()
+
+    result = await detail(the_trip, FakeRouting([]), requests=requests).execute(
+        the_trip.id, DRIVER, RIDER
+    )
+
+    assert result.my_request is None
+    assert requests.asked == []
+
+
+async def test_a_reload_without_the_search_still_shows_the_request() -> None:
+    """The trip page opened without lat/lng (e.g. from My trips): no pickups, but the request."""
+    the_trip = trip()
+    mine = seat_request(the_trip)
+
+    result = await detail(the_trip, FakeRouting([]), requests=FakeRequests(mine)).execute(
+        the_trip.id, RIDER_ID
+    )
+
+    assert result.my_request == mine
 
 
 # ---------------------------------------------------------------- Routing: pickup points

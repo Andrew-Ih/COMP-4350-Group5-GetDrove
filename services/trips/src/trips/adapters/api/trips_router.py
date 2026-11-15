@@ -513,7 +513,7 @@ async def get_trip(
     return TripDetail(
         # The driver sees their own end; everyone else, only the campus end.
         trip=_to_response(detail.trip) if detail.viewer_is_driver else _for_rider(detail.trip),
-        # The vehicle (from Accounts) and the caller's request come with seat requests (#34).
+        # The driver's vehicle needs Accounts' /internal/users (#143).
         vehicle=None,
         pickups=[
             PickupOption(
@@ -530,7 +530,7 @@ async def get_trip(
             )
             for priced in detail.pickups
         ],
-        my_request=None,
+        my_request=_seat_request_response(detail.my_request) if detail.my_request else None,
     )
 
 

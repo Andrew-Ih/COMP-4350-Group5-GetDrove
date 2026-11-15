@@ -36,6 +36,14 @@ class TripRepository(Protocol):
     async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
 
 
+class RiderRequestLookup(Protocol):
+    """What the trip detail needs from seat requests (#350)."""
+
+    async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
+        """The rider's pending or accepted request on this trip, if any."""
+        ...
+
+
 class TripEvents(Protocol):
     async def trip_posted(self, trip_id: UUID) -> None:
         """Record TripPosted in the same transaction as the Trip."""
