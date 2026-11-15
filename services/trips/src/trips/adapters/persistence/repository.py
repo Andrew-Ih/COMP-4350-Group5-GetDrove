@@ -3,10 +3,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select
+from sqlalchemy import RowMapping, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trips.adapters.persistence.tables import trips
+from trips.adapters.persistence.tables import seat_requests, trips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, SearchWindow, TripStatus
 
@@ -58,12 +58,34 @@ class SQLAlchemyTripRepository:
             )
         )
 
+    async def get_for_update(self, trip_id: UUID) -> Trip | None:
+        result = await self.session.execute(
+            select(trips).where(trips.c.id == trip_id).with_for_update()
+        )
+        row = result.mappings().one_or_none()
+        return _trip(row) if row is not None else None
+
+    async def save_cancellation(self, trip: Trip) -> list[UUID]:
+        await self.session.execute(
+            update(trips).where(trips.c.id == trip.id).values(status=trip.status.value)
+        )
+        result = await self.session.execute(
+            update(seat_requests)
+            .where(
+                seat_requests.c.trip_id == trip.id,
+                seat_requests.c.status.in_(("pending", "accepted")),
+            )
+            .values(status="cancelled", decided_at=func.now(), pickup_order=None)
+            .returning(seat_requests.c.rider_id)
+        )
+        return sorted(result.scalars())
+
     async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
         result = await self.session.execute(
             select(trips)
             .where(trips.c.driver_id == driver_id)
             .where(trips.c.departure_at > now)
-            .where(trips.c.status == TripStatus.SCHEDULED.value)
+            .where(trips.c.status.in_((TripStatus.SCHEDULED.value, TripStatus.CANCELLED.value)))
             .order_by(trips.c.departure_at.asc())
         )
         return [_trip(row) for row in result.mappings()]

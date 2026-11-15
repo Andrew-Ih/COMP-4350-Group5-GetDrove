@@ -1,6 +1,28 @@
-"""Errors raised when posting or searching for trips."""
+"""Errors raised when managing trips."""
 
-from common_web.errors import DomainError, InvalidField, InvalidInputError
+from common_web.errors import (
+    ConflictError,
+    DomainError,
+    ForbiddenError,
+    InvalidField,
+    InvalidInputError,
+    NotFoundError,
+)
+
+
+class TripNotFoundError(NotFoundError):
+    code = "trip_not_found"
+    title = "No trip with this ID"
+
+
+class NotTripDriverError(ForbiddenError):
+    code = "not_trip_driver"
+    title = "Only the trip's driver can cancel it"
+
+
+class TripNotCancellableError(ConflictError):
+    code = "trip_not_cancellable"
+    title = "The trip has already started, finished or been cancelled"
 
 
 class DepartureInPastError(InvalidInputError):

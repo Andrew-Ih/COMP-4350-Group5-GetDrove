@@ -47,11 +47,31 @@ import-linter enforces that inner layers never import outer ones, and that `doma
 
 ## API
 
-_To be filled in as endpoints are added: link to the OpenAPI spec in `contracts/openapi/trips.yaml`._
+See the [Trips OpenAPI contract](../../contracts/openapi/trips.json).
 
 ## Events
 
-`TripPosted` is recorded transactionally and relayed to `events.trips`; see below.
+`TripPosted`, `TripCancelled`, and `DriverLateCancellation` are recorded transactionally
+and relayed to `events.trips`.
+
+## Cancelling a trip (#132)
+
+`POST /{trip_id}/cancel` (gateway path `POST /api/trips/{trip_id}/cancel`) requires
+authentication. Only the trip's driver can cancel it. The trip must be scheduled and its
+departure must be in the future. The endpoint returns the updated trip with status
+`cancelled`. It returns `403 not_trip_driver` for another user, `404 trip_not_found`
+for an unknown trip, and `409 trip_not_cancellable` when the trip can no longer be cancelled.
+
+Cancelled trips disappear from search and remain visible in the driver's upcoming My trips
+until departure. The cancellation closes pending and accepted seat requests and clears
+their pickup order. The trip, requests, and outbox records commit together.
+
+- [`TripCancelled` v1](../../contracts/events/trip-cancelled.v1.json) carries the trip,
+  driver, departure time, series ID if applicable, and affected rider IDs. Payments can
+  release holds, Notifications can tell riders, and Routing can remove the route.
+- [`DriverLateCancellation` v1](../../contracts/events/driver-late-cancellation.v1.json)
+  also records the cancellation time when the driver cancels less than one hour before
+  departure.
 
 ## Posting one-off trips (#94)
 
