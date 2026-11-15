@@ -58,6 +58,16 @@ class _RouteResponse(BaseModel):
     duration_seconds: int = Field(alias="durationSeconds", strict=True, ge=0, le=2**31 - 1)
 
 
+def _problem_code(response: httpx.Response) -> str | None:
+    """The ``code`` of a Problem Details answer, or None if it isn't one."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    code = body.get("code") if isinstance(body, dict) else None
+    return code if isinstance(code, str) else None
+
+
 class HTTPRoutingService:
     def __init__(self, client: httpx.AsyncClient) -> None:
         self.client = client
@@ -153,9 +163,11 @@ class HTTPRoutingService:
         }
         try:
             response = await self.client.post("/internal/pickup-points", json=payload)
-            if response.status_code == 404:
+            if response.status_code == 404 and _problem_code(response) == "route_not_found":
                 # The trip has no stored route (e.g. posted before Routing could compute
                 # one): no pickup points, rather than an error for the whole trip detail.
+                # Any other 404 (a wrong path, Routing mid-redeploy) is an error, so riders
+                # never silently see a trip without pickup points.
                 return []
             response.raise_for_status()
             data = _PickupPointsResponse.model_validate_json(response.content)
