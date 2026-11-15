@@ -8,11 +8,23 @@ from uuid import UUID
 
 from trips.domain.entities import Trip
 from trips.domain.seat_request import RequestStatus, SeatRequest
-from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
+from trips.domain.values import (
+    Direction,
+    Location,
+    PickupOffer,
+    Point,
+    Quote,
+    SearchWindow,
+    TripMatch,
+)
 
 
 class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
+
+    async def get(self, trip_id: UUID) -> Trip | None:
+        """The trip, whatever its status, or None if there's no trip with this ID."""
+        ...
 
     async def search(
         self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
@@ -22,8 +34,6 @@ class TripRepository(Protocol):
         ...
 
     async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
-
-    async def get(self, trip_id: UUID) -> Trip | None: ...
 
 
 class TripEvents(Protocol):
@@ -62,11 +72,24 @@ class RoutingService(Protocol):
         trip_id: UUID,
         origin: Location,
         destination: Location,
-    ) -> RouteEstimate: ...
+        driver_id: UUID,
+        direction: Direction,
+    ) -> RouteEstimate:
+        """``driver_id`` and ``direction`` let Routing show the whole route to the driver
+        only, and hide the driver's own end from everyone else (#135)."""
+        ...
 
     async def match(self, rider: Point, trip_ids: Sequence[UUID]) -> list[TripMatch]:
         """The trips the rider can walk to, with a pickup point for each. Raise
         RoutingUnavailableError if Routing can't answer."""
+        ...
+
+    async def pickup_points(
+        self, trip_id: UUID, rider: Point, limit: int, exclude: Sequence[str]
+    ) -> list[PickupOffer]:
+        """Up to ``limit`` pickup points on the trip's route for the rider, best first, never
+        one in ``exclude`` (#29). Empty if the route doesn't pass within walking distance, or
+        the trip has no route. Raise RoutingUnavailableError if Routing can't answer."""
         ...
 
 

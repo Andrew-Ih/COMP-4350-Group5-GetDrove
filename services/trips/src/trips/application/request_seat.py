@@ -15,7 +15,7 @@ from trips.application.request_routing import RequestRoutingService
 from trips.domain.request_eligibility import RequestEligibility, ensure_request_eligible
 from trips.domain.request_errors import TripNotFoundError
 from trips.domain.seat_request import SeatRequest
-from trips.domain.values import Point, TripMatch, ride_meters
+from trips.domain.values import Point, ride_meters
 
 
 @dataclass(frozen=True)
@@ -87,15 +87,9 @@ class RequestSeat:
             new_pickup=pickup.location,
         )
 
+        # Priced like search and the trip detail (#30), so the cost matches what the rider saw.
         rider_distance = ride_meters(
-            trip.direction,
-            trip.distance_meters,
-            TripMatch(
-                trip_id=trip.id,
-                pickup=pickup.location,
-                walk_seconds=pickup.walk_seconds,
-                meters_to_trip_end=pickup.meters_to_trip_end,
-            ),
+            trip.direction, trip.distance_meters, pickup.meters_to_trip_end
         )
         quote = await self.pricing.quote(rider_distance)
 

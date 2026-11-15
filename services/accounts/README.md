@@ -67,6 +67,8 @@ import-linter enforces that inner layers never import outer ones, and that `doma
 
 The contract is [`contracts/openapi/accounts.json`](../../contracts/openapi/accounts.json): sign up, verify, resend verification, log in, refresh, log out, `GET /me` and the JWKS endpoint. Implementations must match it exactly, including error `code` values.
 
+`GET /internal/contacts?ids=...` (1 to 50 IDs) gives first names and emails, for Notifications' emails ([#146](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/146)). Unknown IDs are left out. `/internal` paths are only reachable inside Docker (`http://accounts:8000/internal/...`); the gateway doesn't expose them.
+
 ## Events
 
 | Event | Published when | Consumers |
