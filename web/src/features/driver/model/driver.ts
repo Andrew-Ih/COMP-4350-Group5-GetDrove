@@ -4,6 +4,9 @@ export type DriverProfile = components["schemas"]["DriverProfile"];
 export type DriverStatus = components["schemas"]["DriverStatus"];
 export type Vehicle = components["schemas"]["Vehicle"];
 export type DocumentKind = components["schemas"]["DocumentKind"];
+export type AdminDriver = components["schemas"]["AdminDriver"];
+/** The statuses an admin can list: someone who never applied isn't an application. */
+export type AdminDriverStatus = Exclude<DriverStatus, "none">;
 
 /** The driver page. Notifications about approval link here too. */
 export const DRIVER_HREF = "/account/driver";
@@ -80,4 +83,48 @@ export function uploadError(code: string | undefined): string {
     default:
       return "We couldn't upload your documents. Try again.";
   }
+}
+
+// ---------------------------------------------------------------- admin (#128)
+
+/** The admin page for driver applications. */
+export const ADMIN_DRIVERS_HREF = "/admin/drivers";
+
+/** Whether a user (from GET /me) is an admin. */
+export function isAdmin(user: { roles: string[] } | undefined): boolean {
+  return user?.roles.includes("admin") ?? false;
+}
+
+/** The longest rejection reason the contract takes. */
+export const MAX_REASON_LENGTH = 500;
+
+/** What's wrong with a rejection reason, or undefined if it's fine. */
+export function reasonProblem(reason: string): string | undefined {
+  const trimmed = reason.trim();
+  if (!trimmed) return "Say what the driver needs to fix. They'll see this.";
+  if (trimmed.length > MAX_REASON_LENGTH) return `Keep it to ${MAX_REASON_LENGTH} characters.`;
+  return undefined;
+}
+
+/** What an admin is told when approving or rejecting fails, by the API's error code. */
+export function decisionError(code: string | undefined): string {
+  switch (code) {
+    case "vehicle_missing":
+      return "They haven't added their vehicle yet, so they can't be approved. Riders need it to find their driver.";
+    case "driver_not_pending":
+      return "Someone already decided on this application. The list has been refreshed.";
+    case "driver_not_found":
+      return "This application no longer exists. The list has been refreshed.";
+    case "forbidden":
+      return "Only admins can do this.";
+    case "unauthorized":
+      return "Your session has ended. Log in again.";
+    default:
+      return "Something went wrong. Try again.";
+  }
+}
+
+/** "Honda Civic, Blue · ABC123", or that the vehicle is missing. */
+export function vehicleLine(vehicle: Vehicle | null): string {
+  return vehicle ? `${vehicle.make} ${vehicle.model}, ${vehicle.colour} · ${vehicle.plate}` : "No vehicle added yet";
 }

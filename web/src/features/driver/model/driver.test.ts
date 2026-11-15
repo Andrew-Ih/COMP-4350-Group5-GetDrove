@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { buildVehicle, type DriverProfile, fileProblem, serverFieldErrors, statusMessage, uploadError } from "./driver";
+import {
+  buildVehicle,
+  decisionError,
+  type DriverProfile,
+  fileProblem,
+  isAdmin,
+  reasonProblem,
+  serverFieldErrors,
+  statusMessage,
+  uploadError,
+  vehicleLine,
+} from "./driver";
 
 const file = (type: string, bytes = 1000) => new File([new Uint8Array(bytes)], "doc", { type });
 
@@ -67,5 +78,30 @@ describe("server errors", () => {
     expect(uploadError("unsupported_file_type")).toMatch(/PDF, JPEG or PNG/);
     expect(uploadError("driver_already_approved")).toMatch(/already approved/);
     expect(uploadError(undefined)).toMatch(/Try again/);
+  });
+});
+
+describe("admin (#128)", () => {
+  it("knows an admin by their role", () => {
+    expect(isAdmin({ roles: ["user", "admin"] })).toBe(true);
+    expect(isAdmin({ roles: ["user"] })).toBe(false);
+    expect(isAdmin(undefined)).toBe(false);
+  });
+
+  it("needs a reason of 1 to 500 characters to reject", () => {
+    expect(reasonProblem("   ")).toBe("Say what the driver needs to fix. They'll see this.");
+    expect(reasonProblem("x".repeat(501))).toBe("Keep it to 500 characters.");
+    expect(reasonProblem("The insurance has expired.")).toBeUndefined();
+  });
+
+  it("explains why a decision failed", () => {
+    expect(decisionError("vehicle_missing")).toMatch(/haven't added their vehicle/);
+    expect(decisionError("driver_not_pending")).toMatch(/already decided/);
+    expect(decisionError("something_else")).toBe("Something went wrong. Try again.");
+  });
+
+  it("describes the vehicle", () => {
+    expect(vehicleLine({ make: "Honda", model: "Civic", colour: "Grey", plate: "ABC123" })).toBe("Honda Civic, Grey · ABC123");
+    expect(vehicleLine(null)).toBe("No vehicle added yet");
   });
 });
