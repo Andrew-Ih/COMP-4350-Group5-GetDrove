@@ -150,7 +150,12 @@ class TripDetailQuery:
         self, *, trip_id: UUID, viewer_id: UUID, rider: Point | None, exclude: Sequence[str]
     ) -> TripDetailResult:
         async with self.session_factory() as session:
-            use_case = GetTripDetail(SQLAlchemyTripRepository(session), self.routing, self.pricing)
+            use_case = GetTripDetail(
+                SQLAlchemyTripRepository(session),
+                self.routing,
+                self.pricing,
+                SQLAlchemySeatRequestRepository(session),
+            )
             return await use_case.execute(trip_id, viewer_id, rider, exclude)
 
 
