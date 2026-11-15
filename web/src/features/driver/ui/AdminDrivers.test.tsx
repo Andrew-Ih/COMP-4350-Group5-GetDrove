@@ -35,15 +35,17 @@ const DANIEL = applicant("u2", "Daniel", { vehicle: null, documents: { licence: 
 
 type Answer = { status: number; body?: unknown };
 
-/** The admin, their applications by status (answered in turn), and what deciding answers. */
+/** The admin (or `meAnswers`, in turn), their applications by status (answered in turn), and what deciding answers. */
 function api({
   me = alex,
+  meAnswers,
   lists = { pending: [{ status: 200, body: [PRIYA, DANIEL] }] },
   decision,
-}: { me?: typeof alex; lists?: Partial<Record<string, Answer[]>>; decision?: Answer } = {}) {
+}: { me?: typeof alex; meAnswers?: Answer[]; lists?: Partial<Record<string, Answer[]>>; decision?: Answer } = {}) {
   const asked: Record<string, number> = {};
+  let meAsked = 0;
   return mockApi({
-    "/accounts/me": { status: 200, body: me },
+    "/accounts/me": () => (meAnswers ? meAnswers[Math.min(meAsked++, meAnswers.length - 1)]! : { status: 200, body: me }),
     "/approve": decision ?? { status: 200, body: { ...PRIYA, status: "approved" } },
     "/reject": decision ?? { status: 200, body: { ...PRIYA, status: "rejected" } },
     "/documents/licence": { status: 200, body: "pdf" },
@@ -166,6 +168,18 @@ describe("AdminDrivers", () => {
     expect(await screen.findByText("Only admins can see this page.")).toBeInTheDocument();
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/"));
     expect(spy.mock.calls.some(([input]) => (input as Request).url.includes("/admin/drivers"))).toBe(false);
+  });
+
+  it("offers to try again when the account can't be loaded, then shows the applications", async () => {
+    api({ meAnswers: [{ status: 503, body: problem(503, "service_unavailable", "Unavailable") }, { status: 200, body: alex }] });
+    renderWithProviders(<AdminDrivers />);
+
+    expect(await screen.findByText("We couldn't load your account.")).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByRole("list", { name: "Pending applications" })).toBeInTheDocument();
+    expect(screen.queryByText("We couldn't load your account.")).not.toBeInTheDocument();
   });
 
   it("offers to try again when the applications can't be loaded", async () => {

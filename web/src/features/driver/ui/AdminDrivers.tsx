@@ -59,6 +59,9 @@ export function AdminDrivers() {
             <Spinner className="size-5" /> Loading…
           </p>
         )}
+        {me.isError && (
+          <LoadError error={me.error} what="your account" onRetry={() => void me.refetch()} />
+        )}
         {me.isSuccess && !admin && (
           <p role="alert" className="mt-8 font-semibold">
             Only admins can see this page.
@@ -90,7 +93,7 @@ export function AdminDrivers() {
                 <Spinner className="size-5" /> Loading applications…
               </p>
             )}
-            {drivers.isError && <LoadError error={drivers.error} onRetry={() => void drivers.refetch()} />}
+            {drivers.isError && <LoadError error={drivers.error} what="the applications" onRetry={() => void drivers.refetch()} />}
             {drivers.isSuccess && drivers.data.length === 0 && (
               <p className="mt-8 text-ink-soft">
                 {status === "pending" ? "No applications are waiting. You're all caught up." : `No ${status} applications yet.`}
@@ -236,7 +239,8 @@ function Application({ driver }: { driver: AdminDriver }) {
   );
 }
 
-function LoadError({ error, onRetry }: { error: ApiError; onRetry: () => void }) {
+/** `what` failed to load: "your account" (GET /me, needed to know the student is an admin) or "the applications". */
+function LoadError({ error, what, onRetry }: { error: ApiError; what: string; onRetry: () => void }) {
   if (error.code === "unauthorized") {
     return (
       <div role="alert" className="mt-8 space-y-4">
@@ -249,7 +253,7 @@ function LoadError({ error, onRetry }: { error: ApiError; onRetry: () => void })
   }
   return (
     <div role="alert" className="mt-8 space-y-4">
-      <p className="font-bold">{error.code === "forbidden" ? "Only admins can see this page." : "We couldn't load the applications."}</p>
+      <p className="font-bold">{error.code === "forbidden" ? "Only admins can see this page." : `We couldn't load ${what}.`}</p>
       {error.code !== "forbidden" && (
         <Button size="md" onClick={onRetry}>
           Try again
