@@ -47,7 +47,7 @@ import {
 export function TripDetail({
   tripId,
   search,
-  exclude: initialExclude = [],
+  exclude = [],
 }: {
   tripId: string;
   search: SearchQuery | undefined;
@@ -57,14 +57,26 @@ export function TripDetail({
   const router = useRouter();
   const pathname = usePathname();
   const rider = useMemo(() => (search ? { lat: search.lat, lng: search.lng } : undefined), [search]);
-  const [excluded, setExcluded] = useState<string[]>(initialExclude);
+  const [excluded, setExcluded] = useState<string[]>(exclude);
+  const [chosenId, setChosenId] = useState<string>();
+
+  // The address can change without this screen remounting (Back and Forward, or a link to
+  // this trip with other points left out). Follow it, so the pickup points and the request
+  // use what the address says.
+  const excludeKey = exclude.join(",");
+  const [addressKey, setAddressKey] = useState(excludeKey);
+  if (excludeKey !== addressKey) {
+    setAddressKey(excludeKey);
+    setExcluded(exclude);
+    setChosenId(undefined);
+  }
+
   const detail = useTripDetail(tripId, rider, excluded);
   const trip = detail.data?.trip;
   const profile = useProfile(trip?.driverId);
   const route = useRoute(tripId, detail.isSuccess);
 
   const pickups = useMemo(() => detail.data?.pickups ?? [], [detail.data]);
-  const [chosenId, setChosenId] = useState<string>();
 
   // Leaves out a set of points (or none, to start again) and keeps it in the address.
   const changeExcluded = (next: string[]) => {

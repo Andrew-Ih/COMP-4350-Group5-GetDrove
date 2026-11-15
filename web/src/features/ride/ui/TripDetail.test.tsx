@@ -318,6 +318,23 @@ describe("TripDetail", () => {
       expect(excludedIn(tripUrl)).toEqual(["s1", "s2", "s3"]);
     });
 
+    it("follows the address when it changes without the screen remounting", async () => {
+      const fetchSpy = api(byExclude, undefined, { [`/trips/${TRIP_ID}/requests`]: { status: 201, body: seatRequest("pending") } });
+      const { rerender } = renderWithProviders(<TripDetail tripId={TRIP_ID} search={search} />);
+      const firstStop = async () => within(await screen.findByRole("list", { name: "Stops" })).getAllByRole("listitem")[0];
+      expect(await firstStop()).toHaveTextContent("Osborne St & River Ave");
+
+      // Back and Forward, or a link to this trip with other points left out: same screen, new address.
+      rerender(<TripDetail tripId={TRIP_ID} search={search} exclude={["s1", "s2", "s3"]} />);
+
+      await waitFor(async () => expect(await firstStop()).toHaveTextContent("Pembina Hwy & Jubilee Ave"));
+      await userEvent.click(screen.getByRole("button", { name: /Request seat · \$4\.40/ }));
+      expect(await screen.findByText("Request sent")).toBeInTheDocument();
+      expect(await requestSent(fetchSpy)!.json()).toEqual({ lat: 49.8768, lng: -97.1438, pickupId: "s4", exclude: ["s1", "s2", "s3"] });
+      // Following the address doesn't rewrite it.
+      expect(replace).not.toHaveBeenCalled();
+    });
+
     it("stops offering it once 20 points have been left out", async () => {
       const already = Array.from({ length: 18 }, (_, i) => `x${i}`);
       api({ status: 200, body: detail() });
