@@ -108,7 +108,8 @@ class AcceptRequest(_RequestAction):
             raise RequestNotPendingError()  # before asking Routing for nothing
 
         # The trip stays locked until the end, so the accepted pickups Routing is given are
-        # still the accepted pickups when this one is placed.
+        # still the accepted pickups when this one is placed. Accept, decline and cancel all
+        # lock the trip before any request, so they can't deadlock each other.
         await self.requests.lock_trip(trip.id)
         position = await self._position_now(request)
 
@@ -149,6 +150,9 @@ class DeclineRequest(_RequestAction):
         if _started(trip, command.now):
             raise RequestNotDecidableError()
 
+        # The trip first, as in accepting and cancelling: the same lock order everywhere, so
+        # a decline and an accept on one trip can't deadlock over a pickup's place.
+        await self.requests.lock_trip(trip.id)
         was_accepted = request.holds_seat
         declined = request.decline(command.now)
         if not await self.requests.save_decision(declined, expected=request.status):
@@ -169,6 +173,8 @@ class CancelRequest(_RequestAction):
         if _started(trip, command.now):
             raise RequestNotCancellableError()
 
+        # The trip first, as in accepting and declining (see DeclineRequest).
+        await self.requests.lock_trip(trip.id)
         was_accepted = request.holds_seat
         cancelled = request.cancel(command.now)
         if not await self.requests.save_decision(cancelled, expected=request.status):

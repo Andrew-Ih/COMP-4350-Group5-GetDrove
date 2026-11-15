@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -87,7 +87,10 @@ def detours(position: Callable[[int], int] | None) -> Callable[[httpx.Request], 
     return handler
 
 
-def use_routing(api: API, handler: Callable[[httpx.Request], httpx.Response]) -> None:
+def use_routing(
+    api: API,
+    handler: Callable[[httpx.Request], httpx.Response | Awaitable[httpx.Response]],
+) -> None:
     api[0].state.routing_client = httpx.AsyncClient(
         transport=httpx.MockTransport(handler), base_url="http://routing:8000"
     )
@@ -507,4 +510,51 @@ async def test_with_routing_down_accepting_still_works(api: API) -> None:
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "accepted"
     assert await pickup_order(api, request) == 1
+    assert await seats_left(api, trip) == 2
+
+
+# ---------------------------------------------------------------- at the same time
+
+
+async def act_as(api: API, action: str, request_id: UUID, user_id: UUID) -> httpx.Response:
+    app, auth, _ = api
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+        headers={**auth.headers(user_id=user_id), "X-Request-ID": str(auth.user_id)},
+    ) as client:
+        return await client.post(f"/requests/{request_id}/{action}")
+
+
+async def test_accepting_and_a_cancel_at_once_on_one_trip_dont_deadlock(api: API) -> None:
+    """The accept moves the cancelling rider's pickup down while the cancel frees their seat.
+    Both lock the trip first, so one waits for the other instead of a deadlock."""
+    trip, seated = await seed(api, as_driver=True)
+    assert (await act(api, "accept", seated.id)).status_code == 200  # pickup 1
+    newcomer = await add_request(api, trip, uuid4())
+
+    async def slow_first(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)  # the accept holds the trip while Routing answers
+        return detours(lambda accepted: 0)(request)  # the newcomer goes first
+
+    original = api[0].state.routing_client
+    use_routing(api, slow_first)
+    try:
+
+        async def cancel_soon() -> httpx.Response:
+            await asyncio.sleep(0.05)  # after the accept has started
+            return await act_as(api, "cancel", seated.id, seated.rider_id)
+
+        accepted, cancelled = await asyncio.gather(act(api, "accept", newcomer.id), cancel_soon())
+    finally:
+        await api[0].state.routing_client.aclose()
+        api[0].state.routing_client = original
+
+    assert (accepted.status_code, cancelled.status_code) == (200, 200), (
+        accepted.text,
+        cancelled.text,
+    )
+    assert await stored_status(api, seated) == "cancelled"
+    assert await pickup_order(api, seated) is None
+    assert await pickup_order(api, newcomer) == 1
     assert await seats_left(api, trip) == 2
