@@ -255,8 +255,13 @@ RequestSeatService = Annotated[RequestSeatRunner, Depends(get_request_seat)]
 class DecideRequestRunner:
     """Runs accept, decline or cancel within one database transaction."""
 
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        routing: HTTPRequestRoutingService,
+    ) -> None:
         self.session_factory = session_factory
+        self.routing = routing
 
     def _parts(
         self, session: AsyncSession
@@ -276,9 +281,9 @@ class DecideRequestRunner:
         async with self.session_factory() as session:
             trips, requests, events = self._parts(session)
             async with session.begin():
-                return await AcceptRequest(trips=trips, requests=requests, events=events).execute(
-                    command
-                )
+                return await AcceptRequest(
+                    trips=trips, requests=requests, events=events, routing=self.routing
+                ).execute(command)
 
     async def decline(self, command: RequestActionCommand) -> SeatRequest:
         async with self.session_factory() as session:
@@ -298,7 +303,10 @@ class DecideRequestRunner:
 
 
 def get_decide_request(request: Request) -> DecideRequestRunner:
-    return DecideRequestRunner(session_factory=request.app.state.session_factory)
+    return DecideRequestRunner(
+        session_factory=request.app.state.session_factory,
+        routing=HTTPRequestRoutingService(request.app.state.routing_client),
+    )
 
 
 DecideRequestService = Annotated[DecideRequestRunner, Depends(get_decide_request)]

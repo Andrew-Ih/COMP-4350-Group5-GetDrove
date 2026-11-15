@@ -152,6 +152,11 @@ class SeatRequestRepository(Protocol):
         """Take one seat in a single atomic update. False if none is left (#47)."""
         ...
 
+    async def lock_trip(self, trip_id: UUID) -> None:
+        """Locks the trip until the transaction ends, so its pickup order changes one
+        accept, decline or cancel at a time (#310, #360)."""
+        ...
+
     async def release_seat(self, trip_id: UUID) -> None:
         """Give one seat back (#48)."""
         ...
