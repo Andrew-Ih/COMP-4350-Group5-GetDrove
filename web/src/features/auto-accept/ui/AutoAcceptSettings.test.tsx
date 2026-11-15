@@ -15,7 +15,8 @@ vi.mock("next/navigation", () => ({
 const maya = { id: "1", email: "maya@myumanitoba.ca", firstName: "Maya", lastName: "Singh", emailVerified: true, roles: ["user"] };
 const DEFAULTS: AutoAcceptRules = { enabled: false, maxDetourMinutes: 5, minRating: null };
 
-type Answer = { status: number; body?: unknown };
+/** A response, or "offline": the request fails before reaching the server, like fetch does. */
+type Answer = { status: number; body?: unknown } | "offline";
 
 /** Fakes the API: the student, the saved rules, and what saving answers (by default, what was sent). */
 function api(rules: Answer = { status: 200, body: DEFAULTS }, save?: Answer) {
@@ -31,6 +32,7 @@ function api(rules: Answer = { status: 200, body: DEFAULTS }, save?: Answer) {
       sent.push(body);
       answer = save ?? { status: 200, body };
     }
+    if (answer === "offline") throw new TypeError("Failed to fetch");
     return new Response(answer.body === undefined ? null : JSON.stringify(answer.body), {
       status: answer.status,
       headers: { "Content-Type": answer.status >= 400 ? "application/problem+json" : "application/json" },
@@ -128,6 +130,25 @@ describe("AutoAcceptSettings", () => {
     await userEvent.click(await screen.findByRole("switch", { name: "Accept requests automatically" }));
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/We couldn't save your rules/)).toBeInTheDocument();
+  });
+
+  it("says when saving fails because the network is down, and keeps the form", async () => {
+    api(undefined, "offline");
+    renderWithProviders(<AutoAcceptSettings />);
+    await userEvent.click(await screen.findByRole("switch", { name: "Accept requests automatically" }));
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(await screen.findByText(/We couldn't save your rules/)).toBeInTheDocument();
+    expect(screen.getByRole("switch", { name: "Accept requests automatically" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
+  it("offers to try again when the rules can't be loaded because the network is down", async () => {
+    api("offline");
+    renderWithProviders(<AutoAcceptSettings />);
+
+    expect(await screen.findByText("We couldn't load your rules")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
   it("asks to log in again when saving after the session ended", async () => {

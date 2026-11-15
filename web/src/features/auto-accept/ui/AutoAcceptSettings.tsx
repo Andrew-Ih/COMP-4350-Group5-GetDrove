@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
-import type { ApiError } from "@/shared/api";
+import { ApiError } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 import { AppHeader, Button, buttonStyles, Spinner } from "@/shared/ui";
 
@@ -49,8 +49,10 @@ export function AutoAcceptSettings() {
   );
 }
 
-/** A 422 from the API, on the field it's about. */
-function serverProblem(error: ApiError): RulesProblem | undefined {
+/** A 422 from the API, on the field it's about. Nothing for any other error, including a
+ * network failure (which has no problem details). */
+function serverProblem(error: Error): RulesProblem | undefined {
+  if (!(error instanceof ApiError)) return undefined;
   const field = error.problem.errors?.find((e) => e.field === "maxDetourMinutes" || e.field === "minRating")?.field;
   if (field === "maxDetourMinutes") return { field, message: `Enter a whole number of minutes from 0 to ${MAX_DETOUR_MINUTES}.` };
   if (field === "minRating") return { field, message: "Choose a rating from 1 to 5, or any rating." };
@@ -200,8 +202,8 @@ function RulesForm({ saved }: { saved: AutoAcceptRules }) {
   );
 }
 
-function SaveError({ error }: { error: ApiError }) {
-  if (error.code === "unauthorized") {
+function SaveError({ error }: { error: Error }) {
+  if (error instanceof ApiError && error.code === "unauthorized") {
     return (
       <>
         Your session has ended.{" "}
@@ -215,8 +217,8 @@ function SaveError({ error }: { error: ApiError }) {
   return <>We couldn&apos;t save your rules. Try again in a minute.</>;
 }
 
-function LoadError({ error, onRetry }: { error: ApiError | null; onRetry: () => void }) {
-  if (error?.code === "unauthorized") {
+function LoadError({ error, onRetry }: { error: Error | null; onRetry: () => void }) {
+  if (error instanceof ApiError && error.code === "unauthorized") {
     return (
       <div role="alert" className="mt-8 space-y-4 text-ink-soft">
         <p className="text-lg font-bold text-ink">Your session has ended</p>
