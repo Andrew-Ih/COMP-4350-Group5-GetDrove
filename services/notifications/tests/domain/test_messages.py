@@ -61,6 +61,8 @@ def test_the_driver_hears_when_auto_accept_seats_a_rider() -> None:
 
     assert message.user_id == DRIVER
     assert message.title == "Rider accepted automatically"
+    # The bell sends seat_requested to the driver's trip page (/drive/trips/{id}).
+    assert message.type is NotificationType.SEAT_REQUESTED
     assert "Mon, Jul 6 at 7:45 AM" in message.body
     assert message.link_path == messages.MY_TRIPS
     assert (message.trip_id, message.request_id) == (TRIP, REQUEST)

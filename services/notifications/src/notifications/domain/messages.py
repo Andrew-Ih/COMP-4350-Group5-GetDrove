@@ -86,10 +86,14 @@ def auto_accepted(
     *, driver_id: UUID, trip_id: UUID, request_id: UUID, departure_at: datetime
 ) -> Message:
     """For the driver when auto-accept seats a rider. That publishes only
-    ``RequestAccepted``, never ``SeatRequested``, so this is the driver's only notice."""
+    ``RequestAccepted``, never ``SeatRequested``, so this is the driver's only notice.
+
+    Typed ``seat_requested`` (a rider is coming on your trip): the bell picks the page from
+    the type, and that one opens the driver's trip page. ``request_accepted`` would open the
+    rider's view of the trip."""
     return Message(
         user_id=driver_id,
-        type=NotificationType.REQUEST_ACCEPTED,
+        type=NotificationType.SEAT_REQUESTED,
         title="Rider accepted automatically",
         body=f"A rider was accepted automatically onto your trip on {when(departure_at)}. "
         "See who's coming in My trips.",
