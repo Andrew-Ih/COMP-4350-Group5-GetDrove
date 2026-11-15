@@ -2,9 +2,10 @@
 
 import json
 from collections.abc import AsyncIterator, Callable
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -14,9 +15,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from common_security.testing import TestAuth
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import trips
+from trips.adapters.persistence.seat_request_repository import SQLAlchemySeatRequestRepository
+from trips.adapters.persistence.tables import seat_requests, trips
 from trips.domain.entities import Trip
-from trips.domain.values import Direction, Location
+from trips.domain.seat_request import RequestStatus, SeatRequest
+from trips.domain.values import Direction, Location, Quote
 from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
@@ -74,6 +77,23 @@ class API:
         self.trips.append(trip)
         return trip
 
+    async def add_request(self, trip: Trip, rider_id: UUID, status: RequestStatus) -> SeatRequest:
+        request = SeatRequest.create(
+            trip_id=trip.id,
+            rider_id=rider_id,
+            pickup=Location("Pembina Highway", 49.84, -97.15),
+            walk_seconds=120,
+            rider_distance_meters=9000,
+            detour_seconds=180,
+            cost=Quote(405, "CAD", "9.0 km at $0.45/km"),
+            now=datetime.now(UTC),
+        )
+        if status is not RequestStatus.PENDING:
+            request = replace(request, status=status, decided_at=request.created_at)
+        async with self.app.state.session_factory() as session, session.begin():
+            await SQLAlchemySeatRequestRepository(session).add(request)
+        return request
+
     async def get(
         self,
         path: str,
@@ -120,6 +140,10 @@ async def api() -> AsyncIterator[API]:
     finally:
         try:
             async with engine.begin() as connection:
+                trip_ids = [trip.id for trip in api.trips]
+                await connection.execute(
+                    delete(seat_requests).where(seat_requests.c.trip_id.in_(trip_ids))
+                )
                 await connection.execute(delete(trips).where(trips.c.driver_id == api.driver))
         finally:
             await engine.dispose()
@@ -218,7 +242,7 @@ async def test_a_rider_gets_the_trip_with_its_pickup_points(api: API) -> None:
             "cost": {"amountCents": 380, "currency": "CAD", "explanation": "8.4 km at $0.45/km"},
         },
     ]
-    # Not built yet: they come with seat requests (#34).
+    # No request on this trip yet; the vehicle needs Accounts (#143).
     assert (body["vehicle"], body["myRequest"]) == (None, None)
     [sent] = pickup_requests(api)
     assert (sent["tripId"], sent["rider"], sent["limit"]) == (str(trip.id), RIDER, 3)
@@ -247,6 +271,51 @@ async def test_rejected_points_are_left_out_and_the_next_come_back(api: API) -> 
 
     assert [p["id"] for p in response.json()["pickups"]] == ["s18"]
     assert pickup_requests(api)[0]["exclude"] == ["s12", "s15"]
+
+
+@pytest.mark.parametrize("status", [RequestStatus.PENDING, RequestStatus.ACCEPTED])
+async def test_a_rider_sees_their_own_request_after_a_reload(
+    api: API, status: RequestStatus
+) -> None:
+    trip = await api.add()
+    rider = uuid4()
+    mine = await api.add_request(trip, rider, status)
+
+    response = await api.get(f"/{trip.id}", params=RIDER, headers=api.auth.headers(user_id=rider))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["myRequest"]["id"] == str(mine.id)
+    assert body["myRequest"]["status"] == status.value
+    assert body["myRequest"]["pickup"]["label"] == "Pembina Highway"
+    # The request's pickup is the one that counts: no new points are worked out.
+    assert body["pickups"] == []
+    assert api.routing_requests == []
+
+
+@pytest.mark.parametrize("status", [RequestStatus.DECLINED, RequestStatus.CANCELLED])
+async def test_a_decided_request_isnt_shown_and_pickups_come_back(
+    api: API, status: RequestStatus
+) -> None:
+    trip = await api.add()
+    rider = uuid4()
+    await api.add_request(trip, rider, status)
+
+    response = await api.get(f"/{trip.id}", params=RIDER, headers=api.auth.headers(user_id=rider))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["myRequest"] is None
+    assert [p["id"] for p in response.json()["pickups"]] == ["s12", "s15", "s18"]
+
+
+async def test_another_riders_request_is_never_shown(api: API) -> None:
+    trip = await api.add()
+    await api.add_request(trip, uuid4(), RequestStatus.ACCEPTED)
+
+    response = await api.get(f"/{trip.id}", params=RIDER)  # a different rider
+
+    assert response.status_code == 200, response.text
+    assert response.json()["myRequest"] is None
 
 
 async def test_the_driver_sees_their_own_end_and_no_pickups(api: API) -> None:

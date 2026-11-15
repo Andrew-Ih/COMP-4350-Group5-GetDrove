@@ -7,6 +7,9 @@
 3. The rider's share for each point, priced like search (``ride_meters``), so the first point
    and its cost match what search showed for the same trip and spot. A price is a nice to
    have: if Payments can't answer, the point is still shown, without a cost.
+4. The viewer's own pending or accepted request on the trip (#350), so a reload still shows
+   it. With one, no new pickup points are worked out: the request's pickup is the one that
+   counts, and Routing being down can't hide the request.
 
 The rider's location is passed to Routing and never stored. Hiding the driver's own end from
 everyone else is the API's job: it's a view of the trip, not a rule about finding it.
@@ -17,9 +20,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from uuid import UUID
 
-from trips.application.ports import PricingService, RoutingService, TripRepository
+from trips.application.ports import (
+    PricingService,
+    RiderRequestLookup,
+    RoutingService,
+    TripRepository,
+)
 from trips.domain.entities import Trip
 from trips.domain.errors import PricingUnavailableError, TripNotFoundError
+from trips.domain.seat_request import SeatRequest
 from trips.domain.values import PickupOffer, Point, Quote, TripStatus, ride_meters
 
 # The contract's limit for the trip detail.
@@ -37,15 +46,21 @@ class TripDetailResult:
     trip: Trip
     viewer_is_driver: bool
     pickups: list[PricedPickup]
+    my_request: SeatRequest | None = None  # the viewer's pending or accepted request (#350)
 
 
 class GetTripDetail:
     def __init__(
-        self, repository: TripRepository, routing: RoutingService, pricing: PricingService
+        self,
+        repository: TripRepository,
+        routing: RoutingService,
+        pricing: PricingService,
+        requests: RiderRequestLookup,
     ) -> None:
         self.repository = repository
         self.routing = routing
         self.pricing = pricing
+        self.requests = requests
 
     async def execute(
         self,
@@ -59,8 +74,19 @@ class GetTripDetail:
             raise TripNotFoundError()
 
         viewer_is_driver = viewer_id == trip.driver_id
-        if rider is None or viewer_is_driver or trip.status != TripStatus.SCHEDULED:
-            return TripDetailResult(trip, viewer_is_driver, pickups=[])
+        # The driver can't ride their own trip, so they never have a request on it.
+        my_request = (
+            None
+            if viewer_is_driver
+            else await self.requests.get_active_for_trip(trip.id, viewer_id)
+        )
+        if (
+            rider is None
+            or viewer_is_driver
+            or my_request is not None
+            or trip.status != TripStatus.SCHEDULED
+        ):
+            return TripDetailResult(trip, viewer_is_driver, pickups=[], my_request=my_request)
 
         offers = await self.routing.pickup_points(trip.id, rider, PICKUPS_PER_TRIP, exclude)
         costs = await asyncio.gather(
