@@ -7,6 +7,7 @@ from notifications.domain.reminders import (
     ReminderStatus,
     ScheduledNotificationType,
     TripReminder,
+    has_departed,
     reminder_due_at,
 )
 
@@ -39,3 +40,24 @@ def test_a_new_reminder_is_a_pending_trip_reminder_with_its_own_id() -> None:
     assert first.type is ScheduledNotificationType.TRIP_REMINDER
     assert first.send_at == reminder_due_at(DEPARTURE, LEAD)
     assert first.id != second.id
+
+
+def test_the_driver_is_kept_for_the_reminder() -> None:
+    driver = uuid4()
+
+    kept = TripReminder.for_accepted_request(
+        rider_id=uuid4(),
+        trip_id=uuid4(),
+        request_id=uuid4(),
+        departure_at=DEPARTURE,
+        pickup_label="Pembina Hwy",
+        lead=LEAD,
+        driver_id=driver,
+    )
+
+    assert kept.driver_id == driver
+
+
+def test_a_trip_has_departed_from_its_departure_time() -> None:
+    assert not has_departed(reminder(), DEPARTURE - timedelta(seconds=1))
+    assert has_departed(reminder(), DEPARTURE)

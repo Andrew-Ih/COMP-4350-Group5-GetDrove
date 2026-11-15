@@ -23,6 +23,7 @@ class ScheduleTripReminder:
         request_id: UUID,
         departure_at: datetime,
         pickup_label: str,
+        driver_id: UUID | None = None,
     ) -> bool:
         """Returns False if the request already had a reminder (nothing changes)."""
         reminder = TripReminder.for_accepted_request(
@@ -32,6 +33,7 @@ class ScheduleTripReminder:
             departure_at=departure_at,
             pickup_label=pickup_label,
             lead=self._lead,
+            driver_id=driver_id,
         )
         return await self._store.add(reminder)
 

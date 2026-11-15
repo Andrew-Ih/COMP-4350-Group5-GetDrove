@@ -3,7 +3,7 @@
 Adapters implement these, and tests use in-memory fakes.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
@@ -39,6 +39,18 @@ class ReminderStore(Protocol):
     async def cancel_for_trip(self, trip_id: UUID) -> int:
         """Cancels every pending reminder on the trip. Returns how many were cancelled."""
         ...
+
+    async def claim_next_due(
+        self, now: datetime, skip: Collection[UUID] = ()
+    ) -> TripReminder | None:
+        """The pending reminder due soonest (``send_at <= now``), locked until the
+        transaction ends, or None. Reminders another worker holds are passed over, so two
+        workers never send the same one; so are those in ``skip``."""
+        ...
+
+    async def mark_sent(self, reminder_id: UUID, at: datetime) -> None: ...
+
+    async def mark_skipped(self, reminder_id: UUID, at: datetime) -> None: ...
 
 
 class NotificationStore(Protocol):

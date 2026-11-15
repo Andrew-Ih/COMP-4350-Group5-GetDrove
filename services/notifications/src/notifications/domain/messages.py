@@ -205,3 +205,26 @@ def payment_failed(
         trip_id=trip_id,
         request_id=request_id,
     )
+
+
+def trip_reminder(
+    *,
+    rider_id: UUID,
+    trip_id: UUID,
+    request_id: UUID,
+    departure_at: datetime,
+    pickup_label: str,
+    driver_first_name: str | None,
+) -> Message:
+    """The rider's reminder shortly before departure (#149). Names the driver (it's the
+    rider's own trip) when Accounts knows them."""
+    driver = driver_first_name or "Your driver"
+    return Message(
+        user_id=rider_id,
+        type=NotificationType.TRIP_REMINDER,
+        title="Your trip leaves soon",
+        body=f"{driver} leaves on {when(departure_at)}. Be at your pickup point: {pickup_label}.",
+        link_path=MY_TRIPS,
+        trip_id=trip_id,
+        request_id=request_id,
+    )
