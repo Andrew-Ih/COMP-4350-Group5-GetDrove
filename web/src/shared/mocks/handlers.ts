@@ -4,6 +4,7 @@ import type { components as Accounts } from "@/shared/api/generated/accounts";
 import type { components as Routing } from "@/shared/api/generated/routing";
 
 import { maya, myTrips, searchResultsFor } from "./data";
+import { autoAcceptHandlers } from "./autoAccept";
 import { driveHandlers } from "./drive";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
 
@@ -36,6 +37,7 @@ function problem(status: number, code: string, detail: string, instance: string,
 // Routes of the trips from the latest search, for the map.
 const routes = new Map<string, Routing["schemas"]["RouteFeature"]>();
 export const handlers = [
+  ...autoAcceptHandlers, // the driver's auto-accept rules (#45): see autoAccept.ts
   ...driveHandlers, // posting a trip (#96): see drive.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
