@@ -5,13 +5,13 @@ from uuid import uuid4
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import insert, select
+from sqlalchemy import delete, insert, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
 from trips.adapters.api.dependencies import CancelTripCommand, get_cancel_trip
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import outbox, seat_requests
+from trips.adapters.persistence.tables import outbox, seat_requests, trips
 from trips.application.cancel_trip import CancelTrip
 from trips.domain.entities import Trip
 from trips.domain.errors import TripNotCancellableError
@@ -87,6 +87,7 @@ async def test_cancellation_closes_requests_and_records_events_once(trips_databa
     now = datetime.now(UTC)
     trip = make_trip(uuid4(), now + timedelta(minutes=30))
     pending, accepted, declined = uuid4(), uuid4(), uuid4()
+    trip_events = outbox.c.envelope["payload"]["tripId"].astext == str(trip.id)
 
     try:
         async with sessions.begin() as session:
@@ -143,13 +144,20 @@ async def test_cancellation_closes_requests_and_records_events_once(trips_databa
             assert rows[declined].status == "declined"
 
             events = await session.scalars(
-                select(outbox.c.envelope)
-                .where(outbox.c.envelope["payload"]["tripId"].astext == str(trip.id))
-                .order_by(outbox.c.id)
+                select(outbox.c.envelope).where(trip_events).order_by(outbox.c.id)
             )
             cancellation, late = events.all()
             assert cancellation["type"] == "TripCancelled"
             assert set(cancellation["payload"]["riderIds"]) == {str(pending), str(accepted)}
             assert late["type"] == "DriverLateCancellation"
     finally:
-        await engine.dispose()
+        # Both commands use independent transactions, so their committed rows need cleanup.
+        try:
+            async with sessions.begin() as session:
+                await session.execute(delete(outbox).where(trip_events))
+                await session.execute(
+                    delete(seat_requests).where(seat_requests.c.trip_id == trip.id)
+                )
+                await session.execute(delete(trips).where(trips.c.id == trip.id))
+        finally:
+            await engine.dispose()
