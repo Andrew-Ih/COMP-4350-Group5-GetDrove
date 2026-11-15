@@ -138,7 +138,7 @@ async def session(database_url: str) -> AsyncIterator[AsyncSession]:
         await conn.execute(
             text(
                 "TRUNCATE notifications.processed_events, notifications.failed_events, "
-                "notifications.notifications"
+                "notifications.notifications, notifications.trip_members"
             )
         )
     async with AsyncSession(engine, expire_on_commit=False) as session:
