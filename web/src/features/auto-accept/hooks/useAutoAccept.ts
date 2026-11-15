@@ -8,7 +8,8 @@ import type { AutoAcceptRules } from "../model/rules";
 const RULES = ["trips", "auto-accept"] as const;
 
 // Errors are an ApiError when the API answered, or a TypeError when the request never got
-// there (offline, server down), so they're typed as Error and checked before use.
+// there (offline, server down), so they're typed as Error and checked before use. #336
+// makes the shared `unwrap` always throw an ApiError; then these go back to ApiError.
 
 /** The driver's auto-accept rules. */
 export function useAutoAcceptRules() {
