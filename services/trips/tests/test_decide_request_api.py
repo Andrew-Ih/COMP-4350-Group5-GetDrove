@@ -94,11 +94,12 @@ async def seed(
     seats_available: int = 3,
     departure_at: datetime = DEPARTURE,
     trip_status: TripStatus = TripStatus.SCHEDULED,
+    direction: Direction = Direction.TO_CAMPUS,
 ) -> tuple[Trip, SeatRequest]:
     me = api[1].user_id
     trip = Trip.create(
         driver_id=me if as_driver else uuid4(),
-        direction=Direction.TO_CAMPUS,
+        direction=direction,
         place=Location("Pembina Highway", 49.82, -97.15),
         departure_at=departure_at,
         duration_seconds=900,
@@ -166,6 +167,23 @@ async def test_driver_accepts_and_a_seat_is_taken(api: API) -> None:
     assert payload["requestId"] == str(request.id)
     assert payload["amountCents"] == 200
     assert payload["autoAccepted"] is False
+    assert payload["direction"] == "to_campus"
+
+
+@pytest.mark.parametrize("direction", [Direction.TO_CAMPUS, Direction.FROM_CAMPUS])
+async def test_the_accepted_event_says_which_way_the_trip_goes(
+    api: API, direction: Direction
+) -> None:
+    """So Notifications can tell the pickup (to campus) from the drop-off (leaving) (#354)."""
+    _, request = await seed(api, as_driver=True, direction=direction)
+
+    response = await act(api, "accept", request.id)
+
+    assert response.status_code == 200, response.text
+    [event] = await saved_events(api)
+    payload = event["envelope"]["payload"]
+    assert payload["direction"] == direction.value
+    assert payload["pickupLabel"] == "Pembina pickup"
 
 
 async def test_a_rider_cannot_accept(api: API) -> None:
