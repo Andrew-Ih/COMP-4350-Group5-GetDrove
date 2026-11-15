@@ -47,6 +47,9 @@ class RequestSeat:
         self.events = events
 
     async def execute(self, command: RequestSeatCommand) -> SeatRequest:
+        # One request at a time per rider (#359): without it, two requests for overlapping
+        # trips could both pass the overlap check before either is saved.
+        await self.requests.lock_rider(command.rider_id)
         trip = await self.trips.get(command.trip_id)
 
         already_requested = False

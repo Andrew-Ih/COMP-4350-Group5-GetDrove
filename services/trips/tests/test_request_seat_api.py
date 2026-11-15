@@ -1,6 +1,7 @@
 """POST /{trip_id}/requests with real PostgreSQL and mocked Routing and Payments."""
 
-from collections.abc import AsyncIterator, Callable
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID, uuid4
@@ -348,3 +349,81 @@ async def test_invalid_body_returns_422_and_calls_nothing(api: API, change: dict
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_input"
     await assert_nothing_saved(api)
+
+
+# ---------------------------------------------------------------- at the same time (#359)
+
+
+async def request_together(
+    api: API, requests: list[tuple[UUID, UUID]], routing_handler: Callable[[httpx.Request], Any]
+) -> list[httpx.Response]:
+    """Sends seat requests at the same moment: (trip, rider) each, sharing one app."""
+    app, auth, _ = api
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(routing_handler), base_url="http://routing:8000"
+        ) as routing_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(payments()), base_url="http://payments:8000"
+        ) as payments_client,
+    ):
+        app.state.routing_client = routing_client
+        app.state.payments_client = payments_client
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+            base_url="http://test",
+        ) as client:
+            sends: list[Awaitable[httpx.Response]] = [
+                client.post(
+                    f"/{trip_id}/requests",
+                    json=BODY,
+                    headers={
+                        **auth.headers(user_id=rider_id),
+                        "X-Request-ID": str(auth.user_id),
+                    },
+                )
+                for trip_id, rider_id in requests
+            ]
+            return list(await asyncio.gather(*sends))
+
+
+def slow_routing() -> Callable[[httpx.Request], Awaitable[httpx.Response]]:
+    """Routing that takes a moment, so both requests are past their checks before either is
+    saved, unless they're made to wait for each other."""
+    answer = routing()
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(0.2)
+        return answer(request)
+
+    return handler
+
+
+async def test_one_riders_simultaneous_requests_for_overlapping_trips(api: API) -> None:
+    first, second = await add_trip(api), await add_trip(api)  # same time: they overlap
+    rider = api[1].user_id
+
+    responses = await request_together(api, [(first.id, rider), (second.id, rider)], slow_routing())
+
+    assert sorted(r.status_code for r in responses) == [201, 409]
+    [refused] = [r for r in responses if r.status_code == 409]
+    assert refused.json()["code"] == "overlapping_request"
+    assert len(await saved_requests(api)) == 1
+    assert len(await saved_events(api)) == 1
+
+
+async def test_two_riders_requesting_at_once_both_get_a_seat(api: API) -> None:
+    trip = await add_trip(api)
+    other_rider = uuid4()
+
+    try:
+        responses = await request_together(
+            api, [(trip.id, api[1].user_id), (trip.id, other_rider)], slow_routing()
+        )
+
+        assert [r.status_code for r in responses] == [201, 201]
+    finally:
+        async with api[2].begin() as connection:
+            await connection.execute(
+                delete(seat_requests).where(seat_requests.c.rider_id == other_rider)
+            )
