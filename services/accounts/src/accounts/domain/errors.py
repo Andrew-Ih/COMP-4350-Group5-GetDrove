@@ -107,3 +107,10 @@ class DocumentNotFoundError(NotFoundError):
 
     code = "document_not_found"
     title = "No document"
+
+
+class UserNotFoundError(NotFoundError):
+    """No account with this ID or email (404)."""
+
+    code = "user_not_found"
+    title = "No such user"

@@ -1,9 +1,8 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Implemented: status (#10), documents (#9) and vehicle (#125). The rest return 501 until
-their task implements them: admin approval (#127), profiles and the internal lookups
-(#143, #146).
+Implemented: status (#10), documents (#9), vehicle (#125) and admin approval (#127).
+Profiles and the internal lookups (#143, #146) return 501 until their task implements them.
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
 """
@@ -26,6 +25,12 @@ from accounts.adapters.api.schemas import (
     PublicProfile,
     RejectDriverRequest,
     Vehicle,
+)
+from accounts.application.admin import (
+    Application,
+    ApproveDriver,
+    ListDriverApplications,
+    RejectDriver,
 )
 from accounts.application.documents import (
     OpenDriverDocument,
@@ -92,6 +97,23 @@ def _file_response(document: StoredDocument) -> Response:
             "Cache-Control": "private, no-store",
             "X-Content-Type-Options": "nosniff",
         },
+    )
+
+
+def admin_driver_out(application: Application) -> AdminDriver:
+    profile = driver_profile_out(application.profile)
+    user = application.user
+    return AdminDriver(
+        user_id=user.id,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email.value,
+        status=profile.status,
+        vehicle=profile.vehicle,
+        documents=profile.documents,
+        submitted_at=profile.submitted_at,
+        reviewed_at=profile.reviewed_at,
+        rejection_reason=profile.rejection_reason,
     )
 
 
@@ -192,9 +214,11 @@ async def save_vehicle(body: Vehicle, user: AuthenticatedUser, uow: Uow) -> Driv
 )
 async def list_drivers(
     admin: Admin,
+    uow: Uow,
     status: Annotated[Literal["pending", "approved", "rejected"], Query()] = "pending",
 ) -> list[AdminDriver]:
-    _not_implemented()
+    applications = await ListDriverApplications(uow)(domain.DriverStatus(status))
+    return [admin_driver_out(application) for application in applications]
 
 
 @admin_router.get(
@@ -232,8 +256,8 @@ DECISION_ERRORS: Responses = {
         ),
     },
 )
-async def approve_driver(user_id: UUID, admin: Admin) -> AdminDriver:
-    _not_implemented()
+async def approve_driver(user_id: UUID, admin: Admin, uow: Uow, clock: AppClock) -> AdminDriver:
+    return admin_driver_out(await ApproveDriver(uow, clock)(admin.id, user_id))
 
 
 @admin_router.post(
@@ -243,8 +267,10 @@ async def approve_driver(user_id: UUID, admin: Admin) -> AdminDriver:
     "`DriverRejected`.",
     responses=DECISION_ERRORS,
 )
-async def reject_driver(user_id: UUID, body: RejectDriverRequest, admin: Admin) -> AdminDriver:
-    _not_implemented()
+async def reject_driver(
+    user_id: UUID, body: RejectDriverRequest, admin: Admin, uow: Uow, clock: AppClock
+) -> AdminDriver:
+    return admin_driver_out(await RejectDriver(uow, clock)(admin.id, user_id, body.reason))
 
 
 # ---------------------------------------------------------------- public profiles

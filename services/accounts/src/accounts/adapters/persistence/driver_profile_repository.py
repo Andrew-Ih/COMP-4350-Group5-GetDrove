@@ -36,6 +36,14 @@ class SqlDriverProfileRepository:
             )
         )
 
+    async def list_by_status(self, status: DriverStatus) -> list[DriverProfile]:
+        rows = await self._session.execute(
+            select(driver_profiles)
+            .where(driver_profiles.c.status == status.value)
+            .order_by(driver_profiles.c.submitted_at, driver_profiles.c.user_id)
+        )
+        return [_to_profile(row) for row in rows]
+
 
 def _to_row(profile: DriverProfile) -> dict[str, object]:
     vehicle = profile.vehicle
