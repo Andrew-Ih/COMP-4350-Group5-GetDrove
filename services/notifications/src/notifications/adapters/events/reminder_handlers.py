@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from events import EventEnvelope
 from events.catalog import RequestAccepted, RequestCancelled, RequestDeclined, TripCancelled
 from events.consumer import StreamConsumer
+from notifications.adapters.events.registration import HandlerMap, register_event_handlers
 from notifications.adapters.persistence.reminder_store import SQLAlchemyReminderStore
 from notifications.application.trip_reminders import CancelTripReminders, ScheduleTripReminder
 
@@ -44,9 +45,9 @@ async def cancel_trip_reminders(event: EventEnvelope, session: AsyncSession) -> 
     await CancelTripReminders(SQLAlchemyReminderStore(session)).for_trip(data.trip_id)
 
 
-def register_reminder_handlers(consumer: StreamConsumer, lead: timedelta) -> None:
-    """``lead``: how long before departure riders are reminded
-    (``NOTIFICATIONS_REMINDER_LEAD_MINUTES``)."""
+def reminder_handlers(lead: timedelta) -> HandlerMap:
+    """The reminder handlers, by event. ``lead``: how long before departure riders are
+    reminded (``NOTIFICATIONS_REMINDER_LEAD_MINUTES``)."""
 
     async def schedule_reminder(event: EventEnvelope, session: AsyncSession) -> None:
         data = event.payload_as(RequestAccepted)
@@ -58,7 +59,15 @@ def register_reminder_handlers(consumer: StreamConsumer, lead: timedelta) -> Non
             pickup_label=data.pickup_label,
         )
 
-    consumer.on(RequestAccepted)(schedule_reminder)
-    consumer.on(RequestCancelled)(cancel_request_reminder)
-    consumer.on(RequestDeclined)(cancel_declined_reminder)
-    consumer.on(TripCancelled)(cancel_trip_reminders)
+    return {
+        RequestAccepted: schedule_reminder,
+        RequestCancelled: cancel_request_reminder,
+        RequestDeclined: cancel_declined_reminder,
+        TripCancelled: cancel_trip_reminders,
+    }
+
+
+def register_reminder_handlers(consumer: StreamConsumer, lead: timedelta) -> None:
+    """Only the reminders, on a consumer of their own (tests). The service registers them
+    together with the notifications (``registration.register_event_handlers``)."""
+    register_event_handlers(consumer, reminder_handlers(lead))

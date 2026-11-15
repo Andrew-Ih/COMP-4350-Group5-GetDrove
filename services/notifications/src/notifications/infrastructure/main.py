@@ -10,6 +10,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import timedelta
 
+import httpx
 from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
@@ -18,19 +19,24 @@ from common_security.dependencies import install_security
 from common_web.app import install
 from events import stream_name
 from events.consumer import StreamConsumer
+from notifications.adapters.accounts import HTTPContactDirectory
 from notifications.adapters.api import health, notifications_router
 from notifications.adapters.email.smtp_sender import SmtpEmailSender, SmtpSettings
 from notifications.adapters.events.handlers import register_handlers
-from notifications.adapters.events.reminder_handlers import register_reminder_handlers
+from notifications.adapters.events.notification_handlers import notification_handlers
+from notifications.adapters.events.registration import register_event_handlers
+from notifications.adapters.events.reminder_handlers import reminder_handlers
 from notifications.adapters.persistence.tables import consumer as consumer_tables
 from notifications.application.send_verification_email import SendVerificationEmail
 from notifications.infrastructure.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
-# Accounts' events ask for verification emails (#93); Trips' events keep reminders in step
-# with seat requests and trips (#148).
-CONSUMED_STREAMS = [stream_name("accounts"), stream_name("trips")]
+# Accounts' events ask for verification emails (#93) and tell drivers about approval;
+# Trips' and Payments' events become notifications (#146).
+CONSUMED_STREAMS = [stream_name("accounts"), stream_name("trips"), stream_name("payments")]
+# How long to wait for Accounts when looking up where to send emails.
+ACCOUNTS_TIMEOUT_SECONDS = 5.0
 
 # How long the consumer waits on Redis for new events before checking again.
 CONSUMER_BLOCK_MS = 5_000
@@ -72,8 +78,11 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        # Reads Accounts' and Trips' events for as long as the service runs.
+        # Reads events for as long as the service runs.
         redis = redis_client(settings.redis_url)
+        accounts = httpx.AsyncClient(
+            base_url=settings.accounts_url, timeout=ACCOUNTS_TIMEOUT_SECONDS
+        )
         consumer = StreamConsumer(
             redis=redis,
             session_factory=sessions,
@@ -83,7 +92,15 @@ def create_app() -> FastAPI:
             block_ms=CONSUMER_BLOCK_MS,
         )
         register_handlers(consumer, send_email)
-        register_reminder_handlers(consumer, timedelta(minutes=settings.reminder_lead_minutes))
+        register_event_handlers(
+            consumer,
+            notification_handlers(
+                contacts=HTTPContactDirectory(accounts),
+                sender=sender,
+                web_base_url=settings.web_base_url,
+            ),
+            reminder_handlers(timedelta(minutes=settings.reminder_lead_minutes)),
+        )
         stop = asyncio.Event()
         consumer_task = asyncio.create_task(consumer.run(stop))
         consumer_task.add_done_callback(_log_if_consumer_stopped)
@@ -95,6 +112,7 @@ def create_app() -> FastAPI:
             consumer_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await consumer_task
+            await accounts.aclose()
             await redis.aclose()
             await engine.dispose()
 
