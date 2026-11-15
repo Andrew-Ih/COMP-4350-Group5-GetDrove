@@ -115,7 +115,13 @@ async def add_trip(api: API, *, driver_id: UUID) -> Trip:
 
 
 async def add_request(
-    api: API, trip: Trip, status: RequestStatus, day: int, rider_id: UUID | None = None
+    api: API,
+    trip: Trip,
+    status: RequestStatus,
+    day: int,
+    rider_id: UUID | None = None,
+    *,
+    pickup_order: int | None = None,
 ) -> SeatRequest:
     request = SeatRequest.create(
         trip_id=trip.id,
@@ -127,7 +133,7 @@ async def add_request(
         cost=Quote(200, "CAD", "4 km at $0.45/km ($2.00 minimum)"),
         now=datetime(2029, 12, day, tzinfo=UTC),
     )
-    request = replace(request, status=status)
+    request = replace(request, status=status, pickup_order=pickup_order)
     factory = async_sessionmaker(api[2], expire_on_commit=False)
     async with factory() as session, session.begin():
         await SQLAlchemySeatRequestRepository(session).add(request)
@@ -153,9 +159,9 @@ async def list_requests(
 
 async def test_driver_sees_pending_first_then_accepted_in_pickup_order(api: API) -> None:
     trip = await add_trip(api, driver_id=api[1].user_id)
-    first_accepted = await add_request(api, trip, RequestStatus.ACCEPTED, 1)
+    first_accepted = await add_request(api, trip, RequestStatus.ACCEPTED, 1, pickup_order=1)
     first_pending = await add_request(api, trip, RequestStatus.PENDING, 2)
-    second_accepted = await add_request(api, trip, RequestStatus.ACCEPTED, 3)
+    second_accepted = await add_request(api, trip, RequestStatus.ACCEPTED, 3, pickup_order=2)
     second_pending = await add_request(api, trip, RequestStatus.PENDING, 4)
     names = {
         request.rider_id: name
@@ -180,6 +186,21 @@ async def test_driver_sees_pending_first_then_accepted_in_pickup_order(api: API)
     assert [item["status"] for item in body] == ["pending", "pending", "accepted", "accepted"]
     assert [item["pickupOrder"] for item in body] == [None, None, 1, 2]
     assert [item["rider"]["firstName"] for item in body] == ["Ben", "Dee", "Ana", "Cai"]
+
+
+async def test_driver_sees_a_pickup_placed_earlier_on_the_route_first(api: API) -> None:
+    """Accepted second but placed first on the route (#310): listed and numbered first."""
+    trip = await add_trip(api, driver_id=api[1].user_id)
+    accepted_first = await add_request(api, trip, RequestStatus.ACCEPTED, 1, pickup_order=2)
+    accepted_later = await add_request(api, trip, RequestStatus.ACCEPTED, 2, pickup_order=1)
+    names = {accepted_first.rider_id: "Ana", accepted_later.rider_id: "Ben"}
+
+    response = await list_requests(api, trip.id, accounts(names))
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert [item["id"] for item in body] == [str(accepted_later.id), str(accepted_first.id)]
+    assert [item["pickupOrder"] for item in body] == [1, 2]
 
 
 async def test_each_request_shows_rider_pickup_detour_and_cost(api: API) -> None:
@@ -213,8 +234,8 @@ async def test_trip_without_requests_returns_empty_list_and_skips_accounts(api: 
 
 async def test_rider_unknown_to_accounts_is_skipped(api: API) -> None:
     trip = await add_trip(api, driver_id=api[1].user_id)
-    lost = await add_request(api, trip, RequestStatus.ACCEPTED, 1)
-    kept = await add_request(api, trip, RequestStatus.ACCEPTED, 2)
+    lost = await add_request(api, trip, RequestStatus.ACCEPTED, 1, pickup_order=1)
+    kept = await add_request(api, trip, RequestStatus.ACCEPTED, 2, pickup_order=2)
 
     response = await list_requests(api, trip.id, accounts({kept.rider_id: "Kim"}))
 

@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
@@ -371,6 +371,8 @@ async def test_a_pickup_placed_first_pushes_the_others_down(session: AsyncSessio
     inserted = await accept_at(repository, trip, 0, 3)
 
     assert [await order_of(repository, i) for i in (first, second, inserted)] == [2, 3, 1]
+    # Pushing the others down passed through duplicates; the end result is valid.
+    await check_constraints_now(session)
 
 
 async def test_a_pickup_placed_in_the_middle_pushes_only_later_ones(session: AsyncSession) -> None:
@@ -395,6 +397,25 @@ async def test_a_position_past_the_end_is_clamped_and_none_goes_last(
     assert [await order_of(repository, i) for i in (first, second, third)] == [1, 2, 3]
 
 
+async def check_constraints_now(session: AsyncSession) -> None:
+    """The unique pickup order is checked at commit, and these tests never commit."""
+    await session.execute(text("SET CONSTRAINTS ALL IMMEDIATE"))
+
+
+async def test_two_accepted_requests_cant_share_a_place_in_the_pickup_order(
+    session: AsyncSession,
+) -> None:
+    trip = await add_trip(session)
+    repository = SQLAlchemySeatRequestRepository(session)
+    for _ in range(2):
+        await repository.add(
+            replace(make_request(trip, status=RequestStatus.ACCEPTED), pickup_order=1)
+        )
+
+    with pytest.raises(IntegrityError):
+        await check_constraints_now(session)
+
+
 async def test_renumbering_closes_the_gap_after_a_removal_from_the_middle(
     session: AsyncSession,
 ) -> None:
@@ -412,6 +433,7 @@ async def test_renumbering_closes_the_gap_after_a_removal_from_the_middle(
 
     assert await order_of(repository, middle) is None
     assert [await order_of(repository, i) for i in (first, last)] == [1, 2]
+    await check_constraints_now(session)
 
 
 async def test_open_requests_list_pending_first_then_accepted_oldest_first(

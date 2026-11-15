@@ -51,9 +51,24 @@ def upgrade() -> None:
         "pickup_order IS NULL OR (status = 'accepted' AND pickup_order >= 1)",
         schema="trips",
     )
+    # Checked at commit: shifting the later pickups down passes through duplicates.
+    op.create_unique_constraint(
+        op.f("uq_seat_requests_trip_id_pickup_order"),
+        "seat_requests",
+        ["trip_id", "pickup_order"],
+        schema="trips",
+        deferrable=True,
+        initially="DEFERRED",
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint(
+        op.f("uq_seat_requests_trip_id_pickup_order"),
+        "seat_requests",
+        schema="trips",
+        type_="unique",
+    )
     op.drop_constraint(
         op.f("ck_seat_requests_valid_pickup_order"),
         "seat_requests",

@@ -16,6 +16,7 @@ from sqlalchemy import (
     MetaData,
     String,
     Table,
+    UniqueConstraint,
     Uuid,
     func,
     text,
@@ -141,6 +142,16 @@ seat_requests = Table(
     CheckConstraint(
         "pickup_order IS NULL OR (status = 'accepted' AND pickup_order >= 1)",
         name="valid_pickup_order",
+    ),
+    # No two accepted requests on a trip share a place in the pickup order (#310). Checked at
+    # commit, because pushing later pickups down (pickup_order + 1) passes through duplicates
+    # halfway through the UPDATE.
+    UniqueConstraint(
+        "trip_id",
+        "pickup_order",
+        name="uq_seat_requests_trip_id_pickup_order",
+        deferrable=True,
+        initially="DEFERRED",
     ),
     CheckConstraint(
         "amount_cents >= 0 AND currency = 'CAD'",

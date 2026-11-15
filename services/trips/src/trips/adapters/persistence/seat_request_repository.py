@@ -110,11 +110,16 @@ class SQLAlchemySeatRequestRepository:
             for row in result.mappings()
         ]
 
+    async def _lock_trip(self, trip_id: UUID) -> None:
+        """Locks the trip row until the transaction ends, so changes to one trip's pickup
+        order (accepting, declining, cancelling) happen one at a time."""
+        await self.session.execute(
+            select(trips.c.id).where(trips.c.id == trip_id).with_for_update()
+        )
+
     async def place_accepted(self, request: SeatRequest, *, position: int | None) -> int:
         """Put a just-accepted request into the pickup order and push the later ones down."""
-        await self.session.execute(
-            select(trips.c.id).where(trips.c.id == request.trip_id).with_for_update()
-        )
+        await self._lock_trip(request.trip_id)
         placed = (
             seat_requests.c.trip_id == request.trip_id,
             seat_requests.c.status == RequestStatus.ACCEPTED.value,
@@ -139,6 +144,7 @@ class SQLAlchemySeatRequestRepository:
 
     async def renumber_accepted(self, trip_id: UUID) -> None:
         """Number a trip's accepted requests 1..n in their current order, closing any gap."""
+        await self._lock_trip(trip_id)
         ranked = (
             select(
                 seat_requests.c.id,

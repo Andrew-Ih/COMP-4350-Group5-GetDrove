@@ -14,7 +14,7 @@ from trips.domain.request_errors import (
     NotTripDriverError,
     TripNotFoundError,
 )
-from trips.domain.seat_request import RequestStatus, SeatRequest
+from trips.domain.seat_request import SeatRequest
 
 logger = logging.getLogger(__name__)
 
@@ -70,19 +70,15 @@ class ListTripRequests:
         profiles = await self.riders.get_many([request.rider_id for request in open_requests])
 
         items: list[DriverRequest] = []
-        order = 0
         for request in open_requests:
-            pickup_order = None
-            if request.status is RequestStatus.ACCEPTED:
-                order += 1
-                pickup_order = order
             rider = profiles.get(request.rider_id)
             if rider is None:
                 logger.warning(
                     "Skipping request %s: Accounts has no profile for its rider", request.id
                 )
                 continue
-            items.append(DriverRequest(request, rider, pickup_order))
+            # The stored order (#310): where the pickup sits on the route, not when accepted.
+            items.append(DriverRequest(request, rider, request.pickup_order))
         return items
 
     async def execute(self, command: ListTripRequestsCommand) -> list[DriverRequest]:
