@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from typing import Protocol, Self
 from uuid import UUID
 
+from accounts.domain.driver import DriverProfile
 from accounts.domain.email import Email
 from accounts.domain.refresh_token import RefreshToken
 from accounts.domain.user import User
@@ -119,6 +120,20 @@ class RefreshTokenRepository(Protocol):
         ...
 
 
+class DriverProfileRepository(Protocol):
+    """Applications to drive (#8). Implementations never commit."""
+
+    async def get(self, user_id: UUID, *, for_update: bool = False) -> DriverProfile | None:
+        """The user's application, or None if they've never applied or saved a vehicle.
+        ``for_update`` locks it until the transaction ends, for changes that check its
+        status first."""
+        ...
+
+    async def save(self, profile: DriverProfile) -> None:
+        """Creates or updates the application."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """One use case's database work: the repositories and the event publisher share one
     transaction, so changes and the events about them are saved together or not at all.
@@ -135,6 +150,9 @@ class UnitOfWork(Protocol):
 
     @property
     def refresh_tokens(self) -> RefreshTokenRepository: ...
+
+    @property
+    def drivers(self) -> DriverProfileRepository: ...
 
     @property
     def events(self) -> EventPublisher: ...

@@ -18,8 +18,8 @@ FILES = {
     "insurance": ("insurance.png", b"\x89PNG", "image/png"),
 }
 
+# GET /me/driver is implemented (#10); tests/integration/test_driver_profiles.py checks it.
 DRIVER_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
-    ("GET", "/me/driver", {}),
     ("PUT", "/me/driver/documents", {"files": FILES}),
     ("GET", "/me/driver/documents/licence", {}),
     ("PUT", "/me/driver/vehicle", {"json": VEHICLE}),

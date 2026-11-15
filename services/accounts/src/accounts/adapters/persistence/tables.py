@@ -6,9 +6,11 @@ Alembic autogenerates migrations from ``metadata``.
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Index,
     MetaData,
     String,
     Table,
@@ -104,6 +106,43 @@ refresh_tokens = Table(
         nullable=True,
     ),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# One row per student who has applied to drive, or saved a vehicle (#8). No row means
+# status "none". The documents themselves are in DocumentStorage (#9, ADR 0011); only
+# their keys are here.
+driver_profiles = Table(
+    "driver_profiles",
+    metadata,
+    Column("user_id", Uuid, ForeignKey(users.c.id, ondelete="CASCADE"), primary_key=True),
+    Column("status", String(10), nullable=False),
+    Column("licence_key", String(200), nullable=True),
+    Column("insurance_key", String(200), nullable=True),
+    Column("vehicle_make", String(30), nullable=True),
+    Column("vehicle_model", String(30), nullable=True),
+    Column("vehicle_colour", String(30), nullable=True),
+    Column("vehicle_plate", String(8), nullable=True),
+    Column("submitted_at", DateTime(timezone=True), nullable=True),
+    Column("reviewed_at", DateTime(timezone=True), nullable=True),
+    # The admin who decided. Kept if that admin's account is deleted, as null.
+    Column(
+        "reviewed_by",
+        Uuid,
+        ForeignKey(users.c.id, ondelete="SET NULL", name="fk_driver_profiles_reviewed_by_users"),
+        nullable=True,
+    ),
+    Column("rejection_reason", String(500), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    CheckConstraint("status IN ('none', 'pending', 'approved', 'rejected')", name="status"),
+    # The admin page lists applications by status, oldest first (#127).
+    Index("ix_driver_profiles_status_submitted_at", "status", "submitted_at"),
 )
 
 # Events waiting to be sent to Redis (libs/events). Saved in the same transaction as
