@@ -5,6 +5,7 @@ Alembic autogenerates migrations from ``metadata``.
 """
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
@@ -14,11 +15,13 @@ from sqlalchemy import (
     Table,
     Text,
     Uuid,
+    func,
     text,
 )
 
 from events.consumer import consumer_tables
 from notifications.domain.notifications import NotificationType
+from notifications.domain.trip_members import TripRole
 
 SCHEMA = "notifications"
 
@@ -58,4 +61,19 @@ notifications = Table(
     # The bell polls the unread count every few seconds while open; this index holds only
     # unread rows, so counting doesn't read everything the user has ever been sent.
     Index("ix_notifications_unread_user_id", "user_id", postgresql_where=text("read_at IS NULL")),
+)
+
+_ROLES = ", ".join(f"'{role}'" for role in TripRole)
+
+# Who is on each trip (#146): the driver and the riders with a seat, from Trips' events.
+# Riders who leave stay listed as inactive.
+trip_members = Table(
+    "trip_members",
+    metadata,
+    Column("trip_id", Uuid, primary_key=True),
+    Column("user_id", Uuid, primary_key=True),
+    Column("role", String(10), nullable=False),
+    Column("active", Boolean, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(f"role IN ({_ROLES})", name="valid_role"),
 )
