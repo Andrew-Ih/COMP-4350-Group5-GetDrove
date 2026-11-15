@@ -261,6 +261,10 @@ async def test_a_trip_without_a_route_has_no_pickup_points() -> None:
     [
         httpx.Response(503, json={"code": "routing_engine_unavailable"}),
         httpx.Response(422, json={"code": "invalid_input"}),
+        # A 404 that isn't "this trip has no route": a wrong path, or Routing redeploying.
+        httpx.Response(404, json={"detail": "Not Found"}),
+        httpx.Response(404, json={"code": "not_found"}),
+        httpx.Response(404, content=b"404 page not found"),
         httpx.Response(200, content=b"not JSON"),
         httpx.Response(200, json={}),
         httpx.Response(200, json={"pickups": [{"id": 42}]}),
