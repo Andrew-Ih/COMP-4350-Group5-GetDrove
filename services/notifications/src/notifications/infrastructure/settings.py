@@ -25,6 +25,10 @@ class Settings(BaseSettings):
     # site in production. Never hard-coded, so links always open the right site.
     web_base_url: str = "http://localhost:3000"
 
+    # Accounts, for the names and emails of the people a notification is for (#146). Inside
+    # Docker this is http://accounts:8000; its /internal paths aren't public.
+    accounts_url: str = "http://localhost:8001"
+
 
 def get_settings() -> Settings:
     return Settings()

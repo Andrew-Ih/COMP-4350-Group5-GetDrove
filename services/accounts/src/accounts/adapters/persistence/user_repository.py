@@ -1,6 +1,7 @@
 """The PostgreSQL ``UserRepository``: turns ``User`` objects into rows of accounts.users and
 back."""
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from sqlalchemy import Row, insert, select, update
@@ -51,6 +52,12 @@ class SqlUserRepository:
             await self._session.execute(select(users).where(users.c.email == email.value))
         ).first()
         return _to_user(row) if row else None
+
+    async def get_many(self, user_ids: Sequence[UUID]) -> list[User]:
+        if not user_ids:
+            return []
+        rows = await self._session.execute(select(users).where(users.c.id.in_(set(user_ids))))
+        return [_to_user(row) for row in rows]
 
     async def save(self, user: User) -> None:
         # The email never changes after sign-up, so it isn't updated here.
