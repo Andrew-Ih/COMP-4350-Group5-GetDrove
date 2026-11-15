@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, case, func, insert, select, update
+from sqlalchemy import RowMapping, case, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import seat_requests, trips
@@ -72,6 +72,14 @@ class SQLAlchemySeatRequestRepository:
         )
         row = result.mappings().first()
         return _request(row) if row is not None else None
+
+    async def lock_rider(self, rider_id: UUID) -> None:
+        # A transaction-level advisory lock on this rider's ID: released at commit or
+        # rollback, and only other requests by the same rider wait for it.
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"trips.seat-requests:{rider_id}"},
+        )
 
     async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
         result = await self.session.execute(

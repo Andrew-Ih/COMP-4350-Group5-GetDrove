@@ -118,6 +118,12 @@ class RiderCardService(Protocol):
 
 
 class SeatRequestRepository(Protocol):
+    async def lock_rider(self, rider_id: UUID) -> None:
+        """Until the transaction ends, makes the rider's other seat requests wait (#359), so
+        checking for an overlapping request and saving the new one happen one at a time for
+        each rider. Other riders aren't affected."""
+        ...
+
     async def add(self, request: SeatRequest) -> None: ...
 
     async def get(self, request_id: UUID) -> SeatRequest | None: ...

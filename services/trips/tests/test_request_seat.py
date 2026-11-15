@@ -92,8 +92,15 @@ class FakeRequests:
         self.existing = existing
         self.overlapping = overlapping
         self.saved: list[SeatRequest] = []
+        self.calls: list[str] = []
+        self.locked: list[UUID] = []
+
+    async def lock_rider(self, rider_id: UUID) -> None:
+        self.calls.append("lock")
+        self.locked.append(rider_id)
 
     async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
+        self.calls.append("check")
         return self.existing
 
     async def has_overlapping_active_request(
@@ -105,6 +112,7 @@ class FakeRequests:
         return []
 
     async def add(self, request: SeatRequest) -> None:
+        self.calls.append("add")
         self.saved.append(request)
 
 
@@ -311,3 +319,15 @@ async def test_external_failures_do_not_save_a_request(failure: str) -> None:
 
     assert harness.requests.saved == []
     assert harness.events.published == []
+
+
+async def test_the_rider_is_locked_before_the_checks_and_the_insert() -> None:
+    """So two requests by one rider can't both pass the overlap check (#359)."""
+    trip = make_trip()
+    harness = build(trip)
+    command = make_command(trip.id)
+
+    await harness.use_case.execute(command)
+
+    assert harness.requests.locked == [command.rider_id]
+    assert harness.requests.calls == ["lock", "check", "add"]
