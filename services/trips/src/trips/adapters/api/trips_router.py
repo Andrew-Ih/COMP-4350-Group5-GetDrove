@@ -154,7 +154,7 @@ async def post_trip_series(
         ),
         departure_at=body.departure_at,
         seats_total=body.seats_total,
-        weekdays=body.weekdays,
+        weekdays=list[str](body.weekdays),
         end_date=body.end_date,
     )
 
