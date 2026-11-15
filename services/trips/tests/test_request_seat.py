@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import httpx
@@ -13,6 +14,7 @@ from payments.infrastructure.main import create_app as create_payments_app
 from trips.adapters.payments import HTTPPricingService
 from trips.application.request_routing import DetourEstimate, SelectedPickup
 from trips.application.request_seat import RequestSeat, RequestSeatCommand
+from trips.application.trip_detail import GetTripDetail
 from trips.domain.entities import Trip
 from trips.domain.errors import PricingUnavailableError, RoutingUnavailableError
 from trips.domain.request_errors import (
@@ -26,7 +28,7 @@ from trips.domain.request_errors import (
     TripNotOpenError,
 )
 from trips.domain.seat_request import SeatRequest
-from trips.domain.values import Direction, Location, Point, Quote, TripStatus
+from trips.domain.values import Direction, Location, PickupOffer, Point, Quote, TripStatus
 
 DEPARTURE = datetime(2030, 1, 1, 9, 0, tzinfo=UTC)
 NOW = datetime(2029, 12, 31, tzinfo=UTC)
@@ -371,3 +373,60 @@ async def test_saved_share_matches_payments_quote_for_the_riders_distance(
     assert request.cost == shown_quote
     assert harness.requests.saved[0].cost == shown_quote
     assert harness.requests.saved[0].rider_distance_meters == expected_distance
+
+
+@pytest.mark.parametrize("direction", [Direction.TO_CAMPUS, Direction.FROM_CAMPUS])
+async def test_choosing_another_suggested_pickup_saves_its_displayed_quote(
+    direction: Direction,
+) -> None:
+    """#136 chooses before requesting; #69 saves that option, not the first suggestion."""
+    trip = replace(make_trip(), direction=direction)
+    harness = build(trip)
+    offers = [
+        PickupOffer("s42", PICKUP.location, 120, 4000),
+        PickupOffer("s50", Location("Alternative pickup", 49.815, -97.14), 180, 8000),
+    ]
+    routing = AsyncMock()
+    routing.pickup_points.return_value = offers
+    routing.estimate_detour.return_value = DetourEstimate(180, 1, 1500)
+
+    async def select_pickup(*, trip_id, rider, pickup_id, exclude):
+        offer = next(offer for offer in offers if offer.id == pickup_id)
+        return SelectedPickup(offer.id, offer.pickup, offer.walk_seconds, offer.meters_to_trip_end)
+
+    routing.select_pickup.side_effect = select_pickup
+    harness.use_case.routing = routing
+    payments = create_payments_app()
+    payments.dependency_overrides[get_pricing_config] = lambda: PricingConfig(45, 200)
+    command = replace(make_command(trip.id), pickup_id="s50")
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=payments), base_url="http://payments"
+    ) as client:
+        pricing = HTTPPricingService(client)
+        harness.use_case.pricing = pricing
+        detail = await GetTripDetail(
+            repository=harness.use_case.trips,
+            routing=routing,
+            pricing=pricing,
+            requests=harness.requests,
+        ).execute(trip.id, viewer_id=command.rider_id, rider=command.rider)
+        first, selected = detail.pickups
+        assert first.cost is not None and selected.cost is not None
+        assert selected.cost.amount_cents != first.cost.amount_cents
+        assert harness.requests.saved == []  # Viewing suggestions does not save a request.
+        request = await harness.use_case.execute(command)
+
+    expected_distance = 8000 if direction is Direction.TO_CAMPUS else 2000
+    assert request.pickup == selected.offer.pickup
+    assert request.rider_distance_meters == expected_distance
+    assert request.cost == selected.cost
+    assert request.cost != first.cost
+    assert harness.requests.saved == [request]
+    assert harness.requests.saved[0].cost.currency == selected.cost.currency
+    routing.select_pickup.assert_awaited_once_with(
+        trip_id=trip.id,
+        rider=command.rider,
+        pickup_id="s50",
+        exclude=(),
+    )
