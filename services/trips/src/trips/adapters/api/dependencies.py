@@ -11,6 +11,7 @@ from common_web import current_request_id
 from events.outbox import OutboxPublisher
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService
+from trips.adapters.persistence.approved_drivers import SQLAlchemyApprovedDrivers
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.routing import HTTPRoutingService
@@ -52,7 +53,9 @@ class PostTripCommand:
                 )
             )
 
-            use_case = PostTrip(repository, self.routing, events)
+            use_case = PostTrip(
+                repository, self.routing, events, SQLAlchemyApprovedDrivers(session)
+            )
 
             async with session.begin():
                 return await use_case.execute(
