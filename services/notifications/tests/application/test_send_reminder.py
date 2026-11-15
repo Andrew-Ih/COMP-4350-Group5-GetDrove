@@ -9,6 +9,7 @@ import pytest
 from notifications.application.notify import Notify
 from notifications.application.ports import ContactsUnavailableError
 from notifications.application.send_reminder import SendReminder
+from notifications.domain.directions import TripDirection
 from notifications.domain.notification_email import Contact
 from notifications.domain.notifications import NotificationType
 from notifications.domain.reminders import ReminderStatus, TripReminder
@@ -55,7 +56,9 @@ class World:
         return self.reminders.status(self.reminder.request_id)
 
 
-def reminder(driver_id: UUID | None = DRIVER) -> TripReminder:
+def reminder(
+    driver_id: UUID | None = DRIVER, direction: TripDirection | None = TripDirection.TO_CAMPUS
+) -> TripReminder:
     return TripReminder.for_accepted_request(
         rider_id=RIDER,
         trip_id=uuid4(),
@@ -64,6 +67,7 @@ def reminder(driver_id: UUID | None = DRIVER) -> TripReminder:
         pickup_label="Pembina Hwy at Chancellor Matheson Rd",
         lead=timedelta(minutes=30),
         driver_id=driver_id,
+        direction=direction,
     )
 
 
@@ -133,3 +137,26 @@ async def test_if_the_email_fails_it_raises_and_stays_pending() -> None:
         await world.send(DUE)
 
     assert world.status() is ReminderStatus.PENDING
+
+
+async def test_leaving_campus_the_reminder_sends_them_to_campus_not_the_drop_off() -> None:
+    """On a trip leaving campus the stored point is where they're dropped off (#355)."""
+    world = World(reminder(direction=TripDirection.FROM_CAMPUS))
+
+    await world.send(DUE)
+
+    [note] = world.notifications.notifications.values()
+    assert note.body == (
+        "Maya leaves campus on Mon, Jul 6 at 7:45 AM. Meet them on campus; "
+        "you'll be dropped off at Pembina Hwy at Chancellor Matheson Rd."
+    )
+    assert "pickup" not in note.body.lower()
+
+
+async def test_a_reminder_stored_before_direction_was_kept_says_your_stop() -> None:
+    world = World(reminder(direction=None))
+
+    await world.send(DUE)
+
+    [note] = world.notifications.notifications.values()
+    assert note.body.endswith("Your stop: Pembina Hwy at Chancellor Matheson Rd.")

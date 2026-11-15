@@ -27,6 +27,7 @@ from events.consumer import StreamConsumer
 from notifications.adapters.events.registration import HandlerMap, register_event_handlers
 from notifications.adapters.persistence.reminder_store import SQLAlchemyReminderStore
 from notifications.application.trip_reminders import CancelTripReminders, ScheduleTripReminder
+from notifications.domain.directions import TripDirection
 
 
 async def cancel_request_reminder(event: EventEnvelope, session: AsyncSession) -> None:
@@ -58,6 +59,7 @@ def reminder_handlers(lead: timedelta) -> HandlerMap:
             departure_at=data.departure_at,
             pickup_label=data.pickup_label,
             driver_id=data.driver_id,
+            direction=TripDirection(data.direction) if data.direction else None,
         )
 
     return {

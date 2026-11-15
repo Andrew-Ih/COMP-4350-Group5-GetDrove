@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from uuid import UUID
 
 from notifications.application.ports import ReminderStore
+from notifications.domain.directions import TripDirection
 from notifications.domain.reminders import TripReminder
 
 
@@ -24,6 +25,7 @@ class ScheduleTripReminder:
         departure_at: datetime,
         pickup_label: str,
         driver_id: UUID | None = None,
+        direction: TripDirection | None = None,
     ) -> bool:
         """Returns False if the request already had a reminder (nothing changes)."""
         reminder = TripReminder.for_accepted_request(
@@ -34,6 +36,7 @@ class ScheduleTripReminder:
             pickup_label=pickup_label,
             lead=self._lead,
             driver_id=driver_id,
+            direction=direction,
         )
         return await self._store.add(reminder)
 

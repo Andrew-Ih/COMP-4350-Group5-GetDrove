@@ -35,6 +35,7 @@ from notifications.adapters.persistence.trip_members import SQLAlchemyTripMember
 from notifications.application.notify import Notify
 from notifications.application.ports import ContactDirectory, EmailSender
 from notifications.application.trip_events import TripEventNotifications
+from notifications.domain.directions import TripDirection
 
 
 def notification_handlers(
@@ -75,6 +76,7 @@ def notification_handlers(
             departure_at=data.departure_at,
             pickup_label=data.pickup_label,
             auto_accepted=data.auto_accepted,
+            direction=TripDirection(data.direction) if data.direction else None,
         )
 
     async def on_request_declined(event: EventEnvelope, session: AsyncSession) -> None:

@@ -21,6 +21,7 @@ from sqlalchemy import (
 )
 
 from events.consumer import consumer_tables
+from notifications.domain.directions import TripDirection
 from notifications.domain.notifications import NotificationType
 from notifications.domain.reminders import ReminderStatus, ScheduledNotificationType
 from notifications.domain.trip_members import TripRole
@@ -43,6 +44,7 @@ metadata = MetaData(
 consumer = consumer_tables(metadata)
 
 _STATUSES = ", ".join(f"'{status}'" for status in ReminderStatus)
+_DIRECTIONS = ", ".join(f"'{direction}'" for direction in TripDirection)
 _SCHEDULED_TYPES = ", ".join(f"'{kind}'" for kind in ScheduledNotificationType)
 
 # Notifications waiting to be sent at a set time by the scheduler (#149). So far only trip
@@ -64,8 +66,12 @@ scheduled_notifications = Table(
     Column("driver_id", Uuid, nullable=True),
     # When it was sent or skipped (#149).
     Column("handled_at", DateTime(timezone=True), nullable=True),
+    # Which way the trip goes, so the reminder calls pickup_label a pickup or a drop-off
+    # (#355). Null for reminders stored before.
+    Column("direction", String(20), nullable=True),
     CheckConstraint(f"status IN ({_STATUSES})", name="valid_status"),
     CheckConstraint(f"type IN ({_SCHEDULED_TYPES})", name="valid_type"),
+    CheckConstraint(f"direction IS NULL OR direction IN ({_DIRECTIONS})", name="valid_direction"),
     # A request accepted twice (a repeated event) still gets one reminder.
     UniqueConstraint("type", "request_id", name="uq_scheduled_notifications_type_request_id"),
     # Cancelling a trip cancels its reminders.

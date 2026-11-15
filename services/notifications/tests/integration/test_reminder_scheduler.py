@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from notifications.adapters.persistence.reminder_store import SQLAlchemyReminderStore
 from notifications.adapters.persistence.tables import notifications, scheduled_notifications
 from notifications.adapters.reminder_scheduler import ReminderScheduler
+from notifications.domain.directions import TripDirection
 from notifications.domain.notification_email import Contact
 from notifications.domain.reminders import TripReminder
 from notifications.testing import FakeContactDirectory, FakeEmailSender
@@ -67,7 +68,11 @@ def new_scheduler(
 
 
 async def store(
-    sessions: async_sessionmaker[AsyncSession], rider: UUID, *, cancelled: bool = False
+    sessions: async_sessionmaker[AsyncSession],
+    rider: UUID,
+    *,
+    cancelled: bool = False,
+    direction: TripDirection | None = TripDirection.TO_CAMPUS,
 ) -> TripReminder:
     """What #148 stores when the rider is accepted (and cancels if the trip is)."""
     reminder = TripReminder.for_accepted_request(
@@ -78,6 +83,7 @@ async def store(
         pickup_label="Pembina Hwy at Chancellor Matheson Rd",
         lead=timedelta(minutes=30),
         driver_id=DRIVER,
+        direction=direction,
     )
     async with sessions() as session, session.begin():
         reminders = SQLAlchemyReminderStore(session)
@@ -245,3 +251,23 @@ async def test_the_loop_runs_a_pass_and_stops_when_told(
     await asyncio.wait_for(runner, timeout=2)
 
     assert len(sender.sent) == 1
+
+
+async def test_a_reminder_for_a_trip_leaving_campus_sends_them_to_campus(
+    session: AsyncSession,
+    sessions: async_sessionmaker[AsyncSession],
+    sender: FakeEmailSender,
+    new_scheduler: NewScheduler,
+) -> None:
+    """The stored point is where they're dropped off, not picked up (#355)."""
+    reminder = await store(sessions, RIDERS[0], direction=TripDirection.FROM_CAMPUS)
+
+    await new_scheduler(DUE).run_once()
+
+    [email] = sender.sent
+    assert (
+        "Maya leaves campus on Mon, Jul 6 at 7:45 AM. Meet them on campus; you'll be dropped "
+        "off at Pembina Hwy at Chancellor Matheson Rd."
+    ) in email.text
+    assert "pickup" not in email.text.lower()
+    assert (await statuses(session))[reminder.id] == "sent"

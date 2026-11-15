@@ -9,6 +9,7 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from notifications.adapters.persistence.tables import scheduled_notifications
+from notifications.domain.directions import TripDirection
 from notifications.domain.reminders import (
     ReminderStatus,
     ScheduledNotificationType,
@@ -27,6 +28,7 @@ def _reminder(row: RowMapping) -> TripReminder:
         pickup_label=row["pickup_label"],
         send_at=row["send_at"],
         driver_id=row["driver_id"],
+        direction=TripDirection(row["direction"]) if row["direction"] else None,
         status=ReminderStatus(row["status"]),
     )
 
@@ -49,6 +51,7 @@ class SQLAlchemyReminderStore:
                 pickup_label=reminder.pickup_label,
                 send_at=reminder.send_at,
                 driver_id=reminder.driver_id,
+                direction=reminder.direction.value if reminder.direction else None,
                 status=reminder.status.value,
             )
             .on_conflict_do_nothing(index_elements=[table.c.type, table.c.request_id])

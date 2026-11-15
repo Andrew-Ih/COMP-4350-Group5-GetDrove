@@ -81,12 +81,12 @@ Consumed from the `events.trips` stream, to keep trip reminders in step ([#148](
 | [`RequestDeclined`](../../contracts/events/request-declined.v1.json) | Cancels the reminder if the rider had a seat (`wasAccepted`) |
 | [`TripCancelled`](../../contracts/events/trip-cancelled.v1.json) | Cancels every reminder on the trip |
 
-Reminders are rows in `scheduled_notifications` with `type` = `trip_reminder` (the only type so far; the table is meant for anything sent at a set time). There is one per accepted request (`type` + `request_id` is unique, so an acceptance that arrives twice still makes one), with a status of `pending`, `sent`, `skipped` or `cancelled`. Only pending reminders are cancelled. A reminder stores the pickup point's label, never the rider's own location. Each also keeps the driver (`driver_id`), so the reminder can name them.
+Reminders are rows in `scheduled_notifications` with `type` = `trip_reminder` (the only type so far; the table is meant for anything sent at a set time). There is one per accepted request (`type` + `request_id` is unique, so an acceptance that arrives twice still makes one), with a status of `pending`, `sent`, `skipped` or `cancelled`. Only pending reminders are cancelled. A reminder stores the label of the rider's point on the route, never the rider's own location. Each also keeps the driver (`driver_id`), so the reminder can name them, and the trip's `direction` (#355): going to campus the point is the pickup; leaving campus the rider is picked up on campus and the point is the drop-off.
 
 **Sending them ([#149](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/149)).** While the service runs, `adapters/reminder_scheduler.py` looks for due reminders every `NOTIFICATIONS_REMINDER_INTERVAL_SECONDS` (default 30):
 
 - It claims one due reminder at a time (`status = 'pending' AND send_at <= now()`, `FOR UPDATE SKIP LOCKED`), so two workers never send the same one.
-- The rider gets it in the bell and by email: "Maya leaves on Mon, Jul 6 at 7:45 AM. Be at your pickup point: …" (the driver's first name from Accounts, or "Your driver"; the time is the trip's departure). It's then marked `sent`, with `handled_at`, in the same transaction.
+- The rider gets it in the bell and by email, worded by direction (#355): going to campus "Maya leaves on Mon, Jul 6 at 7:45 AM. Be at your pickup point: …"; leaving campus "Maya leaves campus on … Meet them on campus; you'll be dropped off at …"; and for reminders stored before the direction was kept, "… Your stop: …", which is right either way. The driver's first name comes from Accounts (or "Your driver"); the time is the trip's departure. It's then marked `sent`, with `handled_at`, in the same transaction.
 - **After an outage** nothing is lost: the first pass after a restart sends every overdue reminder whose trip hasn't left yet, and marks the rest `skipped`.
 - **Cancelled** reminders (cancelled request or trip) are never claimed, so a cancelled trip gets none.
 - If one can't be sent (Accounts or the mail server is down), it stays `pending` and is retried on the next pass; the others still go out.
@@ -100,7 +100,7 @@ Also consumed, from `events.trips`, `events.accounts` and `events.payments`. Eac
 | Event | Who is told |
 |---|---|
 | [`SeatRequested`](../../contracts/events/seat-requested.v1.json) | The driver: a rider asked for a seat |
-| [`RequestAccepted`](../../contracts/events/request-accepted.v1.json) | The rider: they have a seat, and where they're picked up. If it was auto-accepted, the driver too: no `SeatRequested` came first, so it's their only notice |
+| [`RequestAccepted`](../../contracts/events/request-accepted.v1.json) | The rider: they have a seat, and their stop, worded by `direction` (#355): the pickup going to campus, the drop-off leaving it (picked up on campus), "Your stop" for events without a direction. If it was auto-accepted, the driver too: no `SeatRequested` came first, so it's their only notice |
 | [`RequestDeclined`](../../contracts/events/request-declined.v1.json) | The rider: declined, or removed if they had a seat |
 | [`RequestCancelled`](../../contracts/events/request-cancelled.v1.json) | The driver: a rider cancelled (and the seat is free, if they had one) |
 | [`TripCancelled`](../../contracts/events/trip-cancelled.v1.json) | Every rider with a pending or accepted request |

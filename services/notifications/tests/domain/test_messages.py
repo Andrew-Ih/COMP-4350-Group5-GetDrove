@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from notifications.domain import messages
+from notifications.domain.directions import TripDirection
 from notifications.domain.messages import when
 from notifications.domain.notifications import NotificationType
 
@@ -40,18 +41,41 @@ def test_the_driver_hears_about_a_new_request() -> None:
     assert (message.trip_id, message.request_id) == (TRIP, REQUEST)
 
 
-def test_an_accepted_rider_is_told_the_pickup_point() -> None:
+# 12:45 UTC on Monday 6 July is 7:45 AM in Winnipeg.
+STOP = "Pembina Hwy at Chancellor Matheson Rd"
+
+
+@pytest.mark.parametrize(
+    ("direction", "says"),
+    [
+        (TripDirection.TO_CAMPUS, "Pickup: Pembina Hwy at Chancellor Matheson Rd."),
+        (
+            TripDirection.FROM_CAMPUS,
+            "the trip leaving campus on Mon, Jul 6 at 7:45 AM. You'll be picked up on campus "
+            "and dropped off at Pembina Hwy at Chancellor Matheson Rd.",
+        ),
+        # Events from before #352 don't say which way: right either way.
+        (None, "Your stop: Pembina Hwy at Chancellor Matheson Rd."),
+    ],
+)
+def test_an_accepted_rider_is_told_their_stop_the_right_way_round(
+    direction: TripDirection | None, says: str
+) -> None:
     message = messages.request_accepted(
         rider_id=RIDER,
         trip_id=TRIP,
         request_id=REQUEST,
         departure_at=DEPARTURE,
-        pickup_label="Pembina Hwy at Chancellor Matheson Rd",
+        stop_label=STOP,
+        direction=direction,
     )
 
     assert message.user_id == RIDER
     assert message.type is NotificationType.REQUEST_ACCEPTED
-    assert "Pickup: Pembina Hwy at Chancellor Matheson Rd." in message.body
+    assert says in message.body
+    if direction is not TripDirection.TO_CAMPUS:
+        # A drop-off (or a point that might be one) is never called a pickup.
+        assert "Pickup" not in message.body
 
 
 def test_the_driver_hears_when_auto_accept_seats_a_rider() -> None:
@@ -140,34 +164,67 @@ def test_a_rider_is_told_why_their_payment_failed(
     assert message.body.startswith(problem)
 
 
-def test_the_reminder_names_the_driver_and_the_pickup_point() -> None:
+@pytest.mark.parametrize(
+    ("direction", "body"),
+    [
+        (
+            TripDirection.TO_CAMPUS,
+            "Maya leaves on Mon, Jul 6 at 7:45 AM. "
+            "Be at your pickup point: Pembina Hwy at Chancellor Matheson Rd.",
+        ),
+        (
+            TripDirection.FROM_CAMPUS,
+            "Maya leaves campus on Mon, Jul 6 at 7:45 AM. Meet them on campus; "
+            "you'll be dropped off at Pembina Hwy at Chancellor Matheson Rd.",
+        ),
+        (
+            None,
+            "Maya leaves on Mon, Jul 6 at 7:45 AM. "
+            "Your stop: Pembina Hwy at Chancellor Matheson Rd.",
+        ),
+    ],
+)
+def test_the_reminder_names_the_driver_and_words_the_stop_by_direction(
+    direction: TripDirection | None, body: str
+) -> None:
     message = messages.trip_reminder(
         rider_id=RIDER,
         trip_id=TRIP,
         request_id=REQUEST,
         departure_at=DEPARTURE,
-        pickup_label="Pembina Hwy at Chancellor Matheson Rd",
+        stop_label=STOP,
+        direction=direction,
         driver_first_name="Maya",
     )
 
     assert message.user_id == RIDER
     assert message.type is NotificationType.TRIP_REMINDER
     assert message.title == "Your trip leaves soon"
-    assert message.body == (
-        "Maya leaves on Mon, Jul 6 at 7:45 AM. "
-        "Be at your pickup point: Pembina Hwy at Chancellor Matheson Rd."
-    )
+    assert message.body == body
     assert (message.trip_id, message.request_id) == (TRIP, REQUEST)
 
 
-def test_a_reminder_without_the_drivers_name_says_your_driver() -> None:
+@pytest.mark.parametrize(
+    ("direction", "starts"),
+    [
+        (TripDirection.TO_CAMPUS, "Your driver leaves on"),
+        (None, "Your driver leaves on"),
+        (TripDirection.FROM_CAMPUS, "Your driver leaves campus on"),
+    ],
+)
+def test_a_reminder_without_the_drivers_name_says_your_driver(
+    direction: TripDirection | None, starts: str
+) -> None:
     message = messages.trip_reminder(
         rider_id=RIDER,
         trip_id=TRIP,
         request_id=REQUEST,
         departure_at=DEPARTURE,
-        pickup_label="Pembina Hwy",
+        stop_label="Pembina Hwy",
+        direction=direction,
         driver_first_name=None,
     )
 
-    assert message.body.startswith("Your driver leaves on")
+    assert message.body.startswith(starts)
+    if direction is TripDirection.FROM_CAMPUS:
+        assert "Meet your driver on campus" in message.body
