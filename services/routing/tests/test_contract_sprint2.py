@@ -1,7 +1,6 @@
-"""The Sprint 2 Routing contract (#262): pickup points and detours exist, validate their
-input and return 501 until implemented (#29, #30, #36, #38)."""
-
-from typing import Any
+"""The Sprint 2 Routing contract (#262): pickup points and detours exist and validate their
+input. Detours return 501 until implemented (#36, #38); pickup points are implemented (#29)
+and tested with a real database in test_pickup_points_api.py."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -48,24 +47,12 @@ def test_routes_still_accept_the_sprint_1_body() -> None:
     assert route.direction is None
 
 
-@pytest.mark.parametrize(
-    ("path", "body"), [("/internal/pickup-points", PICKUPS), ("/internal/detours", DETOUR)]
-)
-async def test_valid_requests_reach_the_not_yet_implemented_handler(
-    client: AsyncClient, path: str, body: dict[str, Any]
+async def test_valid_detour_requests_reach_the_not_yet_implemented_handler(
+    client: AsyncClient,
 ) -> None:
-    response = await client.post(path, json=body)
+    response = await client.post("/internal/detours", json=DETOUR)
 
     assert response.status_code == 501, response.text
-
-
-@pytest.mark.parametrize("change", [{"limit": 0}, {"limit": 6}, {"rider": {"lat": 91, "lng": 0}}])
-async def test_invalid_pickup_requests_are_rejected(
-    client: AsyncClient, change: dict[str, Any]
-) -> None:
-    response = await client.post("/internal/pickup-points", json={**PICKUPS, **change})
-
-    assert response.status_code == 422
 
 
 async def test_more_than_six_accepted_pickups_is_rejected(client: AsyncClient) -> None:
