@@ -1,8 +1,8 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Implemented: status (#10) and documents (#9). The rest return 501 until their task
-implements them: vehicle (#125), admin approval (#127), profiles and the internal lookups
+Implemented: status (#10), documents (#9) and vehicle (#125). The rest return 501 until
+their task implements them: admin approval (#127), profiles and the internal lookups
 (#143, #146).
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
@@ -32,7 +32,7 @@ from accounts.application.documents import (
     StoredDocument,
     UploadDriverDocuments,
 )
-from accounts.application.drivers import GetMyDriverProfile
+from accounts.application.drivers import GetMyDriverProfile, SaveVehicle
 from accounts.domain import driver as domain
 from accounts.domain.documents import MAX_DOCUMENT_BYTES
 from accounts.domain.documents import DocumentKind as DomainDocumentKind
@@ -175,8 +175,9 @@ async def my_document(
     description="Make, model, colour and plate. The plate is stored in uppercase.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def save_vehicle(body: Vehicle, user: AuthenticatedUser) -> DriverProfile:
-    _not_implemented()
+async def save_vehicle(body: Vehicle, user: AuthenticatedUser, uow: Uow) -> DriverProfile:
+    profile = await SaveVehicle(uow)(user.id, body.make, body.model, body.colour, body.plate)
+    return driver_profile_out(profile)
 
 
 # ---------------------------------------------------------------- admin approval

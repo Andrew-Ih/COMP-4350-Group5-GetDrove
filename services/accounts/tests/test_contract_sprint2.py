@@ -33,8 +33,13 @@ ADMIN_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/admin/drivers/{ID}/reject", {"json": {"reason": "Expired insurance."}}),
 ]
 # Implemented endpoints need the database, so they're tested in tests/integration/
-# (status #10, documents #9). The rest still return 501.
-IMPLEMENTED = {"/me/driver", "/me/driver/documents", "/me/driver/documents/licence"}
+# (status #10, documents #9, vehicle #125). The rest still return 501.
+IMPLEMENTED = {
+    "/me/driver",
+    "/me/driver/documents",
+    "/me/driver/documents/licence",
+    "/me/driver/vehicle",
+}
 IMPLEMENTED_ADMIN = {f"/admin/drivers/{ID}/documents/insurance"}
 NOT_YET_DRIVER = [endpoint for endpoint in DRIVER_ENDPOINTS if endpoint[1] not in IMPLEMENTED]
 NOT_YET_ADMIN = [endpoint for endpoint in ADMIN_ENDPOINTS if endpoint[1] not in IMPLEMENTED_ADMIN]
