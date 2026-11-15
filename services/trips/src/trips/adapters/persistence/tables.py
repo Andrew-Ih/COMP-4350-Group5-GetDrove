@@ -5,10 +5,12 @@ Alembic autogenerates migrations from ``metadata``.
 """
 
 from sqlalchemy import (
+    Boolean,
     CheckConstraint,
     Column,
     DateTime,
     Float,
+    ForeignKey,
     Index,
     Integer,
     MetaData,
@@ -16,6 +18,7 @@ from sqlalchemy import (
     Table,
     Uuid,
     func,
+    text,
 )
 
 from events.outbox import outbox_table
@@ -73,4 +76,76 @@ trips = Table(
         name="valid_route_metrics",
     ),
     Index("ix_trips_driver_departure", "driver_id", "departure_at"),
+)
+
+seat_requests = Table(
+    "seat_requests",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column(
+        "trip_id",
+        Uuid,
+        ForeignKey("trips.trips.id"),
+        nullable=False,
+    ),
+    Column("rider_id", Uuid, nullable=False),
+    Column("status", String(20), nullable=False),
+    Column("pickup_label", String(200), nullable=False),
+    Column("pickup_lat", Float, nullable=False),
+    Column("pickup_lng", Float, nullable=False),
+    Column("walk_seconds", Integer, nullable=False),
+    Column("rider_distance_meters", Integer, nullable=False),
+    Column("detour_seconds", Integer, nullable=True),
+    Column("amount_cents", Integer, nullable=False),
+    Column("currency", String(3), nullable=False),
+    Column("cost_explanation", String(1000), nullable=False),
+    Column(
+        "auto_accepted",
+        Boolean,
+        nullable=False,
+        server_default=text("false"),
+    ),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    ),
+    Column("decided_at", DateTime(timezone=True), nullable=True),
+    CheckConstraint(
+        "status IN ('pending', 'accepted', 'declined', 'cancelled', 'expired', 'payment_failed')",
+        name="valid_request_status",
+    ),
+    CheckConstraint(
+        "length(trim(pickup_label)) > 0",
+        name="valid_pickup_label",
+    ),
+    CheckConstraint(
+        "pickup_lat BETWEEN -90 AND 90 AND pickup_lng BETWEEN -180 AND 180",
+        name="valid_pickup_coordinates",
+    ),
+    CheckConstraint(
+        "walk_seconds >= 0 AND rider_distance_meters >= 0",
+        name="valid_request_metrics",
+    ),
+    CheckConstraint(
+        "detour_seconds IS NULL OR detour_seconds >= 0",
+        name="valid_detour_seconds",
+    ),
+    CheckConstraint(
+        "amount_cents >= 0 AND currency = 'CAD'",
+        name="valid_request_cost",
+    ),
+    CheckConstraint(
+        "decided_at IS NULL OR decided_at >= created_at",
+        name="valid_decision_time",
+    ),
+    Index(
+        "uq_seat_requests_active_trip_rider",
+        "trip_id",
+        "rider_id",
+        unique=True,
+        postgresql_where=text("status IN ('pending', 'accepted')"),
+    ),
+    Index("ix_seat_requests_rider_created", "rider_id", "created_at"),
 )

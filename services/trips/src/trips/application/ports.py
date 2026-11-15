@@ -23,6 +23,20 @@ class TripRepository(Protocol):
     async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
 
 
+class TripCancellationRepository(Protocol):
+    async def get_for_update(self, trip_id: UUID) -> Trip | None: ...
+
+    async def save_cancellation(self, trip: Trip, cancelled_at: datetime) -> list[UUID]:
+        """Persist the cancellation and return the riders whose requests were closed."""
+        ...
+
+
+class TripCancellationEvents(Protocol):
+    async def trip_cancelled(self, trip: Trip, rider_ids: list[UUID]) -> None: ...
+
+    async def driver_late_cancellation(self, trip: Trip, cancelled_at: datetime) -> None: ...
+
+
 class TripEvents(Protocol):
     async def trip_posted(self, trip_id: UUID) -> None:
         """Record TripPosted in the same transaction as the Trip."""
