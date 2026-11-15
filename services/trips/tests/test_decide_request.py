@@ -91,9 +91,11 @@ class FakeRequests:
         self.trip = trip
         self.items = {request.id: request}
         self.locked: list[UUID] = []
+        self.calls: list[str] = []
 
     async def lock_trip(self, trip_id: UUID) -> None:
         self.locked.append(trip_id)
+        self.calls.append("lock")
 
     async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]:
         accepted = sorted(
@@ -106,6 +108,7 @@ class FakeRequests:
         return self.items.get(request_id)
 
     async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
+        self.calls.append("save")
         if self.items[request.id].status is not expected:
             return False
         self.items[request.id] = request
@@ -578,3 +581,20 @@ async def test_a_request_that_isnt_pending_doesnt_ask_routing() -> None:
 
     assert setup.routing.calls == []
     assert setup.requests.locked == []
+
+
+# ---------------------------------------------------------------- lock order
+
+
+@pytest.mark.parametrize("action", ["accept", "decline", "cancel"])
+async def test_every_action_locks_the_trip_before_changing_a_request(action: str) -> None:
+    """One lock order for all three, so they can't deadlock each other on one trip."""
+    s = Setup(status=RequestStatus.PENDING if action == "accept" else RequestStatus.ACCEPTED)
+    if action == "accept":
+        await s.accept().execute(s.command(s.trip.driver_id))
+    elif action == "decline":
+        await s.decline().execute(s.command(s.trip.driver_id))
+    else:
+        await s.cancel().execute(s.command(s.request.rider_id))
+
+    assert s.requests.calls[:2] == ["lock", "save"]
