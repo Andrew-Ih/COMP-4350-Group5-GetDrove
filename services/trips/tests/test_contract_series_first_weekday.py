@@ -6,8 +6,8 @@ from typing import Any
 import pytest
 from httpx import ASGITransport, AsyncClient
 
-from trips.adapters.api.dependencies import get_post_recurring_trip
 from common_security.testing import TestAuth
+from trips.adapters.api.dependencies import get_post_recurring_trip
 from trips.adapters.api.schemas import PostTripSeriesRequest
 from trips.infrastructure.main import create_app
 
@@ -19,7 +19,6 @@ SERIES: dict[str, Any] = {
     "weekdays": ["mon", "wed", "fri"],
     "endDate": "2026-12-11",
 }
-
 
 
 @pytest.fixture
@@ -38,16 +37,13 @@ async def client() -> AsyncClient:
                 detail="Contract test stub",
             )
 
-    app.dependency_overrides[get_post_recurring_trip] = (
-        lambda: FakeRecurringService()
-    )
+    app.dependency_overrides[get_post_recurring_trip] = lambda: FakeRecurringService()
 
     return AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
         headers=auth.headers(),
     )
-
 
 
 @pytest.mark.parametrize(
