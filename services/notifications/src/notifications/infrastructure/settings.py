@@ -1,6 +1,6 @@
 """Configuration from environment variables (prefix ``NOTIFICATIONS_``), with local-dev defaults."""
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +24,9 @@ class Settings(BaseSettings):
     # The web app's address, for links in emails: the Next.js dev server locally, the live
     # site in production. Never hard-coded, so links always open the right site.
     web_base_url: str = "http://localhost:3000"
+
+    # How long before departure an accepted rider is reminded of their trip (#148).
+    reminder_lead_minutes: int = Field(default=30, ge=1, le=24 * 60)
 
 
 def get_settings() -> Settings:
