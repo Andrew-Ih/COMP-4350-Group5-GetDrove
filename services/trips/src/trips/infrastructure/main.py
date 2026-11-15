@@ -1,6 +1,8 @@
 """Creates the FastAPI app for the trips service."""
 
 import asyncio
+import contextlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -14,10 +16,31 @@ from sqlalchemy.ext.asyncio import (
 
 from common_security.dependencies import install_security
 from common_web.app import install
+from events import stream_name
+from events.consumer import StreamConsumer
 from events.outbox import OutboxRelay
+from trips.adapters.account_events import register_handlers
 from trips.adapters.api import health, trips_router
+from trips.adapters.persistence.tables import consumer as consumer_tables
 from trips.adapters.persistence.tables import outbox
 from trips.infrastructure.settings import get_settings
+
+logger = logging.getLogger(__name__)
+
+# How long the event consumer waits on Redis for new events before checking again. Reads
+# must outlast it, or redis-py times out while idle (see the libs/events README).
+CONSUMER_BLOCK_MS = 5_000
+REDIS_READ_TIMEOUT_SECONDS = 10
+
+
+def _log_if_consumer_stopped(task: "asyncio.Task[None]") -> None:
+    """The consumer should run until shutdown. If it stops with an error, say so loudly:
+    otherwise newly approved drivers would never be able to post."""
+    if not task.cancelled() and task.exception() is not None:
+        logger.error(
+            "Event consumer stopped; driver approvals won't reach Trips",
+            exc_info=task.exception(),
+        )
 
 
 @asynccontextmanager
@@ -36,10 +59,20 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         expire_on_commit=False,
     )
 
-    redis = Redis.from_url(settings.redis_url)
+    redis = Redis.from_url(settings.redis_url, socket_timeout=REDIS_READ_TIMEOUT_SECONDS)
     relay = OutboxRelay(
         session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
     )
+    # Accounts' driver decisions keep Trips' list of approved drivers up to date (#11).
+    consumer = StreamConsumer(
+        redis=redis,
+        session_factory=app.state.session_factory,
+        group="trips",
+        streams=[stream_name("accounts")],
+        tables=consumer_tables,
+        block_ms=CONSUMER_BLOCK_MS,
+    )
+    register_handlers(consumer)
 
     async with (
         httpx.AsyncClient(
@@ -56,12 +89,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.payments_client = payments_client
         stop = asyncio.Event()
         relay_task = asyncio.create_task(relay.run(stop))
+        consumer_task = asyncio.create_task(consumer.run(stop))
+        consumer_task.add_done_callback(_log_if_consumer_stopped)
 
         try:
             yield
         finally:
             stop.set()
+            # The consumer may be waiting up to 5 s for new events; don't hold shutdown up.
+            consumer_task.cancel()
             try:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await consumer_task
                 await relay_task
             finally:
                 await redis.aclose()

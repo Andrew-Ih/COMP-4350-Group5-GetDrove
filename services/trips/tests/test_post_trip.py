@@ -11,6 +11,7 @@ from trips.application.post_trip import (
     PostTrip,
 )
 from trips.domain.entities import Trip
+from trips.domain.errors import DriverNotApprovedError
 from trips.domain.values import CAMPUS, Direction, Location
 
 NOW = datetime(2026, 10, 16, 12, 0, tzinfo=UTC)
@@ -33,6 +34,16 @@ class FakeEvents:
 
     async def trip_posted(self, trip_id: UUID) -> None:
         self.posted.append(trip_id)
+
+
+class FakeApprovedDrivers:
+    """Approves everyone unless told otherwise; the approval rule has its own test."""
+
+    def __init__(self, *, approved: bool = True) -> None:
+        self.approved = approved
+
+    async def is_approved(self, driver_id: UUID) -> bool:
+        return self.approved
 
 
 class FakeRouting:
@@ -60,7 +71,7 @@ async def test_post_trip(direction: Direction) -> None:
     repository = FakeRepository()
     routing = FakeRouting()
     events = FakeEvents()
-    use_case = PostTrip(repository, routing, events, clock=lambda: NOW)
+    use_case = PostTrip(repository, routing, events, FakeApprovedDrivers(), clock=lambda: NOW)
 
     place = Location("Pembina Highway", 49.82, -97.15)
     departure = NOW + timedelta(hours=2)
@@ -96,7 +107,7 @@ async def test_reject_past_departure(departure: datetime) -> None:
     repository = FakeRepository()
     routing = FakeRouting()
     events = FakeEvents()
-    use_case = PostTrip(repository, routing, events, clock=lambda: NOW)
+    use_case = PostTrip(repository, routing, events, FakeApprovedDrivers(), clock=lambda: NOW)
 
     with pytest.raises(DepartureInPastError):
         await use_case.execute(
@@ -104,6 +115,28 @@ async def test_reject_past_departure(departure: datetime) -> None:
             direction=Direction.TO_CAMPUS,
             place=Location("Pembina Highway", 49.82, -97.15),
             departure_at=departure,
+            seats_total=3,
+        )
+
+    assert repository.saved == []
+    assert events.posted == []
+    assert routing.calls == []
+
+
+async def test_an_unapproved_driver_cant_post_and_no_route_is_computed() -> None:
+    repository = FakeRepository()
+    routing = FakeRouting()
+    events = FakeEvents()
+    use_case = PostTrip(
+        repository, routing, events, FakeApprovedDrivers(approved=False), clock=lambda: NOW
+    )
+
+    with pytest.raises(DriverNotApprovedError):
+        await use_case.execute(
+            driver_id=uuid4(),
+            direction=Direction.TO_CAMPUS,
+            place=Location("Pembina Highway", 49.82, -97.15),
+            departure_at=NOW + timedelta(days=1),
             seats_total=3,
         )
 
