@@ -213,7 +213,7 @@
             }
           },
           "422": {
-            "description": "Invalid input, including a weekday listed twice, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`)",
+            "description": "Invalid input, including a weekday listed twice, a first departure that isn't on one of the weekdays, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`)",
             "content": {
               "application/json": {
                 "schema": {
@@ -2495,7 +2495,7 @@
             "maxItems": 5,
             "minItems": 1,
             "title": "Weekdays",
-            "description": "The weekdays it repeats on. Each one at most once.",
+            "description": "The weekdays it repeats on. Each one at most once. The first departure must be on one of them (its Winnipeg day).",
             "examples": [
               [
                 "mon",

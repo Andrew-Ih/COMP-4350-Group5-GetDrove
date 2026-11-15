@@ -4,9 +4,24 @@ Every table belongs to this service's own Postgres schema; no other service read
 Alembic autogenerates migrations from ``metadata``.
 """
 
-from sqlalchemy import MetaData
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    Column,
+    DateTime,
+    Index,
+    MetaData,
+    String,
+    Table,
+    Text,
+    Uuid,
+    func,
+    text,
+)
 
 from events.consumer import consumer_tables
+from notifications.domain.notifications import NotificationType
+from notifications.domain.trip_members import TripRole
 
 SCHEMA = "notifications"
 
@@ -24,3 +39,41 @@ metadata = MetaData(
 # Which events have been handled (so a repeat delivery is skipped, even after a restart)
 # and which kept failing (parked after 5 tries). From libs/events.
 consumer = consumer_tables(metadata)
+
+_TYPES = ", ".join(f"'{value}'" for value in NotificationType)
+
+# In-app notifications, shown in the bell (#145). Only the user they're for can read them.
+notifications = Table(
+    "notifications",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("user_id", Uuid, nullable=False),
+    Column("type", String(30), nullable=False),
+    Column("title", Text, nullable=False),
+    Column("body", Text, nullable=False),
+    Column("trip_id", Uuid, nullable=True),
+    Column("request_id", Uuid, nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("read_at", DateTime(timezone=True), nullable=True),
+    CheckConstraint(f"type IN ({_TYPES})", name="valid_type"),
+    # The bell lists a user's newest notifications.
+    Index("ix_notifications_user_id_created_at", "user_id", "created_at"),
+    # The bell polls the unread count every few seconds while open; this index holds only
+    # unread rows, so counting doesn't read everything the user has ever been sent.
+    Index("ix_notifications_unread_user_id", "user_id", postgresql_where=text("read_at IS NULL")),
+)
+
+_ROLES = ", ".join(f"'{role}'" for role in TripRole)
+
+# Who is on each trip (#146): the driver and the riders with a seat, from Trips' events.
+# Riders who leave stay listed as inactive.
+trip_members = Table(
+    "trip_members",
+    metadata,
+    Column("trip_id", Uuid, primary_key=True),
+    Column("user_id", Uuid, primary_key=True),
+    Column("role", String(10), nullable=False),
+    Column("active", Boolean, nullable=False),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint(f"role IN ({_ROLES})", name="valid_role"),
+)

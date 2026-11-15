@@ -8,6 +8,7 @@ from datetime import date
 from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from pydantic import (
     AwareDatetime,
@@ -15,6 +16,7 @@ from pydantic import (
     ConfigDict,
     Field,
     StringConstraints,
+    ValidationInfo,
     field_validator,
 )
 from pydantic.alias_generators import to_camel
@@ -158,13 +160,16 @@ class SearchResult(ApiModel):
 # ---------------------------------------------------------------- recurring trips (#15)
 
 Weekday = Literal["mon", "tue", "wed", "thu", "fri"]
+WEEKDAYS: tuple[Weekday, ...] = ("mon", "tue", "wed", "thu", "fri")
+WINNIPEG = ZoneInfo("America/Winnipeg")
 
 
 class PostTripSeriesRequest(PostTripRequest):
     weekdays: list[Weekday] = Field(
         min_length=1,
         max_length=5,
-        description="The weekdays it repeats on. Each one at most once.",
+        description="The weekdays it repeats on. Each one at most once. The first "
+        "departure must be on one of them (its Winnipeg day).",
         examples=[["mon", "wed", "fri"]],
     )
     end_date: date = Field(
@@ -178,6 +183,19 @@ class PostTripSeriesRequest(PostTripRequest):
     def _each_weekday_once(cls, weekdays: list[Weekday]) -> list[Weekday]:
         if len(set(weekdays)) != len(weekdays):
             raise ValueError("Each weekday can only be listed once")
+        return weekdays
+
+    @field_validator("weekdays")
+    @classmethod
+    def _first_departure_on_a_weekday(
+        cls, weekdays: list[Weekday], info: ValidationInfo
+    ) -> list[Weekday]:
+        departure_at = info.data.get("departure_at")
+        if departure_at is None:  # already invalid; that error is reported instead
+            return weekdays
+        local_day = departure_at.astimezone(WINNIPEG).weekday()
+        if local_day >= len(WEEKDAYS) or WEEKDAYS[local_day] not in weekdays:
+            raise ValueError("The first departure must be on one of the chosen weekdays")
         return weekdays
 
     model_config = ConfigDict(

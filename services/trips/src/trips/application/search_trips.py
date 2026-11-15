@@ -63,7 +63,9 @@ class SearchTrips:
         matches = [m for m in await self.routing.match(rider, list(trips)) if m.trip_id in trips]
         costs = await asyncio.gather(
             *(
-                self._cost(ride_meters(direction, trips[m.trip_id].distance_meters, m))
+                self._cost(
+                    ride_meters(direction, trips[m.trip_id].distance_meters, m.meters_to_trip_end)
+                )
                 for m in matches
             )
         )

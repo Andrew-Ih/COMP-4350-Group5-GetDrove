@@ -566,7 +566,7 @@ export interface components {
             seatsTotal: number;
             /**
              * Weekdays
-             * @description The weekdays it repeats on. Each one at most once.
+             * @description The weekdays it repeats on. Each one at most once. The first departure must be on one of them (its Winnipeg day).
              * @example [
              *       "mon",
              *       "wed",
@@ -1074,7 +1074,7 @@ export interface operations {
                     "application/json": components["schemas"]["Problem"];
                 };
             };
-            /** @description Invalid input, including a weekday listed twice, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`) */
+            /** @description Invalid input, including a weekday listed twice, a first departure that isn't on one of the weekdays, an end date before the first departure or more than 16 weeks after it, or a departure in the past (code `invalid_input / departure_in_past`) */
             422: {
                 headers: {
                     [name: string]: unknown;
