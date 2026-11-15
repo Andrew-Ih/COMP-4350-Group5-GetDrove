@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID, uuid4
 
+from notifications.domain.directions import TripDirection
+
 
 class ScheduledNotificationType(StrEnum):
     """What a scheduled notification is. Only trip reminders so far; the table is shared, so
@@ -45,6 +47,9 @@ class TripReminder:
     # The trip's driver, so the reminder can say who's picking them up (#149). None for
     # reminders stored before it was kept.
     driver_id: UUID | None = None
+    # Which way the trip goes, so the reminder words ``pickup_label`` right: a pickup going
+    # to campus, a drop-off leaving it (#355). None for reminders stored before.
+    direction: TripDirection | None = None
     status: ReminderStatus = ReminderStatus.PENDING
     type: ScheduledNotificationType = ScheduledNotificationType.TRIP_REMINDER
     id: UUID = field(default_factory=uuid4)
@@ -60,6 +65,7 @@ class TripReminder:
         pickup_label: str,
         lead: timedelta,
         driver_id: UUID | None = None,
+        direction: TripDirection | None = None,
     ) -> "TripReminder":
         return cls(
             rider_id=rider_id,
@@ -69,6 +75,7 @@ class TripReminder:
             pickup_label=pickup_label,
             send_at=reminder_due_at(departure_at, lead),
             driver_id=driver_id,
+            direction=direction,
         )
 
 

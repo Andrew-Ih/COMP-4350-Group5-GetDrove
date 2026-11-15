@@ -48,7 +48,8 @@ class SendReminder:
                     trip_id=reminder.trip_id,
                     request_id=reminder.request_id,
                     departure_at=reminder.departure_at,
-                    pickup_label=reminder.pickup_label,
+                    stop_label=reminder.pickup_label,
+                    direction=reminder.direction,
                     driver_first_name=driver_name,
                 )
             ]

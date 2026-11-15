@@ -4,7 +4,7 @@ cancelled when the request or the trip is."""
 
 from collections.abc import AsyncIterator, Callable
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 import pytest
@@ -76,7 +76,11 @@ async def reminders(session: AsyncSession) -> dict[UUID, Any]:
     return {row["request_id"]: row for row in rows}
 
 
-def accepted(request_id: UUID, rider_id: UUID | None = None) -> RequestAccepted:
+def accepted(
+    request_id: UUID,
+    rider_id: UUID | None = None,
+    direction: Literal["to_campus", "from_campus"] | None = "to_campus",
+) -> RequestAccepted:
     return RequestAccepted(
         request_id=request_id,
         trip_id=TRIP,
@@ -84,6 +88,7 @@ def accepted(request_id: UUID, rider_id: UUID | None = None) -> RequestAccepted:
         driver_id=DRIVER,
         departure_at=DEPARTURE,
         pickup_label="Pembina Hwy at Chancellor Matheson Rd",
+        direction=direction,
         amount_cents=450,
         auto_accepted=False,
     )
@@ -106,6 +111,7 @@ async def test_an_accepted_request_schedules_a_reminder(
     assert reminder["departure_at"] == DEPARTURE
     assert reminder["pickup_label"] == "Pembina Hwy at Chancellor Matheson Rd"
     assert reminder["status"] == "pending"
+    assert reminder["direction"] == "to_campus"
 
 
 async def test_the_same_event_twice_schedules_one_reminder(
@@ -196,3 +202,20 @@ async def test_cancelling_the_trip_cancels_every_reminder_on_it(
     await handle_new_events(new_consumer())
 
     assert {row["status"] for row in (await reminders(session)).values()} == {"cancelled"}
+
+
+@pytest.mark.parametrize("direction", ["from_campus", None])
+async def test_the_reminder_keeps_which_way_the_trip_goes(
+    redis: Redis,
+    session: AsyncSession,
+    new_consumer: NewConsumer,
+    direction: Literal["to_campus", "from_campus"] | None,
+) -> None:
+    """So it can call the point a drop-off leaving campus (#355). Events published before
+    #352 have no direction: stored as null."""
+    request = uuid4()
+    await publish(redis, accepted(request, direction=direction))
+
+    await handle_new_events(new_consumer())
+
+    assert (await reminders(session))[request]["direction"] == direction
