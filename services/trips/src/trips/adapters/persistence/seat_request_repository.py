@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select, update
+from sqlalchemy import RowMapping, case, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import seat_requests, trips
@@ -11,6 +11,7 @@ from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Location, Quote, TripStatus
 
 ACTIVE = (RequestStatus.PENDING.value, RequestStatus.ACCEPTED.value)
+ACCEPTED_PICKUP_ORDER = (seat_requests.c.created_at.asc(),)
 OPEN_TRIP = (TripStatus.SCHEDULED.value, TripStatus.IN_PROGRESS.value)
 
 
@@ -98,7 +99,7 @@ class SQLAlchemySeatRequestRepository:
             select(seat_requests)
             .where(seat_requests.c.trip_id == trip_id)
             .where(seat_requests.c.status == RequestStatus.ACCEPTED.value)
-            .order_by(seat_requests.c.created_at.asc())
+            .order_by(*ACCEPTED_PICKUP_ORDER)
         )
         return [
             Location(row["pickup_label"], row["pickup_lat"], row["pickup_lng"])
@@ -133,3 +134,13 @@ class SQLAlchemySeatRequestRepository:
             .where(trips.c.seats_available < trips.c.seats_total)
             .values(seats_available=trips.c.seats_available + 1)
         )
+
+    async def list_open_for_trip(self, trip_id: UUID) -> list[SeatRequest]:
+        pending_first = case((seat_requests.c.status == RequestStatus.PENDING.value, 0), else_=1)
+        result = await self.session.execute(
+            select(seat_requests)
+            .where(seat_requests.c.trip_id == trip_id)
+            .where(seat_requests.c.status.in_(ACTIVE))
+            .order_by(pending_first, *ACCEPTED_PICKUP_ORDER)
+        )
+        return [_request(row) for row in result.mappings()]

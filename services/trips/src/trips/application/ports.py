@@ -38,6 +38,24 @@ class RouteEstimate:
     duration_seconds: int
 
 
+@dataclass(frozen=True)
+class RiderProfile:
+    id: UUID
+    first_name: str
+    rating: float | None
+    rating_count: int
+    no_show_count: int
+
+
+class RiderProfileService(Protocol):
+    async def get_many(self, rider_ids: Sequence[UUID]) -> dict[UUID, RiderProfile]:
+        """Names, ratings and no-shows for these riders in as few calls as possible.
+
+        Unknown IDs are left out. Raise AccountsUnavailableError if Accounts can't answer.
+        """
+        ...
+
+
 class RoutingService(Protocol):
     async def compute_route(
         self,
@@ -84,6 +102,10 @@ class SeatRequestRepository(Protocol):
         ...
 
     async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]: ...
+
+    async def list_open_for_trip(self, trip_id: UUID) -> list[SeatRequest]:
+        """The trip's pending requests first, then accepted ones, oldest first in each."""
+        ...
 
     async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
         """Save the request's new status only if it is still `expected`. False if not."""
