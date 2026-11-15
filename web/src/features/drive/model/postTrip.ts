@@ -114,9 +114,11 @@ export function weekdayOf(date: string): Weekday | undefined {
   return day >= 1 && day <= 5 ? WEEKDAYS[day - 1]!.day : undefined;
 }
 
-/** "2026-11-16" plus `days` days. */
+/** "2026-11-16" plus `days` days, or "" when `date` isn't a date yet (e.g. the field was cleared). */
 export function addDays(date: string, days: number): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return "";
   const moved = new Date(`${date}T12:00:00Z`);
+  if (Number.isNaN(moved.getTime())) return "";
   moved.setUTCDate(moved.getUTCDate() + days);
   return moved.toISOString().slice(0, 10);
 }

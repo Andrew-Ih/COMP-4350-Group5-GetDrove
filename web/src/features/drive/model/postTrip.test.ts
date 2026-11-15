@@ -210,6 +210,8 @@ describe("repeating trips (#19)", () => {
 
   it("adds days across months and lists days in words", () => {
     expect(addDays("2026-11-30", 2)).toBe("2026-12-02");
+    expect(addDays("", 28)).toBe(""); // the date field was cleared
+    expect(addDays("2026-11", 1)).toBe("");
     expect(weekdayList(["fri", "mon", "wed"])).toBe("Mon, Wed and Fri");
     expect(weekdayList(["tue"])).toBe("Tue");
   });

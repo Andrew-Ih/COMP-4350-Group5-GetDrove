@@ -126,7 +126,8 @@ export function PostTrip() {
     setWhen((current) => ({ date: current.date, time: defaultDeparture(next).time }));
   }
 
-  /** Turning repeating on starts from the first trip's day, for 4 weeks. */
+  /** Turning repeating on starts from the first trip's day, for 4 weeks. Without a date
+   * yet, nothing is suggested until one is chosen. */
   function toggleRepeat() {
     if (!repeating) {
       const day = weekdayOf(when.date);
@@ -135,6 +136,17 @@ export function PostTrip() {
     }
     setRepeating(!repeating);
     setProblem(undefined);
+  }
+
+  function changeDate(date: string) {
+    setWhen((current) => ({ ...current, date }));
+    // Repeating was turned on before there was a date: suggest from the first one chosen,
+    // keeping any days the driver already picked.
+    if (repeating && !endDate) {
+      const day = weekdayOf(date);
+      if (weekdays.length === 0 && day) setWeekdays([day]);
+      setEndDate(addDays(date, DEFAULT_REPEAT_WEEKS * 7));
+    }
   }
 
   function toggleWeekday(day: Weekday) {
@@ -262,7 +274,7 @@ export function PostTrip() {
                       type="date"
                       min={today()}
                       value={when.date}
-                      onChange={(event) => setWhen((current) => ({ ...current, date: event.target.value }))}
+                      onChange={(event) => changeDate(event.target.value)}
                       className="w-full min-w-0 bg-transparent text-lg font-bold outline-none"
                     />
                   </span>

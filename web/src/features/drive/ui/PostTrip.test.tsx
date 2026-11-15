@@ -313,6 +313,26 @@ describe("PostTrip", () => {
       expect(screen.getByRole("button", { name: "Post repeating trip" })).toBeInTheDocument();
     });
 
+    it("can be turned on with the date cleared, and suggests days once a date is chosen", async () => {
+      mockFetch({ status: 200, body: maya });
+      renderWithProviders(<PostTrip />);
+      await userEvent.click(screen.getByRole("button", { name: "tap the map" }));
+      const date = screen.getByLabelText("Date");
+      await userEvent.clear(date);
+
+      await userEvent.click(screen.getByRole("switch", { name: "Repeat on weekdays" }));
+
+      expect(screen.getByRole("switch", { name: "Repeat on weekdays" })).toHaveAttribute("aria-checked", "true");
+      expect(screen.getByLabelText("Last day")).toHaveValue("");
+      await userEvent.click(screen.getByRole("button", { name: "Post repeating trip" }));
+      expect(screen.getByRole("alert")).toHaveTextContent("Choose a date and departure time.");
+
+      await userEvent.type(date, monday);
+
+      expect(screen.getByRole("button", { name: "Monday" })).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByLabelText("Last day")).toHaveValue(addDays(monday, 28));
+    });
+
     it("posts the chosen weekdays and last day, then says how many trips were made and which days were skipped", async () => {
       const wednesday = addDays(monday, 2);
       const fetchSpy = mockFetch(
