@@ -1,6 +1,6 @@
 import { routingApi, tripsApi, unwrap } from "@/shared/api";
 
-import type { PostTripRequest } from "../model/postTrip";
+import type { PostTripRequest, PostTripSeriesRequest } from "../model/postTrip";
 
 /**
  * POST /api/trips/: posts a one-off trip. The route is worked out when it's posted, so
@@ -8,6 +8,15 @@ import type { PostTripRequest } from "../model/postTrip";
  */
 export function postTrip(body: PostTripRequest) {
   return unwrap(tripsApi.POST("/", { body }));
+}
+
+/**
+ * POST /api/trips/series: posts a trip that repeats on weekdays until `endDate` (#15). One
+ * trip is made per matching day, all at the same Winnipeg time; days that clash with the
+ * driver's other trips are skipped and listed in `skippedDates`.
+ */
+export function postTripSeries(body: PostTripSeriesRequest) {
+  return unwrap(tripsApi.POST("/series", { body }));
 }
 
 /** GET /api/trips/mine?role=driver: the trips this student has posted that haven't happened yet. */
