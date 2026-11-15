@@ -41,7 +41,11 @@ def make_trip() -> Trip:
 
 
 def make_request(
-    trip: Trip, status: RequestStatus, detour_seconds: int | None = 180
+    trip: Trip,
+    status: RequestStatus,
+    detour_seconds: int | None = 180,
+    *,
+    pickup_order: int | None = None,
 ) -> SeatRequest:
     request = SeatRequest.create(
         trip_id=trip.id,
@@ -53,7 +57,7 @@ def make_request(
         cost=Quote(450, "CAD", "$4.50 for 10 km"),
         now=NOW,
     )
-    return replace(request, status=status)
+    return replace(request, status=status, pickup_order=pickup_order)
 
 
 def profile(rider_id: UUID) -> RiderProfile:
@@ -100,8 +104,8 @@ def build(trip: Trip | None, requests: list[SeatRequest], riders: FakeRiders) ->
 async def test_driver_sees_every_request_with_rider_details_and_pickup_order() -> None:
     trip = make_trip()
     pending = make_request(trip, RequestStatus.PENDING)
-    first = make_request(trip, RequestStatus.ACCEPTED)
-    second = make_request(trip, RequestStatus.ACCEPTED)
+    first = make_request(trip, RequestStatus.ACCEPTED, pickup_order=1)
+    second = make_request(trip, RequestStatus.ACCEPTED, pickup_order=2)
     riders = FakeRiders()
 
     items = await build(trip, [pending, first, second], riders).execute(
@@ -190,10 +194,25 @@ async def test_a_rider_missing_from_accounts_is_skipped_and_logged(
 
 async def test_a_skipped_accepted_rider_still_holds_their_place_in_the_order() -> None:
     trip = make_trip()
-    lost = make_request(trip, RequestStatus.ACCEPTED)
-    kept = make_request(trip, RequestStatus.ACCEPTED)
+    lost = make_request(trip, RequestStatus.ACCEPTED, pickup_order=1)
+    kept = make_request(trip, RequestStatus.ACCEPTED, pickup_order=2)
     use_case = build(trip, [lost, kept], FakeRiders(missing=[lost.rider_id]))
 
     items = await use_case.execute(ListTripRequestsCommand(trip.id, trip.driver_id))
 
     assert [item.pickup_order for item in items] == [2]
+
+
+async def test_the_pickup_order_is_the_stored_one_not_the_order_accepted() -> None:
+    """A pickup accepted later but placed earlier on the route (#310) keeps its place."""
+    trip = make_trip()
+    accepted_first = make_request(trip, RequestStatus.ACCEPTED, pickup_order=2)
+    accepted_later = make_request(trip, RequestStatus.ACCEPTED, pickup_order=1)
+    use_case = build(trip, [accepted_first, accepted_later], FakeRiders())
+
+    items = await use_case.execute(ListTripRequestsCommand(trip.id, trip.driver_id))
+
+    assert [(item.request.id, item.pickup_order) for item in items] == [
+        (accepted_first.id, 2),
+        (accepted_later.id, 1),
+    ]

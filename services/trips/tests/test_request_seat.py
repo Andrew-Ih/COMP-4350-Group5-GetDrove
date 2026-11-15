@@ -207,6 +207,8 @@ async def test_creates_pending_request_with_price_detour_and_event() -> None:
     assert request.status.value == "pending"
     assert request.auto_accepted is False
     assert harness.requests.saved == [request]
+    assert harness.requests.saved[0].detour_position == 1
+    assert harness.requests.saved[0].pickup_order is None
     assert harness.events.published == [request]
     assert harness.events.trips == [trip]
 

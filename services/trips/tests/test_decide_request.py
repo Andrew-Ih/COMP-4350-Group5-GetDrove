@@ -104,6 +104,30 @@ class FakeRequests:
     async def release_seat(self, trip_id: UUID) -> None:
         self.trip.seats_available += 1
 
+    async def place_accepted(self, request: SeatRequest, *, position: int | None) -> int:
+        others = sorted(
+            (
+                item
+                for item in self.items.values()
+                if item.status is RequestStatus.ACCEPTED
+                and item.id != request.id
+                and item.pickup_order is not None
+            ),
+            key=lambda item: item.pickup_order or 0,
+        )
+        index = len(others) if position is None else min(position, len(others))
+        for number, item in enumerate([*others[:index], request, *others[index:]], start=1):
+            self.items[item.id] = replace(self.items[item.id], pickup_order=number)
+        return index + 1
+
+    async def renumber_accepted(self, trip_id: UUID) -> None:
+        accepted = sorted(
+            (item for item in self.items.values() if item.status is RequestStatus.ACCEPTED),
+            key=lambda item: item.pickup_order or 0,
+        )
+        for number, item in enumerate(accepted, start=1):
+            self.items[item.id] = replace(item, pickup_order=number)
+
 
 class FakeEvents:
     def __init__(self) -> None:
@@ -371,3 +395,54 @@ async def test_cancelling_twice_gives_back_one_seat_and_publishes_once() -> None
 
     assert s.trip.seats_available == 2
     assert len(s.events.calls) == 1
+
+
+def add_pending(setup: Setup, position: int | None) -> SeatRequest:
+    request = replace(make_request(setup.trip, RequestStatus.PENDING), detour_position=position)
+    setup.requests.items[request.id] = request
+    return request
+
+
+def by_driver(setup: Setup, request: SeatRequest) -> RequestActionCommand:
+    return RequestActionCommand(request_id=request.id, user_id=setup.trip.driver_id, now=NOW)
+
+
+async def test_two_accepts_in_a_row_number_the_pickups_in_route_order() -> None:
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    second = add_pending(setup, 0)
+
+    accepted_first = await setup.accept().execute(by_driver(setup, first))
+    accepted_second = await setup.accept().execute(by_driver(setup, second))
+
+    assert accepted_first.pickup_order == 1
+    assert accepted_second.pickup_order == 1
+    assert setup.requests.items[first.id].pickup_order == 2
+    assert setup.requests.items[second.id].pickup_order == 1
+
+
+@pytest.mark.parametrize("action", ["decline", "cancel"])
+async def test_removing_an_accepted_pickup_from_the_middle_closes_the_gap(action: str) -> None:
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    middle = add_pending(setup, 1)
+    last = add_pending(setup, 2)
+    for request in (first, middle, last):
+        await setup.accept().execute(by_driver(setup, request))
+    trips = FakeTrips(setup.trip)
+
+    if action == "decline":
+        await DeclineRequest(trips=trips, requests=setup.requests, events=setup.events).execute(
+            by_driver(setup, middle)
+        )
+    else:
+        await CancelRequest(trips=trips, requests=setup.requests, events=setup.events).execute(
+            RequestActionCommand(request_id=middle.id, user_id=middle.rider_id, now=NOW)
+        )
+
+    items = setup.requests.items
+    assert items[middle.id].pickup_order is None
+    assert items[first.id].pickup_order == 1
+    assert items[last.id].pickup_order == 2

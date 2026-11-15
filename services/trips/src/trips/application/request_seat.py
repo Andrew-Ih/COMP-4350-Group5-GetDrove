@@ -108,6 +108,7 @@ class RequestSeat:
             detour_seconds=detour.added_seconds,
             cost=quote,
             now=command.now,
+            detour_position=detour.position,
         )
 
         await self.requests.add(request)

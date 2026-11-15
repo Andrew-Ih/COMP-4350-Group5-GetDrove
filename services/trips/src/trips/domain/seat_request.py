@@ -40,6 +40,8 @@ class SeatRequest:
     auto_accepted: bool
     created_at: datetime
     decided_at: datetime | None
+    detour_position: int | None = None
+    pickup_order: int | None = None
 
     def __post_init__(self) -> None:
         if not self.pickup.label.strip():
@@ -72,6 +74,15 @@ class SeatRequest:
             if self.decided_at < self.created_at:
                 raise ValueError("Decision time cannot be before creation time")
 
+        if self.detour_position is not None and self.detour_position < 0:
+            raise ValueError("Detour position cannot be negative")
+
+        if self.pickup_order is not None:
+            if self.pickup_order < 1:
+                raise ValueError("Pickup order starts at 1")
+            if self.status is not RequestStatus.ACCEPTED:
+                raise ValueError("Only accepted requests have a pickup order")
+
     @classmethod
     def create(
         cls,
@@ -86,6 +97,7 @@ class SeatRequest:
         now: datetime,
         auto_accepted: bool = False,
         request_id: UUID | None = None,
+        detour_position: int | None = None,
     ) -> "SeatRequest":
         return cls(
             id=request_id if request_id is not None else uuid4(),
@@ -100,6 +112,7 @@ class SeatRequest:
             auto_accepted=auto_accepted,
             created_at=now,
             decided_at=None,
+            detour_position=detour_position,
         )
 
     @property
@@ -114,9 +127,9 @@ class SeatRequest:
     def decline(self, now: datetime) -> "SeatRequest":
         if self.status not in (RequestStatus.PENDING, RequestStatus.ACCEPTED):
             raise RequestNotDecidableError()
-        return replace(self, status=RequestStatus.DECLINED, decided_at=now)
+        return replace(self, status=RequestStatus.DECLINED, decided_at=now, pickup_order=None)
 
     def cancel(self, now: datetime) -> "SeatRequest":
         if self.status not in (RequestStatus.PENDING, RequestStatus.ACCEPTED):
             raise RequestNotCancellableError()
-        return replace(self, status=RequestStatus.CANCELLED, decided_at=now)
+        return replace(self, status=RequestStatus.CANCELLED, decided_at=now, pickup_order=None)

@@ -181,3 +181,34 @@ def test_only_an_accepted_request_holds_a_seat() -> None:
 def test_a_decision_cannot_be_dated_before_creation() -> None:
     with pytest.raises(ValueError):
         make().accept(NOW - timedelta(seconds=1))
+
+
+def test_request_keeps_its_detour_position() -> None:
+    assert make(detour_position=1).detour_position == 1
+    assert make().detour_position is None
+    assert make().pickup_order is None
+
+
+def test_negative_detour_position_is_rejected() -> None:
+    with pytest.raises(ValueError, match="Detour position"):
+        make(detour_position=-1)
+
+
+def test_only_accepted_requests_can_have_a_pickup_order() -> None:
+    pending = make()
+    accepted = pending.accept(NOW)
+
+    with pytest.raises(ValueError, match="Only accepted"):
+        replace(pending, pickup_order=1)
+    with pytest.raises(ValueError, match="starts at 1"):
+        replace(accepted, pickup_order=0)
+    assert replace(accepted, pickup_order=2).pickup_order == 2
+
+
+@pytest.mark.parametrize("leave", ["decline", "cancel"])
+def test_leaving_clears_the_pickup_order(leave: str) -> None:
+    accepted = replace(make().accept(NOW), pickup_order=2)
+
+    left = getattr(accepted, leave)(NOW)
+
+    assert left.pickup_order is None
