@@ -116,6 +116,8 @@ Each result is the trip as a rider sees it: the driver's own end (`origin` going
 
 Settings: `TRIPS_PAYMENTS_URL` (default `http://localhost:8004`; Docker Compose sets `http://payments:8000`).
 
+`TRIPS_ACCOUNTS_URL` (default `http://localhost:8001`; Docker Compose sets `http://accounts:8000`) is the Accounts service, used for the riders' names, ratings and no-shows on the driver's request list (#139).
+
 ## Trip detail (#30)
 
 `GET /{tripId}?lat=&lng=&exclude=` (gateway: `GET /api/trips/{tripId}`) requires authentication and returns one trip, whatever its status:

@@ -8,7 +8,11 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
-from trips.adapters.api.dependencies import get_trip_detail, get_upcoming_trips
+from trips.adapters.api.dependencies import (
+    get_request_seat,
+    get_trip_detail,
+    get_upcoming_trips,
+)
 from trips.adapters.api.schemas import AutoAcceptRules, PostTripSeriesRequest, SeatRequestBody
 from trips.infrastructure.main import create_app
 
@@ -40,6 +44,15 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/requests/{ID}/decline", {}),
     ("POST", f"/requests/{ID}/cancel", {}),
 ]
+IMPLEMENTED = {
+    ("POST", f"/{ID}/requests"),
+    ("GET", f"/requests/{ID}"),
+    ("POST", f"/requests/{ID}/accept"),
+    ("POST", f"/requests/{ID}/decline"),
+    ("POST", f"/requests/{ID}/cancel"),
+    ("GET", f"/{ID}/requests"),
+}
+STILL_501 = [e for e in NEW_ENDPOINTS if (e[0], e[1]) not in IMPLEMENTED]
 
 
 @pytest.fixture
@@ -49,6 +62,7 @@ async def client(fake_trip_detail: Any) -> AsyncClient:
     auth.install(app)
     # /mine?when=past reaches the handler before the 501, so it needs a service.
     app.dependency_overrides[get_upcoming_trips] = lambda: object()
+    app.dependency_overrides[get_request_seat] = lambda: object()
     # The trip detail is implemented (#30): see test_trip_detail_api.py.
     app.dependency_overrides[get_trip_detail] = lambda: fake_trip_detail
     return AsyncClient(
@@ -81,7 +95,7 @@ def test_examples_are_valid() -> None:
     assert AutoAcceptRules.model_validate(RULES).max_detour_minutes == 5
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs"), NEW_ENDPOINTS)
+@pytest.mark.parametrize(("method", "path", "kwargs"), STILL_501)
 async def test_valid_requests_reach_the_not_yet_implemented_handler(
     client: AsyncClient, method: str, path: str, kwargs: dict[str, Any]
 ) -> None:
