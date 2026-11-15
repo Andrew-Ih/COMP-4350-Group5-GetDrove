@@ -3,29 +3,20 @@
 JSON fields are camelCase; times are ISO 8601 with a timezone.
 """
 
-from enum import StrEnum
 from uuid import UUID
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
+
+from notifications.domain.notifications import NotificationType
+
+__all__ = ["Notification", "NotificationList", "NotificationType", "Problem"]
 
 
 class ApiModel(BaseModel):
     model_config = ConfigDict(
         alias_generator=to_camel, validate_by_name=True, validate_by_alias=True
     )
-
-
-class NotificationType(StrEnum):
-    SEAT_REQUESTED = "seat_requested"
-    REQUEST_ACCEPTED = "request_accepted"
-    REQUEST_DECLINED = "request_declined"
-    REQUEST_CANCELLED = "request_cancelled"
-    TRIP_CANCELLED = "trip_cancelled"
-    DRIVER_APPROVED = "driver_approved"
-    DRIVER_REJECTED = "driver_rejected"
-    PAYMENT_FAILED = "payment_failed"
-    TRIP_REMINDER = "trip_reminder"
 
 
 class Notification(ApiModel):
