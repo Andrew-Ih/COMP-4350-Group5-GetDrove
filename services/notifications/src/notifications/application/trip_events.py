@@ -40,20 +40,31 @@ class TripEventNotifications:
         driver_id: UUID,
         departure_at: datetime,
         pickup_label: str,
+        auto_accepted: bool,
     ) -> None:
         await self._members.add_driver(trip_id, driver_id)
         await self._members.add_rider(trip_id, rider_id)
-        await self._notify(
-            [
-                messages.request_accepted(
-                    rider_id=rider_id,
+        told = [
+            messages.request_accepted(
+                rider_id=rider_id,
+                trip_id=trip_id,
+                request_id=request_id,
+                departure_at=departure_at,
+                pickup_label=pickup_label,
+            )
+        ]
+        if auto_accepted:
+            # No SeatRequested came first, so the driver hasn't heard about this rider.
+            told.append(
+                messages.auto_accepted(
+                    driver_id=driver_id,
                     trip_id=trip_id,
                     request_id=request_id,
                     departure_at=departure_at,
-                    pickup_label=pickup_label,
                 )
-            ]
-        )
+            )
+        # One call, so both are saved (and emailed) together or the event is retried.
+        await self._notify(told)
 
     async def request_declined(
         self, *, request_id: UUID, trip_id: UUID, rider_id: UUID, was_accepted: bool

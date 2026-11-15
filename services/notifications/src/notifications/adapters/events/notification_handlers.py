@@ -3,7 +3,8 @@
 | Event | Stream | Who is told |
 |---|---|---|
 | ``SeatRequested`` | trips | the driver |
-| ``RequestAccepted`` / ``RequestDeclined`` | trips | the rider |
+| ``RequestAccepted`` | trips | the rider; the driver too if it was auto-accepted |
+| ``RequestDeclined`` | trips | the rider |
 | ``RequestCancelled`` | trips | the driver |
 | ``TripCancelled`` | trips | every rider with a pending or accepted request |
 | ``DriverApproved`` / ``DriverRejected`` | accounts | the driver |
@@ -73,6 +74,7 @@ def register_notification_handlers(
             driver_id=data.driver_id,
             departure_at=data.departure_at,
             pickup_label=data.pickup_label,
+            auto_accepted=data.auto_accepted,
         )
 
     @consumer.on(RequestDeclined)

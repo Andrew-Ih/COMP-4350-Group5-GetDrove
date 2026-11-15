@@ -54,6 +54,18 @@ def test_an_accepted_rider_is_told_the_pickup_point() -> None:
     assert "Pickup: Pembina Hwy at Chancellor Matheson Rd." in message.body
 
 
+def test_the_driver_hears_when_auto_accept_seats_a_rider() -> None:
+    message = messages.auto_accepted(
+        driver_id=DRIVER, trip_id=TRIP, request_id=REQUEST, departure_at=DEPARTURE
+    )
+
+    assert message.user_id == DRIVER
+    assert message.title == "Rider accepted automatically"
+    assert "Mon, Jul 6 at 7:45 AM" in message.body
+    assert message.link_path == messages.MY_TRIPS
+    assert (message.trip_id, message.request_id) == (TRIP, REQUEST)
+
+
 @pytest.mark.parametrize(
     ("was_accepted", "title"), [(False, "Request declined"), (True, "Removed from a trip")]
 )
@@ -100,6 +112,8 @@ def test_drivers_hear_about_approval_and_why_they_were_rejected() -> None:
     assert approved.type is NotificationType.DRIVER_APPROVED
     assert approved.link_path == messages.POST_A_TRIP
     assert rejected.type is NotificationType.DRIVER_REJECTED
+    # A rejected driver can't post trips; they go back to their application.
+    assert rejected.link_path == messages.DRIVER_APPLICATION == "/account/driver"
     assert "Reason: The licence photo is blurry. Upload" in rejected.body
 
 

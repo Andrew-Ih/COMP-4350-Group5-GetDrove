@@ -116,7 +116,7 @@ async def active_members(session: AsyncSession) -> set[UUID]:
     return set(rows.scalars())
 
 
-def accepted(request_id: UUID) -> RequestAccepted:
+def accepted(request_id: UUID, *, auto_accepted: bool = False) -> RequestAccepted:
     return RequestAccepted(
         request_id=request_id,
         trip_id=TRIP,
@@ -125,7 +125,7 @@ def accepted(request_id: UUID) -> RequestAccepted:
         departure_at=DEPARTURE,
         pickup_label="Pembina Hwy at Chancellor Matheson Rd",
         amount_cents=450,
-        auto_accepted=False,
+        auto_accepted=auto_accepted,
     )
 
 
@@ -217,6 +217,25 @@ async def test_each_event_tells_the_right_person_once_in_app_and_by_email(
     assert await told(session) == [(who, kind)]
     email = {DRIVER: "maya@myumanitoba.ca", RIDER: "ada@myumanitoba.ca"}[who]
     assert [message.to for message in sender.sent] == [email]
+
+
+async def test_auto_accept_tells_the_rider_and_the_driver_once(
+    redis: Redis, session: AsyncSession, sender: FakeEmailSender, new_consumer: NewConsumer
+) -> None:
+    envelope = await publish(redis, accepted(uuid4(), auto_accepted=True))
+    await redis.xadd(
+        stream_name("trips"), {ENVELOPE_FIELD: envelope.to_json(), "type": envelope.type}
+    )
+
+    await handle_new_events(new_consumer())
+
+    assert sorted(await told(session)) == sorted(
+        [(RIDER, "request_accepted"), (DRIVER, "request_accepted")]
+    )
+    assert sorted(message.to for message in sender.sent) == [
+        "ada@myumanitoba.ca",
+        "maya@myumanitoba.ca",
+    ]
 
 
 async def test_a_restart_doesnt_notify_again(

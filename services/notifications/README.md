@@ -81,11 +81,11 @@ Also consumed, from `events.trips`, `events.accounts` and `events.payments`. Eac
 | Event | Who is told |
 |---|---|
 | [`SeatRequested`](../../contracts/events/seat-requested.v1.json) | The driver: a rider asked for a seat |
-| [`RequestAccepted`](../../contracts/events/request-accepted.v1.json) | The rider: they have a seat, and where they're picked up |
+| [`RequestAccepted`](../../contracts/events/request-accepted.v1.json) | The rider: they have a seat, and where they're picked up. If it was auto-accepted, the driver too: no `SeatRequested` came first, so it's their only notice |
 | [`RequestDeclined`](../../contracts/events/request-declined.v1.json) | The rider: declined, or removed if they had a seat |
 | [`RequestCancelled`](../../contracts/events/request-cancelled.v1.json) | The driver: a rider cancelled (and the seat is free, if they had one) |
 | [`TripCancelled`](../../contracts/events/trip-cancelled.v1.json) | Every rider with a pending or accepted request |
-| [`DriverApproved`](../../contracts/events/driver-approved.v1.json) / [`DriverRejected`](../../contracts/events/driver-rejected.v1.json) | The driver, with the reason if rejected |
+| [`DriverApproved`](../../contracts/events/driver-approved.v1.json) / [`DriverRejected`](../../contracts/events/driver-rejected.v1.json) | The driver, with the reason if rejected (linking to their driver application, `/account/driver`, to upload new documents) |
 | [`PaymentFailed`](../../contracts/events/payment-failed.v1.json) | The rider: why, and that their seat isn't confirmed |
 
 - **Texts** are in `domain/messages.py`: they say "the driver" or "a rider", never another person's name or location, and give times in Winnipeg time.

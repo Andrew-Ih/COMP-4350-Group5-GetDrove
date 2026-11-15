@@ -50,7 +50,9 @@ def world() -> World:
     return World()
 
 
-async def accept(world: World, request_id: UUID | None = None) -> None:
+async def accept(
+    world: World, request_id: UUID | None = None, *, auto_accepted: bool = False
+) -> None:
     await world.events.request_accepted(
         request_id=request_id or uuid4(),
         trip_id=TRIP,
@@ -58,6 +60,7 @@ async def accept(world: World, request_id: UUID | None = None) -> None:
         driver_id=DRIVER,
         departure_at=DEPARTURE,
         pickup_label="Pembina Hwy at Chancellor Matheson Rd",
+        auto_accepted=auto_accepted,
     )
 
 
@@ -77,6 +80,23 @@ async def test_acceptance_tells_the_rider_and_puts_them_on_the_trip(world: World
     assert world.told() == [(RIDER, NotificationType.REQUEST_ACCEPTED)]
     assert [email.to for email in world.sender.sent] == ["ada@myumanitoba.ca"]
     assert await world.active() == [(DRIVER, TripRole.DRIVER), (RIDER, TripRole.RIDER)]
+
+
+async def test_an_auto_accepted_rider_is_news_to_the_driver_too(world: World) -> None:
+    """Auto-accept publishes only RequestAccepted (no SeatRequested), so the driver is
+    told here."""
+    await accept(world, auto_accepted=True)
+
+    assert world.told() == [
+        (RIDER, NotificationType.REQUEST_ACCEPTED),
+        (DRIVER, NotificationType.REQUEST_ACCEPTED),
+    ]
+    assert [email.to for email in world.sender.sent] == [
+        "ada@myumanitoba.ca",
+        "maya@myumanitoba.ca",
+    ]
+    [driver_note] = [n for n in world.store.notifications.values() if n.user_id == DRIVER]
+    assert driver_note.title == "Rider accepted automatically"
 
 
 async def test_a_decline_tells_the_rider_and_takes_them_off(world: World) -> None:

@@ -21,6 +21,9 @@ LOCAL_TIME = ZoneInfo("America/Winnipeg")
 MY_TRIPS = "/trips"
 FIND_A_RIDE = "/ride"
 POST_A_TRIP = "/drive/new"
+# Where a driver uploads their licence and insurance (#12). A rejected driver can't post
+# trips yet, so this is where they go to try again.
+DRIVER_APPLICATION = "/account/driver"
 
 PaymentFailureReason = Literal["card_declined", "authentication_required", "no_card", "other"]
 
@@ -73,6 +76,23 @@ def request_accepted(
         type=NotificationType.REQUEST_ACCEPTED,
         title="Request accepted",
         body=f"You have a seat on the trip on {when(departure_at)}. Pickup: {pickup_label}.",
+        link_path=MY_TRIPS,
+        trip_id=trip_id,
+        request_id=request_id,
+    )
+
+
+def auto_accepted(
+    *, driver_id: UUID, trip_id: UUID, request_id: UUID, departure_at: datetime
+) -> Message:
+    """For the driver when auto-accept seats a rider. That publishes only
+    ``RequestAccepted``, never ``SeatRequested``, so this is the driver's only notice."""
+    return Message(
+        user_id=driver_id,
+        type=NotificationType.REQUEST_ACCEPTED,
+        title="Rider accepted automatically",
+        body=f"A rider was accepted automatically onto your trip on {when(departure_at)}. "
+        "See who's coming in My trips.",
         link_path=MY_TRIPS,
         trip_id=trip_id,
         request_id=request_id,
@@ -156,7 +176,7 @@ def driver_rejected(*, driver_id: UUID, reason: str) -> Message:
         title="Driver documents not approved",
         body=f"Your documents weren't approved. Reason: {reason.strip().rstrip('.')}. "
         "Upload new ones to try again.",
-        link_path=POST_A_TRIP,
+        link_path=DRIVER_APPLICATION,
     )
 
 
