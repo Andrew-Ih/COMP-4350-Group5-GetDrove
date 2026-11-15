@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
+    create_async_engine,
 )
 
 from common_security.dependencies import install_security
@@ -16,7 +17,6 @@ from common_web.app import install
 from events.outbox import OutboxRelay
 from trips.adapters.api import health, trips_router
 from trips.adapters.persistence.tables import outbox
-from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.settings import get_settings
 
 
@@ -26,7 +26,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
 
-    engine = create_database_engine(settings.database_url)
+    engine = create_async_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+    )
 
     app.state.session_factory = async_sessionmaker(
         engine,

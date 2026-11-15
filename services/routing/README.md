@@ -58,7 +58,7 @@ The OpenAPI spec is [contracts/openapi/routing.json](../../contracts/openapi/rou
 `POST /internal/routes` is called by Trips when a driver posts a trip. It's internal: only reachable inside Docker (`http://routing:8000/internal/routes`), never through the gateway.
 
 1. Asks OSRM's car profile for the driving route between the origin and the destination.
-2. Stores the full route in `routing.routes` as a PostGIS `LINESTRING` (SRID 4326, `[lng lat]` order), with its distance and duration. A GiST index on `path` is there for matching (#25, #26). It also stores the `driverId` and `direction` Trips sends (#135), which decide who sees the whole route on the map. Both are optional: routes stored without them have both ends hidden from everyone.
+2. Stores the full route in `routing.routes` as a PostGIS `LINESTRING` (SRID 4326, `[lng lat]` order), with its distance and duration. A GiST index on `path` is there for matching (#25, #26).
 3. Returns the distance in meters and the duration in seconds, rounded to whole numbers.
 
 Calling it again for the same trip replaces that trip's route. Errors:
@@ -76,43 +76,25 @@ When a route is stored, points every 100 m along it are stored too, in `routing.
 
 The corridor is the area within `ROUTING_CORRIDOR_METERS` (default 800) of a route, in a straight line. `SQLAlchemyRouteRepository.samples_in_corridor` finds, for a rider and the candidate trips Trips sends, the samples inside it, nearest first. It's only a quick first pass: a rider across the river from a route can be well inside the corridor, so matching (#26) then checks the real walking time to these samples with OSRM's foot profile.
 
-### Choosing pickup points (#26, #29)
-
-Search (`/internal/matches`) and the pickup points endpoint choose points the same way (`application/pickups.py`), so a trip's first suggested point is the one search showed for the same rider and spot.
-
-1. **Corridor:** the samples of the trip's route within `ROUTING_CORRIDOR_METERS` of the rider (#25), the 20 nearest per trip.
-2. **Never near either end:** samples within 300 m of either end of the route, in a straight line, are skipped. One end is campus; the other is the driver's own place, usually near home, and a pickup pin a few meters from it would give it away.
-3. **Walking check:** one OSRM foot `table` request (split into chunks of 99, OSRM's limit, sent at once) gives the walking time from the rider to each sample. Only samples within `ROUTING_MAX_WALK_SECONDS` (default 600, about 830 m at OSRM's 5 km/h) count. This is what leaves out a rider across the river from a route: close in a straight line, but a long walk round to a bridge.
-4. **Shortest walk first**, skipping:
-   - points on **roads a driver can't safely stop on** (`domain/pickups.py`): Abinojii Mikanah (formerly Bishop Grandin Boulevard; the map only has the new name), Kenaston Boulevard and the Perimeter Highway;
-   - points within **200 m along the route** of one already chosen, so the next suggestion is a different spot.
-
-Each point is labelled with the nearest named road within 150 m, from OSRM's car profile (`nearest`, 20 candidates, since the closest are often unnamed service roads or parking lot aisles), or "a spot on the driver's route" if there's none or the lookup fails. That lookup is also how excluded roads are recognised, so **excluded roads fail open**: if the car profile is down while the foot profile is up, the lookup returns no name, nothing is excluded, and a point on, say, Kenaston Boulevard can be offered as "a spot on the driver's route". Both profiles run on the same server, so this should be rare.
-
-A rider who's only near an end of a route, only near excluded roads, or can't walk to it, gets no point for that trip. Going to campus, the point is where the rider is picked up; leaving campus, where they're dropped off. `riderDistanceMeters` is always the rest of the route from that point to the trip's end; Trips knows the direction and works out how far the rider rides. The rider's location is used for the calculation only, never stored or logged.
-
 ### Matching a rider to trips (#26)
 
-`POST /internal/matches` is called by Trips' search (#97) with the rider's location and the candidate trips (already filtered by time, seats and status). It's internal, like `/internal/routes`. A trip matches if it has a pickup point for this rider (above); its best one is returned. Matches come back in the order of `tripIds`; trips that don't match are left out, and an empty list is a normal result. If the foot profile is down, the answer is 503 `routing_engine_unavailable`.
+`POST /internal/matches` is called by Trips' search (#97) with the rider's location and the candidate trips (already filtered by time, seats and status). It's internal, like `/internal/routes`.
 
-### Pickup points for a trip (#29)
+1. **Corridor:** the samples of those trips' routes within `ROUTING_CORRIDOR_METERS` of the rider (#25), the 20 nearest per trip.
+2. **Walking check:** one OSRM foot `table` request (split into chunks of 99, OSRM's limit) gives the walking time from the rider to each sample. A trip matches only if some sample is within `ROUTING_MAX_WALK_SECONDS` (default 600, about 830 m at OSRM's 5 km/h). This is what leaves out a rider across the river from a route: close in a straight line, but a long walk round to a bridge.
+3. **Pickup:** per matching trip, the sample with the shortest walk. It's on the driver's route, so the driver can stop there. Its label is the nearest named road within 150 m, from OSRM's car profile (`nearest`, 20 candidates, since the closest are often unnamed service roads or parking lot aisles), or "a spot on the driver's route" if there's none or the lookup fails.
 
-`POST /internal/pickup-points` is called by Trips for the trip detail and when a seat is requested, with a trip, the rider's location and a `limit` (default 3, at most 5). It returns up to `limit` points chosen as above, shortest walk first, each with:
+**The ends of a route are never offered.** Samples within 300 m of either end are skipped. One end is campus; the other is the driver's own place, usually near home, and a pickup pin a few meters from it would give it away. A rider who's only near an end gets no match for that trip.
 
-- `id`: which sample of the stored route it is (e.g. `s42`). Trips sends it back when the rider requests a seat.
-- `label`, `lat`, `lng`, `walkSeconds`, and `riderDistanceMeters` (as in matches).
+Going to campus, the point is where the rider is picked up; leaving campus, where they're dropped off. `riderDistanceMeters` is always the rest of the route from that point to the trip's end; Trips knows the direction and works out how far the rider rides. Matches come back in the order of `tripIds`; trips that don't match are left out, and an empty list is a normal result. If the foot profile is down, the answer is 503 `routing_engine_unavailable`. The rider's location is used for the calculation only, never stored or logged.
 
-**Rejected points:** `exclude` takes up to 20 IDs of points the rider turned down ("choose a different pickup point", #136). They're never returned, so the next best come back instead. Rejected points still count for the 200 m spacing, so the next suggestion is a different spot, not the sample next door. Unknown IDs are ignored. Rejecting every point leaves an empty list.
+### A trip's route for the map (#123)
 
-An empty list means the route doesn't pass within walking distance (or every point there was rejected). 404 `route_not_found` if the trip has no stored route (checked before calling OSRM), 503 `routing_engine_unavailable` if the foot profile is down.
-
-### A trip's route for the map (#123, #135)
-
-`GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs; `properties` has the trip ID, and the whole trip's distance and duration. The driver's screen after posting a trip and the rider's search results both use it.
-
-**Only the driver sees the whole route** (`domain/privacy.py`). Anyone else gets it with the driver's own end cut off: the start going to campus, the end leaving it. The cut is where the route last leaves a 300 m circle (straight line) around that end, the same margin pickup points keep, so a route that loops back past the house from a cul-de-sac is cut after the loop, not before. The campus end is always drawn. Routes stored without a driver or direction (before Sprint 2) have both ends cut off, for everyone. A route entirely inside the circle shows only its far end, as a line of no length.
+`GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the stored route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs, exactly as stored; `properties` has the trip ID, distance and duration. The driver's screen after posting a trip and the rider's search results both use it.
 
 It needs a logged-in user (401 otherwise), returns 404 `route_not_found` for a trip with no route, and 422 for an ID that isn't a UUID.
+
+In Sprint 1, any logged-in user gets the full route, including the driver's starting point. From Sprint 2, riders get the route from their pickup point on, so the driver's start stays private.
 
 ## Events
 

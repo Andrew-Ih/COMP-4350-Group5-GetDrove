@@ -37,17 +37,15 @@ class FakeEvents:
 
 class FakeRouting:
     def __init__(self) -> None:
-        self.calls: list[tuple[UUID, Location, Location, UUID, Direction]] = []
+        self.calls: list[tuple[UUID, Location, Location]] = []
 
     async def compute_route(
         self,
         trip_id: UUID,
         origin: Location,
         destination: Location,
-        driver_id: UUID,
-        direction: Direction,
     ) -> RouteEstimate:
-        self.calls.append((trip_id, origin, destination, driver_id, direction))
+        self.calls.append((trip_id, origin, destination))
         return RouteEstimate(
             distance_meters=6000,
             duration_seconds=900,
@@ -67,9 +65,8 @@ async def test_post_trip(direction: Direction) -> None:
     place = Location("Pembina Highway", 49.82, -97.15)
     departure = NOW + timedelta(hours=2)
 
-    driver_id = uuid4()
     trip = await use_case.execute(
-        driver_id=driver_id,
+        driver_id=uuid4(),
         direction=direction,
         place=place,
         departure_at=departure,
@@ -83,10 +80,8 @@ async def test_post_trip(direction: Direction) -> None:
     assert trip.duration_seconds == 900
     assert trip.estimated_arrival_at == departure + timedelta(minutes=15)
 
-    route_id, origin, destination, route_driver, route_direction = routing.calls[0]
+    route_id, origin, destination = routing.calls[0]
     assert route_id == trip.id
-    # So Routing can show the whole route to the driver only (#135).
-    assert (route_driver, route_direction) == (driver_id, direction)
 
     if direction == Direction.TO_CAMPUS:
         assert origin == place

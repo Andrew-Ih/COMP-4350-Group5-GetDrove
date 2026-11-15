@@ -46,8 +46,6 @@ class PostTrip:
             trip_id=trip_id,
             origin=origin,
             destination=destination,
-            driver_id=driver_id,
-            direction=direction,
         )
 
         trip = Trip.create(

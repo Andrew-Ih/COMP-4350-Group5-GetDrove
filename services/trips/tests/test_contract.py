@@ -9,12 +9,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
-from trips.adapters.api.dependencies import (
-    get_post_trip,
-    get_search_trips,
-    get_trip_detail,
-    get_upcoming_trips,
-)
+from trips.adapters.api.dependencies import get_post_trip, get_search_trips, get_upcoming_trips
 from trips.adapters.api.schemas import PostTripRequest
 from trips.domain.values import Direction, Location
 from trips.infrastructure.main import create_app
@@ -29,7 +24,7 @@ SEARCH = {"lat": 49.88, "lng": -97.14, "direction": "to_campus", "time": "2026-1
 
 
 @pytest.fixture
-async def client(fake_trip_detail: Any) -> AsyncClient:
+async def client() -> AsyncClient:
     """A test client that can validate requests without starting PostgreSQL."""
     auth = TestAuth()
     app = create_app()
@@ -44,7 +39,6 @@ async def client(fake_trip_detail: Any) -> AsyncClient:
 
     app.dependency_overrides[get_post_trip] = fake_post_trip
     app.dependency_overrides[get_search_trips] = FakeSearch
-    app.dependency_overrides[get_trip_detail] = lambda: fake_trip_detail
 
     return AsyncClient(
         transport=ASGITransport(app=app),
@@ -67,8 +61,18 @@ def test_example_request_is_valid() -> None:
     assert PostTripRequest.model_validate(VALID_TRIP).seats_total == 3
 
 
-# Every Sprint 1 endpoint is implemented now; the Sprint 2 stubs are in
-# test_contract_sprint2.py.
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"),
+    [
+        ("GET", "/5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11", {}),
+    ],
+)
+async def test_valid_requests_reach_the_not_yet_implemented_handler(
+    client: AsyncClient, method: str, path: str, kwargs: dict[str, Any]
+) -> None:
+    response = await client.request(method, path, **kwargs)
+
+    assert response.status_code == 501
 
 
 @pytest.mark.parametrize(
