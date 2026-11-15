@@ -1,7 +1,7 @@
 """Use cases: schedule a rider's trip reminder when they are accepted, and cancel it when
 the request or the trip is cancelled (#148). Sending them is #149."""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from uuid import UUID
 
 from notifications.application.ports import ReminderStore
@@ -9,8 +9,11 @@ from notifications.domain.reminders import TripReminder
 
 
 class ScheduleTripReminder:
-    def __init__(self, store: ReminderStore) -> None:
+    def __init__(self, store: ReminderStore, lead: timedelta) -> None:
+        """``lead``: how long before departure to remind the rider (a setting, 30 minutes
+        by default)."""
         self._store = store
+        self._lead = lead
 
     async def execute(
         self,
@@ -28,6 +31,7 @@ class ScheduleTripReminder:
             request_id=request_id,
             departure_at=departure_at,
             pickup_label=pickup_label,
+            lead=self._lead,
         )
         return await self._store.add(reminder)
 

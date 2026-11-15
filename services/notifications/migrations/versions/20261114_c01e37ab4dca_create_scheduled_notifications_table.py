@@ -19,6 +19,7 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table('scheduled_notifications',
     sa.Column('id', sa.Uuid(), nullable=False),
+    sa.Column('type', sa.String(length=30), nullable=False),
     sa.Column('rider_id', sa.Uuid(), nullable=False),
     sa.Column('trip_id', sa.Uuid(), nullable=False),
     sa.Column('request_id', sa.Uuid(), nullable=False),
@@ -28,8 +29,9 @@ def upgrade() -> None:
     sa.Column('status', sa.String(length=20), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.CheckConstraint("status IN ('pending', 'sent', 'skipped', 'cancelled')", name=op.f('ck_scheduled_notifications_valid_status')),
+    sa.CheckConstraint("type IN ('trip_reminder')", name=op.f('ck_scheduled_notifications_valid_type')),
     sa.PrimaryKeyConstraint('id', name=op.f('pk_scheduled_notifications')),
-    sa.UniqueConstraint('request_id', name=op.f('uq_scheduled_notifications_request_id')),
+    sa.UniqueConstraint('type', 'request_id', name='uq_scheduled_notifications_type_request_id'),
     schema='notifications'
     )
     op.create_index('ix_scheduled_notifications_trip_id', 'scheduled_notifications', ['trip_id'], unique=False, schema='notifications')

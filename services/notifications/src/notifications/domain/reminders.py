@@ -10,8 +10,12 @@ from datetime import datetime, timedelta
 from enum import StrEnum
 from uuid import UUID, uuid4
 
-# How long before departure the rider is reminded.
-REMINDER_LEAD = timedelta(minutes=30)
+
+class ScheduledNotificationType(StrEnum):
+    """What a scheduled notification is. Only trip reminders so far; the table is shared, so
+    later kinds can be added here."""
+
+    TRIP_REMINDER = "trip_reminder"
 
 
 class ReminderStatus(StrEnum):
@@ -21,10 +25,11 @@ class ReminderStatus(StrEnum):
     CANCELLED = "cancelled"  # the request or the trip was cancelled first
 
 
-def reminder_due_at(departure_at: datetime) -> datetime:
-    """``REMINDER_LEAD`` before departure. A rider accepted later than that gets a reminder
-    that is already due, so the scheduler sends it on its next pass."""
-    return departure_at - REMINDER_LEAD
+def reminder_due_at(departure_at: datetime, lead: timedelta) -> datetime:
+    """``lead`` before departure (``NOTIFICATIONS_REMINDER_LEAD_MINUTES``, 30 by default).
+    A rider accepted later than that gets a reminder that is already due, so the scheduler
+    sends it on its next pass."""
+    return departure_at - lead
 
 
 @dataclass(frozen=True)
@@ -38,6 +43,7 @@ class TripReminder:
     pickup_label: str  # the pickup point's label, never the rider's own location
     send_at: datetime
     status: ReminderStatus = ReminderStatus.PENDING
+    type: ScheduledNotificationType = ScheduledNotificationType.TRIP_REMINDER
     id: UUID = field(default_factory=uuid4)
 
     @classmethod
@@ -49,6 +55,7 @@ class TripReminder:
         request_id: UUID,
         departure_at: datetime,
         pickup_label: str,
+        lead: timedelta,
     ) -> "TripReminder":
         return cls(
             rider_id=rider_id,
@@ -56,5 +63,5 @@ class TripReminder:
             request_id=request_id,
             departure_at=departure_at,
             pickup_label=pickup_label,
-            send_at=reminder_due_at(departure_at),
+            send_at=reminder_due_at(departure_at, lead),
         )

@@ -7,7 +7,11 @@ from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from notifications.adapters.persistence.tables import scheduled_notifications
-from notifications.domain.reminders import ReminderStatus, TripReminder
+from notifications.domain.reminders import (
+    ReminderStatus,
+    ScheduledNotificationType,
+    TripReminder,
+)
 
 
 class SQLAlchemyReminderStore:
@@ -20,6 +24,7 @@ class SQLAlchemyReminderStore:
             insert(table)
             .values(
                 id=reminder.id,
+                type=reminder.type.value,
                 rider_id=reminder.rider_id,
                 trip_id=reminder.trip_id,
                 request_id=reminder.request_id,
@@ -28,7 +33,7 @@ class SQLAlchemyReminderStore:
                 send_at=reminder.send_at,
                 status=reminder.status.value,
             )
-            .on_conflict_do_nothing(index_elements=[table.c.request_id])
+            .on_conflict_do_nothing(index_elements=[table.c.type, table.c.request_id])
             .returning(table.c.id)
         )
         return result.first() is not None
@@ -43,7 +48,11 @@ class SQLAlchemyReminderStore:
         table = scheduled_notifications
         result = await self.session.execute(
             update(table)
-            .where(which, table.c.status == ReminderStatus.PENDING.value)
+            .where(
+                which,
+                table.c.type == ScheduledNotificationType.TRIP_REMINDER.value,
+                table.c.status == ReminderStatus.PENDING.value,
+            )
             .values(status=ReminderStatus.CANCELLED.value)
             .returning(table.c.id)
         )

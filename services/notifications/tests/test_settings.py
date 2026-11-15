@@ -40,3 +40,23 @@ def test_production_settings_are_read_from_the_environment(
 
 def test_without_a_key_there_is_no_login() -> None:
     assert Settings(smtp_password=None).smtp_password is None
+
+
+def test_riders_are_reminded_30_minutes_before_departure_by_default() -> None:
+    assert Settings().reminder_lead_minutes == 30
+
+
+def test_the_reminder_lead_time_can_be_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NOTIFICATIONS_REMINDER_LEAD_MINUTES", "45")
+
+    assert Settings().reminder_lead_minutes == 45
+
+
+@pytest.mark.parametrize("minutes", ["0", "-5", "1441"])
+def test_the_reminder_lead_time_must_be_sensible(
+    monkeypatch: pytest.MonkeyPatch, minutes: str
+) -> None:
+    monkeypatch.setenv("NOTIFICATIONS_REMINDER_LEAD_MINUTES", minutes)
+
+    with pytest.raises(ValueError, match="reminder_lead_minutes"):
+        Settings()

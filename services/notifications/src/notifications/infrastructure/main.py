@@ -8,6 +8,7 @@ import contextlib
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import FastAPI
 from redis.asyncio import Redis
@@ -82,7 +83,7 @@ def create_app() -> FastAPI:
             block_ms=CONSUMER_BLOCK_MS,
         )
         register_handlers(consumer, send_email)
-        register_reminder_handlers(consumer)
+        register_reminder_handlers(consumer, timedelta(minutes=settings.reminder_lead_minutes))
         stop = asyncio.Event()
         consumer_task = asyncio.create_task(consumer.run(stop))
         consumer_task.add_done_callback(_log_if_consumer_stopped)

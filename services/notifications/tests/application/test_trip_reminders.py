@@ -39,8 +39,13 @@ class InMemoryReminderStore:
         return self.reminders[request_id].status
 
 
-async def accept(store: InMemoryReminderStore, request_id: UUID, trip_id: UUID = TRIP) -> bool:
-    return await ScheduleTripReminder(store).execute(
+async def accept(
+    store: InMemoryReminderStore,
+    request_id: UUID,
+    trip_id: UUID = TRIP,
+    lead: timedelta = timedelta(minutes=30),
+) -> bool:
+    return await ScheduleTripReminder(store, lead).execute(
         rider_id=uuid4(),
         trip_id=trip_id,
         request_id=request_id,
@@ -59,6 +64,14 @@ async def test_an_accepted_rider_is_reminded_30_minutes_before_departure() -> No
     assert reminder.status is ReminderStatus.PENDING
     assert reminder.trip_id == TRIP
     assert reminder.pickup_label == "Pembina Hwy at Chancellor Matheson Rd"
+
+
+async def test_the_lead_time_is_configurable() -> None:
+    store, request = InMemoryReminderStore(), uuid4()
+
+    await accept(store, request, lead=timedelta(minutes=45))
+
+    assert store.reminders[request].send_at == DEPARTURE - timedelta(minutes=45)
 
 
 async def test_accepting_the_same_request_twice_keeps_one_reminder() -> None:

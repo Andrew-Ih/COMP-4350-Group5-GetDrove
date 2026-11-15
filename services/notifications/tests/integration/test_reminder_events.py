@@ -23,6 +23,7 @@ from notifications.adapters.persistence.tables import scheduled_notifications
 STREAM = stream_name("trips")
 DEPARTURE = datetime(2026, 11, 16, 7, 45, tzinfo=UTC)
 TRIP, DRIVER = uuid4(), uuid4()
+LEAD = timedelta(minutes=30)
 
 NewConsumer = Callable[[], StreamConsumer]
 
@@ -51,7 +52,7 @@ def new_consumer(redis: Redis, session: AsyncSession) -> NewConsumer:
             consumer_name=f"notifications-test-{uuid4().hex[:6]}",
             retry_after_ms=0,
         )
-        register_reminder_handlers(consumer)
+        register_reminder_handlers(consumer, LEAD)
         return consumer
 
     return start
@@ -97,6 +98,7 @@ async def test_an_accepted_request_schedules_a_reminder(
     await handle_new_events(new_consumer())
 
     reminder = (await reminders(session))[request]
+    assert reminder["type"] == "trip_reminder"
     assert reminder["rider_id"] == rider
     assert reminder["trip_id"] == TRIP
     assert reminder["send_at"] == DEPARTURE - timedelta(minutes=30)
