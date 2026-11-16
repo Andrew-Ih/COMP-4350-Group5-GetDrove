@@ -4,10 +4,9 @@
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 
-Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches) and
-#123 (the geometry endpoint). Sprint 2 adds pickup points (#29, #30) and detours (#36, #38),
-which return 501 until implemented, and hides the driver's end of the route from riders
-(#135).
+Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches),
+#123 (the geometry endpoint), #29 (POST /internal/pickup-points) and #135 (the geometry hides
+the driver's end from riders). Detours (#36, #38) return 501 until implemented.
 """
 
 from typing import Any, NoReturn
@@ -20,6 +19,7 @@ from routing.adapters.api.dependencies import (
     ComputeRouteService,
     GetRouteService,
     MatchRiderService,
+    SuggestPickupsService,
 )
 from routing.adapters.api.schemas import (
     DetourRequest,
@@ -29,6 +29,7 @@ from routing.adapters.api.schemas import (
     MatchRequest,
     MatchResponse,
     Pickup,
+    PickupPoint,
     PickupPointsRequest,
     PickupPointsResponse,
     Problem,
@@ -37,7 +38,7 @@ from routing.adapters.api.schemas import (
     RouteRequest,
     RouteResponse,
 )
-from routing.domain.values import LatLng
+from routing.domain.values import Direction, LatLng
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 public_router = APIRouter(tags=["routes"])
@@ -71,6 +72,8 @@ async def compute_route(body: RouteRequest, service: ComputeRouteService) -> Rou
         trip_id=body.trip_id,
         origin=LatLng(lat=body.origin.lat, lng=body.origin.lng),
         destination=LatLng(lat=body.destination.lat, lng=body.destination.lng),
+        driver_id=body.driver_id,
+        direction=Direction(body.direction) if body.direction else None,
     )
 
     return RouteResponse(
@@ -117,11 +120,33 @@ def _not_implemented() -> NoReturn:
     summary="Pickup points for a rider on a trip",
     description="Called by Trips for the trip detail and when a seat is requested. Returns "
     "up to `limit` points on the trip's route, shortest walk first, each on a road a car can "
-    "stop on and away from both ends of the route.",
+    "stop on and away from both ends of the route. Points in `exclude` (ones the rider "
+    "rejected) are never returned.",
     responses={**INVALID, **ROUTE_NOT_FOUND, **ENGINE_DOWN},
 )
-async def pickup_points(body: PickupPointsRequest) -> PickupPointsResponse:
-    _not_implemented()
+async def pickup_points(
+    body: PickupPointsRequest, service: SuggestPickupsService
+) -> PickupPointsResponse:
+    pickups = await service.execute(
+        trip_id=body.trip_id,
+        rider=LatLng(lat=body.rider.lat, lng=body.rider.lng),
+        limit=body.limit,
+        exclude=body.exclude,
+    )
+
+    return PickupPointsResponse(
+        pickups=[
+            PickupPoint(
+                id=pickup.id,
+                label=pickup.label,
+                lat=pickup.point.lat,
+                lng=pickup.point.lng,
+                walk_seconds=pickup.walk_seconds,
+                rider_distance_meters=pickup.rider_distance_meters,
+            )
+            for pickup in pickups
+        ]
+    )
 
 
 @internal_router.post(
@@ -142,8 +167,9 @@ async def detour(body: DetourRequest) -> DetourResponse:
     summary="A trip's route for the map",
     description="The route as a GeoJSON LineString. The trip's driver gets the full route. "
     "Anyone else gets it with the driver's end cut off, by the same margin pickup points "
-    "keep from the ends, so the driver's home is never shown (#135; until then the full "
-    "route is returned).",
+    "keep from the ends (300 m in a straight line), so the driver's home is never shown. "
+    "Routes stored before Sprint 2 have no driver or direction: both ends are cut off for "
+    "everyone (#135).",
     responses={
         **INVALID,
         401: _problem("Missing or invalid access token", "unauthorized"),
@@ -153,7 +179,8 @@ async def detour(body: DetourRequest) -> DetourResponse:
 async def route_geometry(
     trip_id: UUID, user: AuthenticatedUser, service: GetRouteService
 ) -> RouteFeature:
-    route = await service.execute(trip_id)
+    # The driver sees the whole route; anyone else, without the driver's own end (#135).
+    route = await service.execute(trip_id, viewer_id=user.id)
 
     return RouteFeature(
         geometry=LineString(coordinates=[(point.lng, point.lat) for point in route.path]),

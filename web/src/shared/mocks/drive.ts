@@ -76,6 +76,13 @@ function exampleTrips(): Trip[] {
 
 let examples = exampleTrips();
 
+/** A trip posted in this session, and its route, or undefined. */
+export function findPosted(tripId: string) {
+  const trip = postedTrips.find((t) => t.id === tripId);
+  const route = posted.get(tripId);
+  return trip && route ? { trip, route } : undefined;
+}
+
 /** Forgets the trips posted so far, and puts the made-up ones back (for tests). */
 export function resetPostedTrips() {
   postedTrips.length = 0;
