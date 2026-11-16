@@ -9,8 +9,6 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from payments.adapters.api.payments_router import PricingConfig, get_pricing_config
-from payments.infrastructure.main import create_app as create_payments_app
 from trips.adapters.payments import HTTPPricingService
 from trips.application.request_routing import DetourEstimate, SelectedPickup
 from trips.application.request_seat import RequestSeat, RequestSeatCommand
@@ -340,6 +338,21 @@ async def test_the_rider_is_locked_before_the_checks_and_the_insert() -> None:
     assert harness.requests.calls == ["lock", "check", "add"]
 
 
+def quote_response(request: httpx.Request) -> httpx.Response:
+    """Contract-shaped test response; the real pricing rule is tested in Payments (#99)."""
+    assert request.method == "POST"
+    assert request.url.path == "/internal/quotes"
+    distance = json.loads(request.content)["distanceMeters"]
+    return httpx.Response(
+        200,
+        json={
+            "amountCents": distance // 10,
+            "currency": "CAD",
+            "explanation": f"Test quote for {distance} metres",
+        },
+    )
+
+
 @pytest.mark.parametrize(
     ("direction", "expected_distance"),
     [(Direction.TO_CAMPUS, 4000), (Direction.FROM_CAMPUS, 6000)],
@@ -347,18 +360,16 @@ async def test_the_rider_is_locked_before_the_checks_and_the_insert() -> None:
 async def test_saved_share_matches_payments_quote_for_the_riders_distance(
     direction: Direction, expected_distance: int
 ) -> None:
-    """Use the real quote endpoint, not a fixed price fake or a second pricing rule (#69)."""
+    """Save the contract response for the rider distance without importing Payments (#69)."""
     trip = replace(make_trip(), direction=direction)
     harness = build(trip)
-    payments = create_payments_app()
-    payments.dependency_overrides[get_pricing_config] = lambda: PricingConfig(45, 200)
     distances: list[int] = []
 
     async def record(request: httpx.Request) -> None:
         distances.append(json.loads(request.content)["distanceMeters"])
 
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=payments),
+        transport=httpx.MockTransport(quote_response),
         base_url="http://payments",
         event_hooks={"request": [record]},
     ) as client:
@@ -396,12 +407,10 @@ async def test_choosing_another_suggested_pickup_saves_its_displayed_quote(
 
     routing.select_pickup.side_effect = select_pickup
     harness.use_case.routing = routing
-    payments = create_payments_app()
-    payments.dependency_overrides[get_pricing_config] = lambda: PricingConfig(45, 200)
     command = replace(make_command(trip.id), pickup_id="s50")
 
     async with httpx.AsyncClient(
-        transport=httpx.ASGITransport(app=payments), base_url="http://payments"
+        transport=httpx.MockTransport(quote_response), base_url="http://payments"
     ) as client:
         pricing = HTTPPricingService(client)
         harness.use_case.pricing = pricing
