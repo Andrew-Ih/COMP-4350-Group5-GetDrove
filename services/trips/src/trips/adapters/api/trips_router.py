@@ -20,6 +20,7 @@ from trips.adapters.api.dependencies import (
     DecideRequestService,
     PostTripService,
     RequestSeatService,
+    RiderTripsService,
     SearchTripsService,
     TripDetailService,
     TripRequestsService,
@@ -176,10 +177,7 @@ async def my_trips(
     ] = "driver",
     when: When = "upcoming",
 ) -> list[Trip]:
-    if when == "past":
-        _not_implemented()
-
-    trips = await service.execute(driver_id=user.id)
+    trips = await service.execute(driver_id=user.id, past=when == "past")
     return [_to_response(trip) for trip in trips]
 
 
@@ -191,8 +189,14 @@ async def my_trips(
     "Cancelled trips are included, not removed.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def my_requests(user: AuthenticatedUser, when: When = "upcoming") -> list[RiderTrip]:
-    _not_implemented()
+async def my_requests(
+    user: AuthenticatedUser, service: RiderTripsService, when: When = "upcoming"
+) -> list[RiderTrip]:
+    rows = await service.execute(rider_id=user.id, past=when == "past")
+    return [
+        RiderTrip(trip=_for_rider(trip), request=_seat_request_response(request))
+        for trip, request in rows
+    ]
 
 
 @router.get(
