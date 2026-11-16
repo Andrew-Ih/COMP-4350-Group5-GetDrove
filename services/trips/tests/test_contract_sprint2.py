@@ -37,7 +37,6 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("GET", "/requests/mine?when=past", {}),
     ("GET", "/auto-accept", {}),
     ("PUT", "/auto-accept", {"json": RULES}),
-    ("POST", f"/{ID}/cancel", {}),
     ("POST", f"/series/{ID}/cancel", {}),
     ("POST", f"/{ID}/requests", {"json": SEAT_REQUEST}),
     ("GET", f"/{ID}/requests", {}),
@@ -111,7 +110,9 @@ async def test_valid_requests_reach_the_not_yet_implemented_handler(
     assert response.status_code == 501, response.text
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs"), NEW_ENDPOINTS)
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"), [*NEW_ENDPOINTS, ("POST", f"/{ID}/cancel", {})]
+)
 async def test_new_endpoints_need_a_token(method: str, path: str, kwargs: dict[str, Any]) -> None:
     async with AsyncClient(
         transport=ASGITransport(app=create_app()), base_url="http://test"
