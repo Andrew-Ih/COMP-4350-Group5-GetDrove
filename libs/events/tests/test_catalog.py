@@ -4,6 +4,9 @@ import secrets
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+from pydantic import ValidationError
+
 from events import EventEnvelope
 from events.catalog import (
     ALL_EVENTS,
@@ -74,12 +77,50 @@ def test_request_accepted_round_trips_in_camel_case() -> None:
         "driverId",
         "departureAt",
         "pickupLabel",
+        "direction",
         "amountCents",
         "currency",
         "autoAccepted",
     }
     assert envelope.payload["currency"] == "CAD"
     assert EventEnvelope.from_json(envelope.to_json()).payload_as(RequestAccepted) == event
+
+
+@pytest.mark.parametrize("direction", ["to_campus", "from_campus"])
+def test_request_accepted_says_which_way_the_trip_goes(direction: str) -> None:
+    """So `pickupLabel` can be told apart: pickup going to campus, drop-off leaving it (#352)."""
+    event = RequestAccepted.model_validate({**_request_accepted_payload(), "direction": direction})
+    envelope = EventEnvelope.wrap(event, producer="trips")
+
+    assert envelope.payload["direction"] == direction
+    assert EventEnvelope.from_json(envelope.to_json()).payload_as(RequestAccepted) == event
+
+
+def test_a_request_accepted_published_before_direction_still_reads() -> None:
+    """Old events in the stream have no `direction`: a consumer replaying them gets None."""
+    event = RequestAccepted.model_validate(_request_accepted_payload())
+
+    assert event.direction is None
+
+
+def test_request_accepted_refuses_an_unknown_direction() -> None:
+    with pytest.raises(ValidationError):
+        RequestAccepted.model_validate({**_request_accepted_payload(), "direction": "sideways"})
+
+
+def _request_accepted_payload() -> dict[str, object]:
+    """A RequestAccepted payload as an older Trips published it: camelCase, no direction."""
+    return {
+        "requestId": str(uuid4()),
+        "tripId": str(uuid4()),
+        "riderId": str(uuid4()),
+        "driverId": str(uuid4()),
+        "departureAt": "2026-11-16T13:10:00Z",
+        "pickupLabel": "Osborne St & River Ave",
+        "amountCents": 420,
+        "currency": "CAD",
+        "autoAccepted": False,
+    }
 
 
 def test_sprint_2_events_are_in_the_catalog() -> None:
