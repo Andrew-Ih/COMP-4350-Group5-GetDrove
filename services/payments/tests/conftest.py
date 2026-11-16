@@ -30,7 +30,9 @@ def payments_database() -> Iterator[str]:
     except docker.errors.DockerException:
         pytest.skip("Docker is not running; start Docker Desktop for hold integration tests")
     with PostgresContainer("postgres:17-alpine", driver="asyncpg") as postgres:
-        url = postgres.get_connection_url()
+        # This disposable Postgres has no TLS. Avoid SSL negotiation through Docker's
+        # Windows port proxy; production connection settings are not changed.
+        url = postgres.get_connection_url() + "?ssl=disable"
         asyncio.run(prepare(url))
         with pytest.MonkeyPatch.context() as patch:
             patch.setenv("PAYMENTS_DATABASE_URL", url)

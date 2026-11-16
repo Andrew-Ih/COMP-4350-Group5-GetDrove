@@ -94,6 +94,11 @@ class StripePaymentGateway:
             )
         return PaymentIntentResult(id=intent.id, status=PaymentIntentStatus(intent.status))
 
+    async def retrieve_payment_intent(self, *, payment_intent_id: str) -> PaymentIntentResult:
+        with _translate_errors():
+            intent = await self._client.v1.payment_intents.retrieve_async(payment_intent_id)
+        return PaymentIntentResult(id=intent.id, status=PaymentIntentStatus(intent.status))
+
     async def cancel(self, *, payment_intent_id: str, idempotency_key: str) -> PaymentIntentResult:
         with _translate_errors():
             intent = await self._client.v1.payment_intents.cancel_async(

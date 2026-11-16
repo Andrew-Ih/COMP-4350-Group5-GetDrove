@@ -239,3 +239,112 @@ async def test_prepared_hold_past_departure_is_paused_without_false_failure() ->
     s.gateway.authorize.assert_not_awaited()
     s.events.failed.assert_not_awaited()
     s.events.held.assert_not_awaited()
+
+
+async def test_release_authorized_hold_once_and_prevent_capture() -> None:
+    s = Setup()
+    await s.authorize()
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True, retry_at=NOW)
+    s.gateway.retrieve_payment_intent.return_value = PaymentIntentResult(
+        "pi_test", PaymentIntentStatus.REQUIRES_CAPTURE
+    )
+    s.gateway.cancel.return_value = PaymentIntentResult("pi_test", PaymentIntentStatus.CANCELED)
+    with pytest.raises(ValueError):
+        await s.use_case.capture(s.hold.request_id)
+    await s.use_case.release(s.hold.request_id, NOW)
+    await s.use_case.release(s.hold.request_id, NOW)
+    assert s.stored.status is HoldStatus.RELEASED
+    s.gateway.cancel.assert_awaited_once_with(
+        payment_intent_id="pi_test", idempotency_key=f"release:{s.hold.request_id}"
+    )
+    s.events.released.assert_awaited_once_with(s.stored)
+    s.gateway.capture.assert_not_awaited()
+
+
+async def test_release_unattempted_schedule_never_calls_stripe() -> None:
+    s = Setup()
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True)
+    await s.authorize()  # Both phases must respect the cancellation flag.
+    await s.use_case.release(s.hold.request_id, NOW)
+    assert s.stored.status is HoldStatus.RELEASED
+    s.cards.for_rider.assert_not_awaited()
+    s.gateway.authorize.assert_not_awaited()
+    s.gateway.retrieve_payment_intent.assert_not_awaited()
+    s.gateway.cancel.assert_not_awaited()
+    s.events.released.assert_awaited_once()
+
+
+async def test_release_recognizes_already_cancelled_provider_intent() -> None:
+    s = Setup()
+    await s.authorize()
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True, retry_at=NOW)
+    s.gateway.retrieve_payment_intent.return_value = PaymentIntentResult(
+        "pi_test", PaymentIntentStatus.CANCELED
+    )
+    await s.use_case.release(s.hold.request_id, NOW)
+    assert s.stored.status is HoldStatus.RELEASED
+    s.gateway.cancel.assert_not_awaited()
+    s.events.released.assert_awaited_once()
+
+
+async def test_release_retries_transient_errors_without_claiming_success() -> None:
+    s = Setup()
+    await s.authorize()
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True, retry_at=NOW)
+    s.gateway.retrieve_payment_intent.return_value = PaymentIntentResult(
+        "pi_test", PaymentIntentStatus.REQUIRES_CAPTURE
+    )
+    s.gateway.cancel.side_effect = [
+        GatewayUnavailableError(),
+        PaymentIntentResult("pi_test", PaymentIntentStatus.CANCELED),
+    ]
+    await s.use_case.release(s.hold.request_id, NOW)
+    assert s.stored.status is HoldStatus.AUTHORIZED
+    s.events.released.assert_not_awaited()
+    await s.use_case.release(s.hold.request_id, NOW + timedelta(seconds=31))
+    assert s.stored.status is HoldStatus.RELEASED
+    assert s.gateway.cancel.await_args_list[0] == s.gateway.cancel.await_args_list[1]
+
+
+@pytest.mark.parametrize(
+    "provider_status", [PaymentIntentStatus.SUCCEEDED, PaymentIntentStatus.PROCESSING]
+)
+async def test_captured_or_uncertain_release_never_reports_money_released(provider_status) -> None:
+    s = Setup()
+    await s.authorize()
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True, retry_at=NOW)
+    s.gateway.retrieve_payment_intent.return_value = PaymentIntentResult("pi_test", provider_status)
+    s.gateway.cancel.return_value = PaymentIntentResult("pi_test", provider_status)
+    await s.use_case.release(s.hold.request_id, NOW)
+    assert s.stored.retry_at is None
+    assert s.stored.status is not HoldStatus.RELEASED
+    s.events.released.assert_not_awaited()
+
+
+async def test_uncertain_authorization_is_recovered_before_release() -> None:
+    s = Setup()
+    await s.use_case.prepare(s.hold.request_id, NOW)
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True)
+    s.gateway.retrieve_payment_intent.return_value = PaymentIntentResult(
+        "pi_test", PaymentIntentStatus.REQUIRES_CAPTURE
+    )
+    s.gateway.cancel.return_value = PaymentIntentResult("pi_test", PaymentIntentStatus.CANCELED)
+    await s.use_case.release(s.hold.request_id, NOW)
+    assert s.stored.status is HoldStatus.RELEASED
+    s.gateway.authorize.assert_awaited_once_with(
+        customer_id=CARD.customer_id,
+        payment_method_id=CARD.payment_method_id,
+        amount_cents=625,
+        currency="CAD",
+        idempotency_key=f"hold:{s.hold.request_id}",
+    )
+
+
+async def test_expired_uncertain_authorization_stops_for_reconciliation() -> None:
+    s = Setup()
+    await s.use_case.prepare(s.hold.request_id, NOW)
+    s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True)
+    await s.use_case.release(s.hold.request_id, NOW + timedelta(days=1))
+    assert s.stored.retry_at is None
+    s.gateway.authorize.assert_not_awaited()
+    s.events.released.assert_not_awaited()

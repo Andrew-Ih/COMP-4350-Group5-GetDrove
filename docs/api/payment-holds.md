@@ -58,7 +58,7 @@ payment-method references are added to event payloads.
 
 ## Safety boundaries and follow-up tasks
 
-- Holds expose SCHEDULED, AUTHORIZED, CAPTURED, RELEASED and FAILED. RELEASED behaviour is #72.
+- Holds expose SCHEDULED, AUTHORIZED, CAPTURED, RELEASED and FAILED. RELEASED behaviour is documented in [cancellations](payment-cancellations.md) (#72).
 - The consumer acknowledges expired acceptances and zero-cent shares without creating
   holds or publishing PaymentFailed. New groups can replay history without notifying old riders.
 - An unattempted queued hold that expires is marked FAILED silently. A prepared/uncertain

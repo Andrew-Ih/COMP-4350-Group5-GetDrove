@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from stripe import HTTPXClient, StripeClient
 
 from events import EventEnvelope, stream_name
-from events.catalog import RequestAccepted
+from events.catalog import RequestAccepted, RequestCancelled, RequestDeclined, TripCancelled
 from events.streams import ENVELOPE_FIELD
 from payments.adapters.persistence.tables import consumer as consumer_tables
 from payments.adapters.persistence.tables import outbox, payment_holds
@@ -24,8 +24,9 @@ from payments.infrastructure.settings import Settings
     os.environ.get("RUN_STRIPE_SANDBOX_HOLD") != "1",
     reason="Opt-in Stripe sandbox test: RUN_STRIPE_SANDBOX_HOLD=1",
 )
+@pytest.mark.parametrize("release_kind", ["cancel", "decline", "trip"])
 async def test_real_sandbox_hold_and_duplicate_acceptance(
-    payments_database: str, payments_redis: str, monkeypatch
+    payments_database: str, payments_redis: str, monkeypatch, release_kind: str
 ) -> None:
     import payments.infrastructure.main as main
 
@@ -39,7 +40,7 @@ async def test_real_sandbox_hold_and_duplicate_acceptance(
     customer_id: str | None = None
     redis_url = payments_redis.rsplit("/", 1)[0] + "/6"
     redis = Redis.from_url(redis_url)
-    engine = create_async_engine(payments_database, hide_parameters=True)
+    engine = create_async_engine(payments_database, hide_parameters=True, pool_pre_ping=True)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
     try:
         customer = await stripe.v1.customers.create_async(
@@ -140,6 +141,62 @@ async def test_real_sandbox_hold_and_duplicate_acceptance(
                 ).all()
                 assert len(held) == 1
             print(f"Verified sandbox hold {intent.id}: CAD 6.25, requires_capture, no duplicate")
+            data = event.payload_as(RequestAccepted)
+            if release_kind == "trip":
+                payload = TripCancelled(
+                    trip_id=data.trip_id,
+                    driver_id=data.driver_id,
+                    series_id=None,
+                    departure_at=data.departure_at,
+                    rider_ids=[rider],
+                )
+            else:
+                model = RequestCancelled if release_kind == "cancel" else RequestDeclined
+                payload = model(
+                    request_id=request,
+                    trip_id=data.trip_id,
+                    rider_id=rider,
+                    driver_id=data.driver_id,
+                    was_accepted=True,
+                )
+            released_event = EventEnvelope.wrap(payload, producer="trips")
+            for replay in (released_event, released_event.model_copy(update={"event_id": uuid4()})):
+                await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: replay.to_json()})
+            async with asyncio.timeout(45):
+                for _ in range(400):
+                    async with sessions() as session:
+                        row = (
+                            (
+                                await session.execute(
+                                    select(payment_holds).where(
+                                        payment_holds.c.request_id == request
+                                    )
+                                )
+                            )
+                            .mappings()
+                            .one()
+                        )
+                    if row["status"] == "RELEASED":
+                        break
+                    await asyncio.sleep(0.1)
+                else:
+                    pytest.fail("Cancellation did not release the sandbox hold")
+            await app.state.hold_worker.process(request)
+            cancelled = await stripe.v1.payment_intents.retrieve_async(intent.id)
+            assert cancelled.status == "canceled"
+            assert cancelled.amount_received == 0
+            async with sessions() as session:
+                rows = (
+                    await session.execute(
+                        select(outbox).where(
+                            outbox.c.type == "PaymentReleased",
+                            outbox.c.envelope["payload"]["requestId"].astext == str(request),
+                        )
+                    )
+                ).all()
+                assert len(rows) == 1
+            print(f"Verified {release_kind}: {intent.id} canceled, one PaymentReleased, no capture")
+
     finally:
         # This customer was created exclusively for this test. Leave no test funds held.
         if customer_id is not None:

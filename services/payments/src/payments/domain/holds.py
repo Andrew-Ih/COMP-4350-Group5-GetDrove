@@ -34,6 +34,7 @@ class PaymentHold:
     departure_at: datetime
     status: HoldStatus = HoldStatus.SCHEDULED
     stripe_id: str | None = None
+    release_requested: bool = False
     card: SavedPaymentCard | None = None
     first_attempt_at: datetime | None = None
     correlation_id: str | None = None
