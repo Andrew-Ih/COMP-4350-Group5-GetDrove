@@ -69,7 +69,7 @@ export interface paths {
         put?: never;
         /**
          * Pickup points for a rider on a trip
-         * @description Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route.
+         * @description Called by Trips for the trip detail and when a seat is requested. Returns up to `limit` points on the trip's route, shortest walk first, each on a road a car can stop on and away from both ends of the route. Points in `exclude` (ones the rider rejected) are never returned.
          */
         post: operations["pickup_points_internal_pickup_points_post"];
         delete?: never;
@@ -107,7 +107,7 @@ export interface paths {
         };
         /**
          * A trip's route for the map
-         * @description The route as a GeoJSON LineString. The trip's driver gets the full route. Anyone else gets it with the driver's end cut off, by the same margin pickup points keep from the ends, so the driver's home is never shown (#135; until then the full route is returned).
+         * @description The route as a GeoJSON LineString. The trip's driver gets the full route. Anyone else gets it with the driver's end cut off, by the same margin pickup points keep from the ends (300 m in a straight line), so the driver's home is never shown. Routes stored before Sprint 2 have no driver or direction: both ends are cut off for everyone (#135).
          */
         get: operations["route_geometry_trips__trip_id__geometry_get"];
         put?: never;
@@ -284,6 +284,15 @@ export interface components {
              * @default 3
              */
             limit: number;
+            /**
+             * Exclude
+             * @description IDs of points the rider rejected (#136). They're never returned, so the next best come back instead. At most 20.
+             * @example [
+             *       "s42",
+             *       "s45"
+             *     ]
+             */
+            exclude?: string[];
         };
         /** PickupPointsResponse */
         PickupPointsResponse: {
