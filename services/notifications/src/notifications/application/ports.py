@@ -3,13 +3,14 @@
 Adapters implement these, and tests use in-memory fakes.
 """
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
 from notifications.domain.notification_email import Contact
 from notifications.domain.notifications import Notification
+from notifications.domain.reminders import TripReminder
 from notifications.domain.trip_members import TripMember
 from notifications.domain.verification_email import EmailMessage
 
@@ -21,6 +22,35 @@ class EmailSender(Protocol):
         """Sends ``message``. Raises if it couldn't be handed to the mail server, so the
         event is retried later."""
         ...
+
+
+class ReminderStore(Protocol):
+    """Keeps trip reminders (#148) until the scheduler sends them (#149)."""
+
+    async def add(self, reminder: TripReminder) -> bool:
+        """Stores ``reminder``. Returns False, and changes nothing, if its request already
+        has a reminder: a repeated ``RequestAccepted`` never creates a second one."""
+        ...
+
+    async def cancel_for_request(self, request_id: UUID) -> int:
+        """Cancels the request's pending reminder. Returns how many were cancelled."""
+        ...
+
+    async def cancel_for_trip(self, trip_id: UUID) -> int:
+        """Cancels every pending reminder on the trip. Returns how many were cancelled."""
+        ...
+
+    async def claim_next_due(
+        self, now: datetime, skip: Collection[UUID] = ()
+    ) -> TripReminder | None:
+        """The pending reminder due soonest (``send_at <= now``), locked until the
+        transaction ends, or None. Reminders another worker holds are passed over, so two
+        workers never send the same one; so are those in ``skip``."""
+        ...
+
+    async def mark_sent(self, reminder_id: UUID, at: datetime) -> None: ...
+
+    async def mark_skipped(self, reminder_id: UUID, at: datetime) -> None: ...
 
 
 class NotificationStore(Protocol):

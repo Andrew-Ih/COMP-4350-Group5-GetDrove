@@ -1,6 +1,6 @@
 """In-memory fakes of Notifications' ports, for tests only (like ``accounts.testing``)."""
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import replace
 from datetime import datetime
 from uuid import UUID
@@ -8,20 +8,25 @@ from uuid import UUID
 from notifications.application.ports import ContactsUnavailableError
 from notifications.domain.notification_email import Contact
 from notifications.domain.notifications import Notification
+from notifications.domain.reminders import ReminderStatus, TripReminder
 from notifications.domain.trip_members import TripMember, TripRole
 from notifications.domain.verification_email import EmailMessage
 
 
 class FakeEmailSender:
-    """Keeps sent emails in ``sent``. Set ``fail_with`` to make the next sends raise."""
+    """Keeps sent emails in ``sent``. Set ``fail_with`` to make the next sends raise, or add
+    addresses to ``rejects`` to make only emails to them fail."""
 
     def __init__(self) -> None:
         self.sent: list[EmailMessage] = []
         self.fail_with: Exception | None = None
+        self.rejects: set[str] = set()
 
     async def send(self, message: EmailMessage) -> None:
         if self.fail_with is not None:
             raise self.fail_with
+        if message.to in self.rejects:
+            raise ConnectionError("The mail server rejected this address")
         self.sent.append(message)
 
 
@@ -102,3 +107,55 @@ class InMemoryTripMembers:
     async def active(self, trip_id: UUID) -> list[TripMember]:
         found = [m for m in self.members.values() if m.trip_id == trip_id and m.active]
         return sorted(found, key=lambda m: (m.role is not TripRole.DRIVER, str(m.user_id)))
+
+
+class InMemoryReminderStore:
+    """``ReminderStore`` in a dict keyed by request, behaving like the PostgreSQL one (one
+    worker, so nothing is ever locked by someone else)."""
+
+    def __init__(self, *reminders: TripReminder) -> None:
+        self.reminders: dict[UUID, TripReminder] = {r.request_id: r for r in reminders}
+        self.handled_at: dict[UUID, datetime] = {}
+
+    async def add(self, reminder: TripReminder) -> bool:
+        if reminder.request_id in self.reminders:
+            return False
+        self.reminders[reminder.request_id] = reminder
+        return True
+
+    async def cancel_for_request(self, request_id: UUID) -> int:
+        return self._cancel([r for r in self.reminders.values() if r.request_id == request_id])
+
+    async def cancel_for_trip(self, trip_id: UUID) -> int:
+        return self._cancel([r for r in self.reminders.values() if r.trip_id == trip_id])
+
+    async def claim_next_due(
+        self, now: datetime, skip: Collection[UUID] = ()
+    ) -> TripReminder | None:
+        due = [
+            r
+            for r in self.reminders.values()
+            if r.status is ReminderStatus.PENDING and r.send_at <= now and r.id not in skip
+        ]
+        return min(due, key=lambda r: (r.send_at, str(r.id)), default=None)
+
+    async def mark_sent(self, reminder_id: UUID, at: datetime) -> None:
+        self._finish(reminder_id, ReminderStatus.SENT, at)
+
+    async def mark_skipped(self, reminder_id: UUID, at: datetime) -> None:
+        self._finish(reminder_id, ReminderStatus.SKIPPED, at)
+
+    def status(self, request_id: UUID) -> ReminderStatus:
+        return self.reminders[request_id].status
+
+    def _finish(self, reminder_id: UUID, status: ReminderStatus, at: datetime) -> None:
+        for reminder in list(self.reminders.values()):
+            if reminder.id == reminder_id and reminder.status is ReminderStatus.PENDING:
+                self.reminders[reminder.request_id] = replace(reminder, status=status)
+                self.handled_at[reminder_id] = at
+
+    def _cancel(self, reminders: list[TripReminder]) -> int:
+        pending = [r for r in reminders if r.status is ReminderStatus.PENDING]
+        for reminder in pending:
+            self.reminders[reminder.request_id] = replace(reminder, status=ReminderStatus.CANCELLED)
+        return len(pending)
