@@ -12,10 +12,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from events import EventEnvelope, stream_name
-from events.catalog import RequestAccepted
+from events.catalog import RequestAccepted, RequestCancelled, RequestDeclined, TripCancelled
 from events.consumer import StreamConsumer
 from events.streams import ENVELOPE_FIELD
-from payments.adapters.hold_events import register_hold_handlers, schedule_accepted
+from payments.adapters.hold_events import (
+    register_hold_handlers,
+    release_request,
+    release_trip,
+    schedule_accepted,
+)
 from payments.adapters.persistence.holds import SQLAlchemyHolds
 from payments.adapters.persistence.tables import consumer as tables
 from payments.adapters.persistence.tables import outbox, payment_holds
@@ -50,6 +55,8 @@ class Provider:
         self.intents: dict[str, PaymentIntentResult] = {}
         self.gateway = AsyncMock()
         self.gateway.authorize.side_effect = self.authorize
+        self.gateway.retrieve_payment_intent.side_effect = self.retrieve
+        self.gateway.cancel.side_effect = self.cancel
 
     async def authorize(self, **params) -> PaymentIntentResult:
         key = params["idempotency_key"]
@@ -58,6 +65,17 @@ class Provider:
                 f"pi_{uuid4().hex}", PaymentIntentStatus.REQUIRES_CAPTURE
             )
         return self.intents[key]
+
+    async def retrieve(self, *, payment_intent_id):
+        return next(intent for intent in self.intents.values() if intent.id == payment_intent_id)
+
+    async def cancel(self, *, payment_intent_id, idempotency_key):
+        intent = await self.retrieve(payment_intent_id=payment_intent_id)
+        cancelled = PaymentIntentResult(intent.id, PaymentIntentStatus.CANCELED)
+        for key, existing in self.intents.items():
+            if existing.id == intent.id:
+                self.intents[key] = cancelled
+        return cancelled
 
 
 @pytest.fixture
@@ -293,3 +311,207 @@ async def test_new_consumer_group_acknowledges_ineligible_history_without_paymen
         assert (await redis.xpending(stream_name("trips"), group))["pending"] == 0
     finally:
         await redis.aclose()
+
+
+def cancellation(event, kind):
+    data = event.payload_as(RequestAccepted)
+    if kind == "trip":
+        payload = TripCancelled(
+            trip_id=data.trip_id,
+            driver_id=data.driver_id,
+            series_id=None,
+            departure_at=data.departure_at,
+            rider_ids=[data.rider_id],
+        )
+    else:
+        model = RequestCancelled if kind == "cancel" else RequestDeclined
+        payload = model(
+            request_id=data.request_id,
+            trip_id=data.trip_id,
+            rider_id=data.rider_id,
+            driver_id=data.driver_id,
+            was_accepted=True,
+        )
+    return EventEnvelope.wrap(payload, producer="trips", correlation_id=str(uuid4()))
+
+
+async def deliver_release(sessions, event):
+    async with sessions() as session, session.begin():
+        await (
+            release_trip(event, session)
+            if event.type == "TripCancelled"
+            else release_request(event, session)
+        )
+
+
+@pytest.mark.parametrize("kind", ["cancel", "decline", "trip"])
+async def test_each_cancellation_event_releases_once_with_duplicate_delivery(setup, kind) -> None:
+    sessions, provider, _, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    await schedule(sessions, event)
+    await worker.process(request_id)
+    release = cancellation(event, kind)
+    await deliver_release(sessions, release)
+    await deliver_release(sessions, release.model_copy(update={"event_id": uuid4()}))
+    await asyncio.gather(worker.process(request_id), worker.process(request_id))
+    await deliver_release(sessions, release)
+    await worker.process(request_id)
+    rows = await outcomes(sessions, request_id)
+    assert [row["type"] for row in rows].count("PaymentReleased") == 1
+    [outcome] = [row for row in rows if row["type"] == "PaymentReleased"]
+    assert outcome["envelope"]["correlationId"] == release.correlation_id
+    provider.gateway.cancel.assert_awaited_once()
+    async with sessions() as session:
+        assert (await SQLAlchemyHolds(session).lock(request_id)).status is HoldStatus.RELEASED
+
+
+@pytest.mark.parametrize("kind", ["cancel", "decline", "trip"])
+async def test_cancellation_before_acceptance_prevents_future_hold(setup, kind) -> None:
+    sessions, provider, _, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    await deliver_release(sessions, cancellation(event, kind))
+    await schedule(sessions, event)
+    await worker.process(request_id)
+    provider.gateway.authorize.assert_not_awaited()
+    assert await outcomes(sessions, request_id) == []
+    async with sessions() as session:
+        assert await SQLAlchemyHolds(session).lock(request_id) is None
+
+
+async def test_scheduled_cancellation_makes_no_provider_request(setup) -> None:
+    sessions, provider, _, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    await schedule(sessions, event)
+    await deliver_release(sessions, cancellation(event, "cancel"))
+    await worker.process(request_id)
+    provider.gateway.authorize.assert_not_awaited()
+    provider.gateway.cancel.assert_not_awaited()
+    [row] = await outcomes(sessions, request_id)
+    assert row["type"] == "PaymentReleased"
+
+
+async def test_cancellation_commit_failure_recovers_already_cancelled_intent(
+    setup, monkeypatch
+) -> None:
+    sessions, provider, _, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    await schedule(sessions, event)
+    await worker.process(request_id)
+    await deliver_release(sessions, cancellation(event, "cancel"))
+    save = SQLAlchemyHolds.save
+    failed = False
+
+    async def crash_once(self, hold):
+        nonlocal failed
+        if hold.status is HoldStatus.RELEASED and not failed:
+            failed = True
+            raise RuntimeError("Database failure after cancellation")
+        await save(self, hold)
+
+    monkeypatch.setattr(SQLAlchemyHolds, "save", crash_once)
+    with pytest.raises(RuntimeError):
+        await worker.process(request_id)
+    await worker.process(request_id)
+    provider.gateway.cancel.assert_awaited_once()
+    assert (
+        len(
+            [
+                row
+                for row in await outcomes(sessions, request_id)
+                if row["type"] == "PaymentReleased"
+            ]
+        )
+        == 1
+    )
+
+
+async def test_trip_cancellation_releases_every_hold_and_blocks_late_riders(setup) -> None:
+    sessions, provider, _, worker = setup
+    first = accepted()
+    a = first.payload_as(RequestAccepted)
+    second = first.model_copy(
+        update={
+            "event_id": uuid4(),
+            "payload": {**first.payload, "requestId": str(uuid4()), "riderId": str(uuid4())},
+        }
+    )
+    b = second.payload_as(RequestAccepted)
+    await schedule(sessions, first)
+    await schedule(sessions, second)
+    await worker.process(a.request_id)  # Second hold is still only scheduled.
+    await deliver_release(sessions, cancellation(first, "trip"))
+    await asyncio.gather(worker.process(a.request_id), worker.process(b.request_id))
+    for request_id in (a.request_id, b.request_id):
+        assert (
+            len(
+                [
+                    row
+                    for row in await outcomes(sessions, request_id)
+                    if row["type"] == "PaymentReleased"
+                ]
+            )
+            == 1
+        )
+    provider.gateway.cancel.assert_awaited_once()
+    late = first.model_copy(
+        update={
+            "event_id": uuid4(),
+            "payload": {**first.payload, "requestId": str(uuid4()), "riderId": str(uuid4())},
+        }
+    )
+    await schedule(sessions, late)
+    async with sessions() as session:
+        assert (
+            await SQLAlchemyHolds(session).lock(late.payload_as(RequestAccepted).request_id) is None
+        )
+
+
+async def test_cancel_recovers_authorization_that_succeeded_before_database_failure(
+    setup, monkeypatch
+) -> None:
+    sessions, provider, _, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    await schedule(sessions, event)
+    save = SQLAlchemyHolds.save
+
+    async def crash_authorization_save(self, hold):
+        if hold.status is HoldStatus.AUTHORIZED:
+            raise RuntimeError("Lost authorization commit")
+        await save(self, hold)
+
+    monkeypatch.setattr(SQLAlchemyHolds, "save", crash_authorization_save)
+    with pytest.raises(RuntimeError):
+        await worker.process(request_id)
+    await deliver_release(sessions, cancellation(event, "cancel"))
+    await worker.process(request_id)
+    assert len(provider.intents) == 1
+    assert next(iter(provider.intents.values())).status is PaymentIntentStatus.CANCELED
+    assert (
+        provider.gateway.authorize.await_args_list[0]
+        == provider.gateway.authorize.await_args_list[1]
+    )
+    provider.gateway.cancel.assert_awaited_once()
+    [outcome] = await outcomes(sessions, request_id)
+    assert outcome["type"] == "PaymentReleased"
+
+
+@pytest.mark.parametrize("kind", ["cancel", "decline", "trip"])
+async def test_concurrent_acceptance_scheduling_and_cancellation_do_not_leave_a_hold(
+    setup, kind
+) -> None:
+    sessions, provider, _, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    await asyncio.gather(
+        schedule(sessions, event), deliver_release(sessions, cancellation(event, kind))
+    )
+    await worker.process(request_id)
+    provider.gateway.authorize.assert_not_awaited()
+    async with sessions() as session:
+        hold = await SQLAlchemyHolds(session).lock(request_id)
+        assert hold is None or hold.status is HoldStatus.RELEASED
