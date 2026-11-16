@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import Self
 from uuid import UUID, uuid4
 
+from trips.domain.errors import NotTripDriverError, TripNotCancellableError
 from trips.domain.values import Direction, Location, TripStatus, trip_ends
 
 
@@ -49,6 +50,16 @@ class Trip:
 
         if self.estimated_arrival_at < self.departure_at:
             raise ValueError("Arrival cannot be before departure")
+
+    def cancel(self, driver_id: UUID, now: datetime) -> bool:
+        """Cancel the trip and report whether the cancellation is late."""
+        if driver_id != self.driver_id:
+            raise NotTripDriverError()
+        if self.status != TripStatus.SCHEDULED or self.departure_at <= now:
+            raise TripNotCancellableError()
+
+        self.status = TripStatus.CANCELLED
+        return self.departure_at - now < timedelta(hours=1)
 
     @classmethod
     def create(
