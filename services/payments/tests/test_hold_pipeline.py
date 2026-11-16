@@ -24,7 +24,12 @@ from payments.adapters.hold_events import (
 from payments.adapters.persistence.holds import SQLAlchemyHolds
 from payments.adapters.persistence.tables import consumer as tables
 from payments.adapters.persistence.tables import outbox, payment_holds
-from payments.application.ports import PaymentGatewayPort, PaymentIntentResult, PaymentIntentStatus
+from payments.application.ports import (
+    PaymentDeclinedError,
+    PaymentGatewayPort,
+    PaymentIntentResult,
+    PaymentIntentStatus,
+)
 from payments.domain.holds import HoldStatus, SavedPaymentCard
 from payments.infrastructure.hold_worker import HoldWorker
 
@@ -515,3 +520,41 @@ async def test_concurrent_acceptance_scheduling_and_cancellation_do_not_leave_a_
     async with sessions() as session:
         hold = await SQLAlchemyHolds(session).lock(request_id)
         assert hold is None or hold.status is HoldStatus.RELEASED
+
+
+@pytest.mark.parametrize("kind", ["cancel", "decline", "trip"])
+@pytest.mark.parametrize("failure", ["declined", "requires_payment_method"])
+async def test_cancellation_leaves_failed_hold_unchanged_without_stripe_or_release_event(
+    setup, kind: str, failure: str
+) -> None:
+    sessions, provider, cards, worker = setup
+    event = accepted()
+    request_id = event.payload_as(RequestAccepted).request_id
+    if failure == "declined":
+        provider.gateway.authorize.side_effect = PaymentDeclinedError("Card declined")
+    else:
+        provider.gateway.authorize.side_effect = None
+        provider.gateway.authorize.return_value = PaymentIntentResult(
+            f"pi_unheld_{uuid4().hex}", PaymentIntentStatus.REQUIRES_PAYMENT_METHOD
+        )
+    await schedule(sessions, event)
+    await worker.process(request_id)
+    async with sessions() as session:
+        before = await SQLAlchemyHolds(session).lock(request_id)
+        assert before.status is HoldStatus.FAILED
+        assert (before.stripe_id is None) == (failure == "declined")
+    provider.gateway.reset_mock()
+    cards.reset_mock()
+
+    await deliver_release(sessions, cancellation(event, kind))
+    # An old decline must not be mistaken for an ambiguous authorization needing recovery.
+    await worker.process(request_id, now=datetime.now(UTC) + timedelta(days=1))
+
+    async with sessions() as session:
+        assert await SQLAlchemyHolds(session).lock(request_id) == before
+        assert request_id not in await SQLAlchemyHolds(session).due(
+            datetime.now(UTC) + timedelta(days=1)
+        )
+    assert provider.gateway.mock_calls == []
+    cards.for_rider.assert_not_awaited()
+    assert [row["type"] for row in await outcomes(sessions, request_id)] == ["PaymentFailed"]

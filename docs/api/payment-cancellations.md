@@ -18,13 +18,18 @@ Cancellation consumption durably records a tombstone and requests release. Reque
 cancellation verifies the stored request/trip/rider/driver identity. Trip cancellation marks
 all recorded holds for that trip, not just the riders listed in its event.
 
+FAILED holds remain unchanged: no authorization recovery, provider cancellation or
+PaymentReleased event occurs when their rider later cancels, even if an unheld Stripe
+intent ID was saved. The cancellation tombstone is still recorded.
+
 The hold worker locks the row, retrieves the current Stripe intent, and cancels it with
 release:<request-id>. An already-cancelled intent needs no second cancel call. State and
 PaymentReleased commit together. Transient failures retry after 30s; mismatched, captured
 or uncertain provider responses pause for reconciliation without a success event.
 
 Tombstones prevent a delayed RequestAccepted from resurrecting a cancelled ride. Scheduling
-and cancellation take the same per-trip advisory lock before row locks, so trip cancellation
+and cancellation take the same namespaced advisory lock
+(hashtextextended of payments.trip-holds:<trip-id>) before row locks, so trip cancellation
 cannot miss a concurrently inserted acceptance. Workers retain their row lock while resolving
 provider state; acceptance, release and capture therefore cannot act concurrently on one row.
 

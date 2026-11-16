@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, func, or_, select, update
+from sqlalchemy import RowMapping, or_, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
@@ -44,7 +44,10 @@ class SQLAlchemyHolds:
     async def _lock_trip(self, trip_id: UUID) -> None:
         # All scheduling/cancellation paths acquire this before any hold row lock.
         # It prevents trip cancellation from missing an acceptance inserted concurrently.
-        await self.session.execute(select(func.pg_advisory_xact_lock(trip_id.int % (2**63))))
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"payments.trip-holds:{trip_id}"},
+        )
 
     async def schedule(self, hold: PaymentHold) -> None:
         await self._lock_trip(hold.trip_id)
@@ -132,6 +135,7 @@ class SQLAlchemyHolds:
                     payment_holds.c.release_requested.is_(True),
                 ),
                 payment_holds.c.status != HoldStatus.RELEASED.value,
+                payment_holds.c.status != HoldStatus.FAILED.value,
                 payment_holds.c.retry_at <= now,
             )
             .order_by(payment_holds.c.retry_at)
@@ -205,6 +209,7 @@ class SQLAlchemyHolds:
                 condition,
                 payment_holds.c.release_requested.is_(False),
                 payment_holds.c.status != HoldStatus.RELEASED.value,
+                payment_holds.c.status != HoldStatus.FAILED.value,
             )
             .values(release_requested=True, retry_at=now, correlation_id=correlation_id)
         )

@@ -140,7 +140,11 @@ class HoldPayments:
     async def release(self, request_id: UUID, now: datetime) -> None:
         """Cancel an uncaptured intent, or retire a schedule that never reached Stripe."""
         hold = await self.holds.lock(request_id)
-        if hold is None or not hold.release_requested or hold.status is HoldStatus.RELEASED:
+        if (
+            hold is None
+            or not hold.release_requested
+            or hold.status in (HoldStatus.RELEASED, HoldStatus.FAILED)
+        ):
             return
         if hold.retry_at is None or now < hold.retry_at:
             return
