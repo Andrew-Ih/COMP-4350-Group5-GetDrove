@@ -7,7 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
-from trips.adapters.api.dependencies import get_upcoming_trips
+from trips.adapters.api.dependencies import get_post_recurring_trip, get_upcoming_trips
 from trips.adapters.api.schemas import AutoAcceptRules, PostTripSeriesRequest, SeatRequestBody
 from trips.infrastructure.main import create_app
 
@@ -48,8 +48,10 @@ async def client() -> AsyncClient:
     auth = TestAuth()
     app = create_app()
     auth.install(app)
+
     # /mine?when=past reaches the handler before the 501, so it needs a service.
     app.dependency_overrides[get_upcoming_trips] = lambda: object()
+    app.dependency_overrides[get_post_recurring_trip] = object
     return AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
     )
@@ -80,7 +82,10 @@ def test_examples_are_valid() -> None:
     assert AutoAcceptRules.model_validate(RULES).max_detour_minutes == 5
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs"), NEW_ENDPOINTS)
+@pytest.mark.parametrize(
+    ("method", "path", "kwargs"),
+    [endpoint for endpoint in NEW_ENDPOINTS if endpoint[1] != "/series"],
+)
 async def test_valid_requests_reach_the_not_yet_implemented_handler(
     client: AsyncClient, method: str, path: str, kwargs: dict[str, Any]
 ) -> None:

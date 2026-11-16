@@ -11,13 +11,20 @@ from common_web import current_request_id
 from events.outbox import OutboxPublisher
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService
-from trips.adapters.persistence.repository import SQLAlchemyTripRepository
+from trips.adapters.persistence.repository import (
+    SQLAlchemyTripRepository,
+    SQLAlchemyTripSeriesRepository,
+)
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.routing import HTTPRoutingService
+from trips.application.post_recurring_trip import (
+    PostRecurringTrip,
+    PostRecurringTripResult,
+)
 from trips.application.post_trip import PostTrip
 from trips.application.search_trips import SearchResult, SearchTrips
 from trips.application.upcoming_trips import ListUpcomingTrips
-from trips.domain.entities import Trip
+from trips.domain.entities import Trip, TripSeries
 from trips.domain.values import Direction, Location, Point
 
 
@@ -72,6 +79,63 @@ def get_post_trip(request: Request) -> PostTripCommand:
 
 
 PostTripService = Annotated[PostTripCommand, Depends(get_post_trip)]
+
+
+class PostRecurringTripCommand:
+    """Post a recurring series within one database transaction."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        routing: HTTPRoutingService,
+    ) -> None:
+        self.session_factory = session_factory
+        self.routing = routing
+
+    async def execute(
+        self,
+        *,
+        series: TripSeries,
+    ) -> PostRecurringTripResult:
+        async with self.session_factory() as session:
+            trip_repository = SQLAlchemyTripRepository(session)
+            series_repository = SQLAlchemyTripSeriesRepository(session)
+
+            events = OutboxTripEvents(
+                OutboxPublisher(
+                    session,
+                    outbox,
+                    producer="trips",
+                    correlation_id=current_request_id(),
+                )
+            )
+
+            use_case = PostRecurringTrip(
+                trip_repository=trip_repository,
+                series_repository=series_repository,
+                routing=self.routing,
+                events=events,
+            )
+
+            candidates = await use_case.prepare(series)
+            async with session.begin():
+                await trip_repository.lock_driver(series.driver_id)
+                return await use_case.execute(series, candidates)
+
+
+def get_post_recurring_trip(
+    request: Request,
+) -> PostRecurringTripCommand:
+    return PostRecurringTripCommand(
+        session_factory=request.app.state.session_factory,
+        routing=HTTPRoutingService(request.app.state.routing_client),
+    )
+
+
+PostRecurringTripService = Annotated[
+    PostRecurringTripCommand,
+    Depends(get_post_recurring_trip),
+]
 
 
 class SearchTripsQuery:

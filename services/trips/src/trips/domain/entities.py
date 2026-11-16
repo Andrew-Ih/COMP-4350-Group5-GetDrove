@@ -93,6 +93,14 @@ class Trip:
 
 WINNIPEG_TZ = ZoneInfo("America/Winnipeg")
 
+
+def validate_series_end_date(first_date: date, end_date: date) -> None:
+    if end_date <= first_date:
+        raise ValueError("End date must be after first departure")
+    if end_date - first_date > timedelta(weeks=16):
+        raise ValueError("Recurrence cannot exceed 16 weeks")
+
+
 VALID_WEEKDAYS = frozenset({"mon", "tue", "wed", "thu", "fri"})
 
 WEEKDAY_NUMBERS = {
@@ -141,11 +149,7 @@ class TripSeries:
         if first_date.weekday() not in {WEEKDAY_NUMBERS[day] for day in self.weekdays}:
             raise ValueError("First departure must fall on a selected weekday")
 
-        if self.end_date <= first_date:
-            raise ValueError("End date must be after first departure")
-
-        if self.end_date > first_date + timedelta(weeks=16):
-            raise ValueError("Recurrence cannot exceed 16 weeks")
+        validate_series_end_date(first_date, self.end_date)
 
     @classmethod
     def create(

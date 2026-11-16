@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select
+from sqlalchemy import RowMapping, insert, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import trip_series, trips
@@ -37,6 +37,13 @@ class SQLAlchemyTripRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def lock_driver(self, driver_id: UUID) -> None:
+        """Serialize recurring posts for this driver until the transaction ends."""
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:driver_id, 0))"),
+            {"driver_id": f"trips.driver-trips:{driver_id}"},
+        )
+
     async def add(self, trip: Trip) -> None:
         await self.session.execute(
             insert(trips).values(
@@ -66,6 +73,16 @@ class SQLAlchemyTripRepository:
             .where(trips.c.driver_id == driver_id)
             .where(trips.c.departure_at > now)
             .where(trips.c.status == TripStatus.SCHEDULED.value)
+            .order_by(trips.c.departure_at.asc())
+        )
+        return [_trip(row) for row in result.mappings()]
+
+    async def get_active_or_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
+        result = await self.session.execute(
+            select(trips)
+            .where(trips.c.driver_id == driver_id)
+            .where(trips.c.estimated_arrival_at > now)
+            .where(trips.c.status.in_((TripStatus.SCHEDULED.value, TripStatus.IN_PROGRESS.value)))
             .order_by(trips.c.departure_at.asc())
         )
         return [_trip(row) for row in result.mappings()]
