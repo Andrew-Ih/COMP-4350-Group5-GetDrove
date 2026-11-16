@@ -58,6 +58,11 @@ class SQLAlchemyTripRepository:
             )
         )
 
+    async def get(self, trip_id: UUID) -> Trip | None:
+        result = await self.session.execute(select(trips).where(trips.c.id == trip_id))
+        row = result.mappings().one_or_none()
+        return _trip(row) if row is not None else None
+
     async def get_for_update(self, trip_id: UUID) -> Trip | None:
         result = await self.session.execute(
             select(trips).where(trips.c.id == trip_id).with_for_update()
