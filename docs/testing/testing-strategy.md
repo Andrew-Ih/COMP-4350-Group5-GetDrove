@@ -94,7 +94,7 @@ npm run test:watch                             # rerun on save
 npm run test:coverage                          # with coverage; open web/coverage/index.html
 ```
 
-In CI, every pull request into `develop` or `main` runs both with coverage. The totals appear on the run's summary page, and the full HTML reports are downloadable from the run as `backend-coverage-report` and `frontend-coverage-report`.
+In CI, every pull request into a feature branch, `develop` or `main` runs both with coverage. The totals appear on the run's summary page, and the full HTML reports are downloadable from the run as `backend-coverage-report` and `frontend-coverage-report`.
 
 ## What a pull request needs
 

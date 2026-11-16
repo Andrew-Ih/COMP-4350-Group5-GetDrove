@@ -1,13 +1,14 @@
-# Continuous integration (issue #106).
-# Runs the backend and frontend checks on pull requests into develop or main. After a merge,
-# the Delivery workflow (delivery.yml, #176) runs these same checks on develop before it
-# publishes images, so they aren't repeated here.
+# Continuous integration (issues #106 and #266).
+# Runs the backend and frontend checks on pull requests into develop, main, or a user story's
+# feature branch (feature/*, where its task branches are merged; see docs/process/git-workflow.md).
+# After a merge into develop, the Delivery workflow (delivery.yml, #176) runs these same checks
+# on develop before it publishes images, so they aren't repeated here.
 # The same checks run locally with: bash scripts/check.sh
 name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
+    branches: [develop, main, "feature/**"]
   workflow_call: # used by delivery.yml
   workflow_dispatch: # lets us run it by hand from the Actions tab
 
