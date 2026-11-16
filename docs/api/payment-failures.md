@@ -21,7 +21,9 @@ identities cause retry/parking rather than returning a seat belonging to somebod
 No extra RequestCancelled or PaymentFailed event is published by Trips.
 
 Notifications' existing PaymentFailed handler removes the rider from active trip membership
-and creates a plain-language in-app notification and email. It distinguishes a declined
+and creates a plain-language in-app notification and email. Its reminder handler also
+cancels the failed request's departure reminder by requestId, leaving other riders'
+reminders unchanged. It distinguishes a declined
 card, a bank authentication requirement and no saved card, and tells the rider to check
 their card and request a seat again. Outbox redelivery keeps the same event ID; each service
 records it independently and does not repeat its successful effect.
@@ -60,7 +62,8 @@ another service's implementation. It migrates isolated Payments, Trips and Notif
 schemas and uses real Redis consumers and the Payments outbox relay. Fake gateway cases
 cover card_declined and authentication_required. It checks that a failed accepted rider's
 seat is returned once, the other rider moves from pickup order 2 to 1, the quote stays
-unchanged, and one clear in-app notification and prepared email are produced.
+unchanged, the failed rider's reminder is cancelled while the other rider's stays pending,
+and one clear in-app notification and prepared email are produced.
 
 Contact lookup and email sending are fakes: the tests do not contact Accounts or send real
 email. Notifications already has its own SMTP tests. The integration path is included in
@@ -76,7 +79,7 @@ uv run pytest tests/integration/test_payment_failure_flow.py -q -s
 Remove-Item Env:RUN_STRIPE_SANDBOX_FAILURE
 ```
 
-The opt-in case creates a dedicated sandbox customer and Stripe's pm_card_chargeDeclined
+The opt-in case creates a dedicated sandbox customer and Stripe's pm_card_chargeCustomerFail
 test method. The actual Stripe adapter produces the failure and the three-service flow
 must mark the request failed, return the seat and notify the fake test rider. It verifies
 that the failed PaymentIntent received zero funds. Test notifications and database records

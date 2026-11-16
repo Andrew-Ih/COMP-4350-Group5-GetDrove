@@ -17,12 +17,15 @@ from events.catalog import RequestAccepted
 from events.consumer import StreamConsumer
 from events.outbox import OutboxRelay
 from events.streams import ENVELOPE_FIELD
-from notifications.adapters.events.notification_handlers import register_notification_handlers
+from notifications.adapters.events.notification_handlers import notification_handlers
+from notifications.adapters.events.registration import register_event_handlers
+from notifications.adapters.events.reminder_handlers import reminder_handlers
 from notifications.adapters.persistence.tables import (
     consumer as notification_consumer_tables,
 )
 from notifications.adapters.persistence.tables import (
     notifications,
+    scheduled_notifications,
 )
 from notifications.domain.notification_email import Contact
 from payments.adapters.hold_events import register_hold_handlers
@@ -126,16 +129,39 @@ async def verify_failure(database_url, redis_url, reason, gateway, card):
             redis=redis,
             session_factory=sessions,
             group=f"notifications-failure-{request.id}",
-            streams=[stream_name("payments")],
+            streams=[stream_name("trips"), stream_name("payments")],
             tables=notification_consumer_tables,
         )
-        register_notification_handlers(
-            notify_consumer, contacts=contacts, sender=sender, web_base_url="http://localhost"
+        register_event_handlers(
+            notify_consumer,
+            notification_handlers(
+                contacts=contacts, sender=sender, web_base_url="http://localhost"
+            ),
+            reminder_handlers(timedelta(minutes=30)),
         )
         for consumer in (payment_consumer, trips_consumer, notify_consumer):
             await consumer.ensure_groups()
         await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: accepted.to_json()})
         await payment_consumer.process_once(block_ms=1)
+        other_accepted = EventEnvelope.wrap(
+            accepted.payload_as(RequestAccepted).model_copy(
+                update={"request_id": other.id, "rider_id": other.rider_id}
+            ),
+            producer="trips",
+        )
+        await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: other_accepted.to_json()})
+        await notify_consumer.process_once(block_ms=1)
+        async with sessions() as session:
+            reminder_rows = (
+                await session.execute(
+                    select(
+                        scheduled_notifications.c.request_id, scheduled_notifications.c.status
+                    ).where(scheduled_notifications.c.request_id.in_([request.id, other.id]))
+                )
+            ).all()
+            assert dict(reminder_rows) == {request.id: "pending", other.id: "pending"}
+        # Acceptance notifications are separate from the failure notification being checked.
+        sender.reset_mock()
         worker = HoldWorker(sessions, cards, cast(PaymentGatewayPort, gateway))
         await worker.process(request.id)
         relay = OutboxRelay(
@@ -184,7 +210,10 @@ async def verify_failure(database_url, redis_url, reason, gateway, card):
             rows = (
                 (
                     await session.execute(
-                        select(notifications).where(notifications.c.request_id == request.id)
+                        select(notifications).where(
+                            notifications.c.request_id == request.id,
+                            notifications.c.type == "payment_failed",
+                        )
                     )
                 )
                 .mappings()
@@ -199,6 +228,14 @@ async def verify_failure(database_url, redis_url, reason, gateway, card):
                 assert "declined" in message["body"]
             else:
                 assert "confirm the payment" in message["body"]
+            reminder_rows = (
+                await session.execute(
+                    select(
+                        scheduled_notifications.c.request_id, scheduled_notifications.c.status
+                    ).where(scheduled_notifications.c.request_id.in_([request.id, other.id]))
+                )
+            ).all()
+            assert dict(reminder_rows) == {request.id: "cancelled", other.id: "pending"}
         sender.send.assert_awaited_once()
         assert "Check your card" in sender.send.await_args.args[0].text
     finally:

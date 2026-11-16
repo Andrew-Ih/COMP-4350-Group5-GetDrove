@@ -2,6 +2,7 @@
 
 - ``RequestAccepted``: schedule the rider's reminder, 30 minutes (configurable) before
   departure.
+- ``PaymentFailed``: the rider no longer has a seat, so cancel their reminder.
 - ``RequestCancelled``: the rider cancelled, so cancel their reminder.
 - ``RequestDeclined`` of a rider who had a seat: the driver removed them, so cancel it.
 - ``TripCancelled``: cancel every reminder on the trip.
@@ -22,7 +23,13 @@ from datetime import timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from events import EventEnvelope
-from events.catalog import RequestAccepted, RequestCancelled, RequestDeclined, TripCancelled
+from events.catalog import (
+    PaymentFailed,
+    RequestAccepted,
+    RequestCancelled,
+    RequestDeclined,
+    TripCancelled,
+)
 from events.consumer import StreamConsumer
 from notifications.adapters.events.registration import HandlerMap, register_event_handlers
 from notifications.adapters.persistence.reminder_store import SQLAlchemyReminderStore
@@ -32,6 +39,11 @@ from notifications.domain.directions import TripDirection
 
 async def cancel_request_reminder(event: EventEnvelope, session: AsyncSession) -> None:
     data = event.payload_as(RequestCancelled)
+    await CancelTripReminders(SQLAlchemyReminderStore(session)).for_request(data.request_id)
+
+
+async def cancel_failed_payment_reminder(event: EventEnvelope, session: AsyncSession) -> None:
+    data = event.payload_as(PaymentFailed)
     await CancelTripReminders(SQLAlchemyReminderStore(session)).for_request(data.request_id)
 
 
@@ -65,6 +77,7 @@ def reminder_handlers(lead: timedelta) -> HandlerMap:
     return {
         RequestAccepted: schedule_reminder,
         RequestCancelled: cancel_request_reminder,
+        PaymentFailed: cancel_failed_payment_reminder,
         RequestDeclined: cancel_declined_reminder,
         TripCancelled: cancel_trip_reminders,
     }
