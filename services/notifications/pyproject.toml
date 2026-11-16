@@ -11,6 +11,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0.43",
     "asyncpg>=0.30",
     "alembic>=1.16",
+    "httpx>=0.28",
+    # Time zone data for Winnipeg times in messages; Windows and slim images don't ship it.
+    "tzdata>=2025.2",
     "common-web",
     "common-security",
     "events",
@@ -46,5 +49,5 @@ name = "Domain and use cases stay framework-free"
 type = "forbidden"
 source_modules = ["notifications.domain", "notifications.application"]
 # import-linter only accepts external packages this service actually imports somewhere.
-# Add httpx, redis and stripe here when the service starts using them.
-forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings"]
+# Add redis and stripe here when the service starts using them.
+forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx"]
