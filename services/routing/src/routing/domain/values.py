@@ -1,7 +1,16 @@
 """Value types for the Routing domain."""
 
 from dataclasses import dataclass
+from enum import StrEnum
 from uuid import UUID
+
+
+class Direction(StrEnum):
+    """Which way a trip goes, and so which end of its route is the driver's own (#135):
+    the start going to campus, the end leaving it."""
+
+    TO_CAMPUS = "to_campus"
+    FROM_CAMPUS = "from_campus"
 
 
 @dataclass(frozen=True)
@@ -54,6 +63,17 @@ class Walk:
 
     seconds: int
     meters: int
+
+
+@dataclass(frozen=True)
+class PickupCandidate:
+    """A place on a trip's route where the driver can pick this rider up (#29)."""
+
+    id: str  # which sample of the stored route it is (see domain.pickups.pickup_id)
+    point: LatLng
+    label: str
+    walk_seconds: int
+    rider_distance_meters: int  # along the route, from this point to the trip's end
 
 
 @dataclass(frozen=True)

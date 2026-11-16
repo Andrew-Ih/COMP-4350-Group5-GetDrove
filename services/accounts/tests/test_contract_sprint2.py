@@ -144,15 +144,15 @@ async def test_reject_needs_a_reason(auth: TestAuth) -> None:
 
 @pytest.mark.parametrize("path", ["/internal/users", "/internal/contacts"])
 async def test_internal_lookups_take_1_to_50_ids(path: str) -> None:
+    """Invalid input is rejected before the database is touched. (The contacts lookup
+    itself is tested against PostgreSQL in integration/test_contacts_api.py.)"""
     async with AsyncClient(
         transport=ASGITransport(app=create_app()), base_url="http://test"
     ) as client:
-        one = await client.get(path, params={"ids": [ID]})
         none = await client.get(path)
         too_many = await client.get(path, params={"ids": [ID] * 51})
         not_uuid = await client.get(path, params={"ids": ["nope"]})
 
-    assert one.status_code == 501
     assert none.status_code == 422
     assert too_many.status_code == 422
     assert not_uuid.status_code == 422
@@ -176,3 +176,12 @@ def test_internal_users_include_the_drivers_vehicle() -> None:
 
     assert "vehicle" in schemas["InternalUser"]["properties"]
     assert "email" not in schemas["InternalUser"]["properties"]
+
+
+async def test_internal_users_is_not_implemented_yet() -> None:
+    async with AsyncClient(
+        transport=ASGITransport(app=create_app()), base_url="http://test"
+    ) as client:
+        response = await client.get("/internal/users", params={"ids": [ID]})
+
+    assert response.status_code == 501
