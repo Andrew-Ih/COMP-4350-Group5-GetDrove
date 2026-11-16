@@ -134,6 +134,39 @@ class OSRMRoutingEngine:
             duration_seconds=round(route.duration),
         )
 
+    async def durations(self, points: Sequence[LatLng]) -> list[list[float]]:
+        if not points:
+            return []
+
+        coordinates = ";".join(_coordinate(point) for point in points)
+        try:
+            response = await self.client.get(
+                f"/table/v1/driving/{coordinates}",
+                params={
+                    "annotations": "duration",
+                    "radiuses": ";".join([str(MAX_SNAP_METERS)] * len(points)),
+                },
+            )
+            data = _TableResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError) as exc:
+            raise RoutingEngineUnavailableError() from exc
+
+        size = len(points)
+        if (
+            response.status_code != 200
+            or data.code != "Ok"
+            or len(data.durations) != size
+            or any(len(row) != size for row in data.durations)
+        ):
+            raise RoutingEngineUnavailableError()
+
+        # A pair with no route comes back as null. A detour worked out from a guess would be
+        # a wrong number, so fail instead (the contract's 503).
+        if any(seconds is None for row in data.durations for seconds in row):
+            raise RoutingEngineUnavailableError()
+
+        return [[seconds for seconds in row if seconds is not None] for row in data.durations]
+
 
 class OSRMWalkingEngine:
     """The foot profile: walking times from a rider to many points, with OSRM's table service
