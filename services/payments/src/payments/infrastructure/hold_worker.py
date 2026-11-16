@@ -47,7 +47,8 @@ class HoldWorker:
             hold = await SQLAlchemyHolds(session).lock(request_id)
             if hold is None:
                 return
-            await self.use_case(session, hold.correlation_id).prepare(request_id, now)
+            if not hold.release_requested:
+                await self.use_case(session, hold.correlation_id).prepare(request_id, now)
         # Credentials and first-attempt time are committed before any authorization call.
         async with self.sessions() as session, session.begin():
             hold = await SQLAlchemyHolds(session).lock(request_id)
@@ -56,9 +57,19 @@ class HoldWorker:
             # Keep this row locked across the bounded Stripe call so parallel workers
             # cannot authorize/capture this request concurrently. Stripe also gets the
             # stable request-based key to cover process crashes after provider success.
-            await self.use_case(session, hold.correlation_id).authorize(request_id, now)
+            if hold.release_requested:
+                await self.use_case(session, hold.correlation_id).release(request_id, now)
+            else:
+                await self.use_case(session, hold.correlation_id).authorize(request_id, now)
             current = await SQLAlchemyHolds(session).lock(request_id)
-            if current and current.status is HoldStatus.SCHEDULED and current.retry_at is None:
+            if (
+                current
+                and current.retry_at is None
+                and (
+                    current.status is HoldStatus.SCHEDULED
+                    or (current.release_requested and current.status is not HoldStatus.RELEASED)
+                )
+            ):
                 logger.error(
                     "Hold requires provider reconciliation",
                     extra={"seat_request_id": str(request_id)},
@@ -73,7 +84,11 @@ class HoldWorker:
         async with self.sessions() as session, session.begin():
             repository = SQLAlchemyHolds(session)
             hold = await repository.lock(request_id)
-            if hold and hold.status is HoldStatus.SCHEDULED and hold.retry_at is not None:
+            if (
+                hold
+                and hold.retry_at is not None
+                and (hold.status is HoldStatus.SCHEDULED or hold.release_requested)
+            ):
                 await repository.save(
                     replace(hold, retry_at=datetime.now(UTC) + timedelta(seconds=30))
                 )

@@ -44,6 +44,8 @@ class HoldPayments:
         hold = await self.holds.lock(request_id)
         if hold is None or hold.status is not HoldStatus.SCHEDULED:
             return
+        if hold.release_requested:
+            return
         if hold.card is not None:
             return
         if now >= hold.departure_at:
@@ -60,6 +62,8 @@ class HoldPayments:
     async def authorize(self, request_id: UUID, now: datetime) -> None:
         hold = await self.holds.lock(request_id)
         if hold is None or hold.status is not HoldStatus.SCHEDULED or hold.retry_at is None:
+            return
+        if hold.release_requested:
             return
         if hold.card is None or hold.first_attempt_at is None:
             return
@@ -118,7 +122,11 @@ class HoldPayments:
             raise ValueError("Unknown payment hold")
         if hold.status is HoldStatus.CAPTURED:
             return hold
-        if hold.status is not HoldStatus.AUTHORIZED or hold.stripe_id is None:
+        if (
+            hold.release_requested
+            or hold.status is not HoldStatus.AUTHORIZED
+            or hold.stripe_id is None
+        ):
             raise ValueError("Only an authorized hold can be captured")
         result = await self.gateway.capture(
             payment_intent_id=hold.stripe_id, idempotency_key=f"capture:{hold.request_id}"
@@ -128,3 +136,61 @@ class HoldPayments:
         captured = replace(hold, status=HoldStatus.CAPTURED)
         await self.holds.save(captured)
         return captured
+
+    async def release(self, request_id: UUID, now: datetime) -> None:
+        """Cancel an uncaptured intent, or retire a schedule that never reached Stripe."""
+        hold = await self.holds.lock(request_id)
+        if hold is None or not hold.release_requested or hold.status is HoldStatus.RELEASED:
+            return
+        if hold.retry_at is None or now < hold.retry_at:
+            return
+        if hold.status is HoldStatus.CAPTURED:
+            await self.holds.save(replace(hold, retry_at=None))
+            return
+        try:
+            if hold.stripe_id is None and hold.first_attempt_at is not None:
+                # An authorization could have succeeded before its DB transaction failed.
+                # Recover its ID using exactly the already-committed parameters and key.
+                if hold.card is None or now - hold.first_attempt_at >= timedelta(hours=23):
+                    await self.holds.save(replace(hold, retry_at=None))
+                    return
+                recovered = await self.gateway.authorize(
+                    customer_id=hold.card.customer_id,
+                    payment_method_id=hold.card.payment_method_id,
+                    amount_cents=hold.amount_cents,
+                    currency=hold.currency,
+                    idempotency_key=f"hold:{hold.request_id}",
+                )
+                hold = replace(hold, stripe_id=recovered.id)
+            if hold.stripe_id is not None:
+                current = await self.gateway.retrieve_payment_intent(
+                    payment_intent_id=hold.stripe_id
+                )
+                if current.id != hold.stripe_id or current.status is PaymentIntentStatus.SUCCEEDED:
+                    await self.holds.save(replace(hold, retry_at=None))
+                    return
+                if current.status is not PaymentIntentStatus.CANCELED:
+                    current = await self.gateway.cancel(
+                        payment_intent_id=hold.stripe_id,
+                        idempotency_key=f"release:{hold.request_id}",
+                    )
+                if (
+                    current.id != hold.stripe_id
+                    or current.status is not PaymentIntentStatus.CANCELED
+                ):
+                    await self.holds.save(replace(hold, retry_at=None))
+                    return
+        except GatewayUnavailableError:
+            await self.holds.save(replace(hold, retry_at=now + timedelta(seconds=30)))
+            return
+        except (PaymentDeclinedError, AuthenticationRequiredError):
+            if hold.stripe_id is not None:
+                await self.holds.save(replace(hold, retry_at=None))
+                return
+            # Replaying an unsuccessful authorization confirms there was no held money.
+        except PaymentGatewayError:
+            await self.holds.save(replace(hold, retry_at=None))
+            return
+        released = replace(hold, status=HoldStatus.RELEASED, retry_at=None)
+        await self.holds.save(released)
+        await self.events.released(released)
