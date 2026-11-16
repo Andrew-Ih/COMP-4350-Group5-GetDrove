@@ -48,6 +48,10 @@ class RouteRepository(Protocol):
         """The trip's route, or None if it has none."""
         ...
 
+    async def has_route(self, trip_id: UUID) -> bool:
+        """Whether the trip has a stored route (cheaper than ``get``)."""
+        ...
+
     async def samples_in_corridor(
         self, rider: LatLng, trip_ids: Sequence[UUID], corridor: Corridor
     ) -> list[CorridorHit]:
