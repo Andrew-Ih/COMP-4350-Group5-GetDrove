@@ -108,6 +108,11 @@ class RequestSeat:
             detour_position=detour.position,
         )
 
+        # Cancellation locks the same trip row. Recheck after external calls, while holding
+        # the lock through the request and outbox writes.
+        await self.requests.lock_trip(trip.id)
+        current_trip = await self.trips.get(trip.id)
+        ensure_request_eligible(replace(facts, trip=current_trip, has_card=has_card))
         await self.requests.add(request)
         await self.events.seat_requested(request, trip)
         return request

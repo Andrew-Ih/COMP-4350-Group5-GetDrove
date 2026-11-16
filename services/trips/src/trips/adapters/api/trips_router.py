@@ -17,6 +17,7 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    CancelTripService,
     DecideRequestService,
     PostTripService,
     RequestSeatService,
@@ -552,8 +553,9 @@ async def get_trip(
         ),
     },
 )
-async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
-    _not_implemented()
+async def cancel_trip(trip_id: UUID, user: AuthenticatedUser, service: CancelTripService) -> Trip:
+    trip = await service.execute(trip_id=trip_id, driver_id=user.id)
+    return _to_response(trip)
 
 
 @router.post(
