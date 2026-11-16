@@ -22,6 +22,7 @@ from sqlalchemy import (
     text,
 )
 
+from events.consumer import consumer_tables
 from events.outbox import outbox_table
 
 SCHEMA = "trips"
@@ -38,6 +39,7 @@ metadata = MetaData(
 )
 
 outbox = outbox_table(metadata)
+consumer = consumer_tables(metadata)
 
 trips = Table(
     "trips",
