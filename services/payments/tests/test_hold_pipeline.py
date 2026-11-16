@@ -246,3 +246,50 @@ async def test_app_processes_acceptance_using_configured_card_lookup(
             )
     finally:
         await redis.aclose()
+
+
+@pytest.mark.parametrize("case", ["past_departure", "zero_share"])
+async def test_new_consumer_group_acknowledges_ineligible_history_without_payment_events(
+    setup, payments_redis: str, case: str
+) -> None:
+    sessions, provider, cards, worker = setup
+    event = accepted()
+    data = event.payload_as(RequestAccepted)
+    payload = dict(event.payload)
+    if case == "past_departure":
+        payload["departureAt"] = (datetime.now(UTC) - timedelta(days=1)).isoformat()
+    else:
+        payload["amountCents"] = 0
+    event = event.model_copy(update={"payload": payload})
+    redis = Redis.from_url(payments_redis)
+    group = f"payments-history-{uuid4()}"
+    try:
+        # Put the acceptance in the stream BEFORE creating the consumer group.
+        await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: event.to_json()})
+        consumer = StreamConsumer(
+            redis=redis,
+            session_factory=sessions,
+            group=group,
+            streams=[stream_name("trips")],
+            tables=tables,
+        )
+        register_hold_handlers(consumer)
+        await consumer.ensure_groups()
+        await consumer.process_once(block_ms=1)
+        await worker.process(data.request_id)
+        async with sessions() as session:
+            assert await SQLAlchemyHolds(session).lock(data.request_id) is None
+            processed = await session.execute(
+                select(tables.processed).where(tables.processed.c.event_id == event.event_id)
+            )
+            assert processed.first() is not None
+            failed = await session.execute(
+                select(tables.failed).where(tables.failed.c.event_id == event.event_id)
+            )
+            assert failed.first() is None
+        assert await outcomes(sessions, data.request_id) == []
+        cards.for_rider.assert_not_awaited()
+        provider.gateway.authorize.assert_not_awaited()
+        assert (await redis.xpending(stream_name("trips"), group))["pending"] == 0
+    finally:
+        await redis.aclose()

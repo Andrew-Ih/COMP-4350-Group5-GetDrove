@@ -47,7 +47,9 @@ class HoldPayments:
         if hold.card is not None:
             return
         if now >= hold.departure_at:
-            await self._fail(hold, "other")
+            # A queued hold can expire before the worker starts. Do not notify the rider
+            # that a historical trip's payment failed when no authorization was attempted.
+            await self.holds.save(replace(hold, status=HoldStatus.FAILED, retry_at=None))
             return
         card = await self.cards.for_rider(hold.rider_id)
         if card is None:

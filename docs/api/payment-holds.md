@@ -59,14 +59,17 @@ payment-method references are added to event payloads.
 ## Safety boundaries and follow-up tasks
 
 - Holds expose SCHEDULED, AUTHORIZED, CAPTURED, RELEASED and FAILED. RELEASED behaviour is #72.
-- No new authorization is started from an old accepted event after departure. An uncertain
-  existing attempt at that point is paused for reconciliation rather than charged blindly.
+- The consumer acknowledges expired acceptances and zero-cent shares without creating
+  holds or publishing PaymentFailed. New groups can replay history without notifying old riders.
+- An unattempted queued hold that expires is marked FAILED silently. A prepared/uncertain
+  attempt is paused for reconciliation, without publishing a misleading payment failure.
 - Stripe idempotency keys can expire after 24 hours. Automatic retries stop conservatively
   at 23 hours from the persisted first attempt. SCHEDULED with retry_at=NULL means manual
   provider reconciliation is required; it is not a successful hold or a card decline.
 - Unexpected provider states (including processing or an unexpected succeeded result)
   preserve the Stripe ID and pause for reconciliation. They never publish PaymentHeld.
-- #153 extends failure handling. #154 schedules far-ahead bookings around authorization
+- #153 extends failure handling, including operational visibility and recovery for
+  SCHEDULED rows with retry_at=NULL (stuck reconciliation). #154 schedules far-ahead bookings around authorization
   windows; the immediate worker here is not that scheduler.
 - When #151 is replayed on the integrated payment foundation, its customers migration must
   descend from a70000000001 rather than remain a second root. No #151 migration is copied

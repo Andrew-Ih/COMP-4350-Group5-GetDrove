@@ -208,8 +208,11 @@ async def test_old_accepted_event_does_not_authorize_after_departure() -> None:
     s = Setup()
     await s.use_case.prepare(s.hold.request_id, NOW + timedelta(days=1))
     assert s.stored.status is HoldStatus.FAILED
+    assert s.stored.retry_at is None
+    s.cards.for_rider.assert_not_awaited()
     s.gateway.authorize.assert_not_awaited()
-    s.events.failed.assert_awaited_once_with(s.stored, "other")
+    s.events.failed.assert_not_awaited()
+    s.events.held.assert_not_awaited()
 
 
 async def test_enabled_runtime_requires_explicit_saved_card_integration(monkeypatch) -> None:
@@ -225,3 +228,14 @@ async def test_enabled_runtime_requires_explicit_saved_card_integration(monkeypa
     with pytest.raises(RuntimeError, match="saved-card lookup"):
         async with app.router.lifespan_context(app):
             pass
+
+
+async def test_prepared_hold_past_departure_is_paused_without_false_failure() -> None:
+    s = Setup()
+    await s.use_case.prepare(s.hold.request_id, NOW)
+    await s.use_case.authorize(s.hold.request_id, NOW + timedelta(days=1))
+    assert s.stored.status is HoldStatus.SCHEDULED
+    assert s.stored.retry_at is None
+    s.gateway.authorize.assert_not_awaited()
+    s.events.failed.assert_not_awaited()
+    s.events.held.assert_not_awaited()

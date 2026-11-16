@@ -40,6 +40,11 @@ class OutboxHoldEvents:
 
 async def schedule_accepted(event: EventEnvelope, session: AsyncSession) -> None:
     data = event.payload_as(RequestAccepted)
+    now = datetime.now(UTC)
+    # New consumer groups replay history. These are not current payment failures.
+    # A zero-cost share needs no authorization either; acknowledge it without a hold.
+    if data.departure_at <= now or data.amount_cents == 0:
+        return
     await SQLAlchemyHolds(session).schedule(
         PaymentHold(
             request_id=data.request_id,
@@ -49,7 +54,7 @@ async def schedule_accepted(event: EventEnvelope, session: AsyncSession) -> None
             amount_cents=data.amount_cents,
             currency=data.currency,
             departure_at=data.departure_at,
-            retry_at=datetime.now(UTC),
+            retry_at=now,
             correlation_id=event.correlation_id,
         )
     )

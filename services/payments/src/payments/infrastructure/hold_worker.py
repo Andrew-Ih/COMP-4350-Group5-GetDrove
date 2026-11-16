@@ -53,6 +53,9 @@ class HoldWorker:
             hold = await SQLAlchemyHolds(session).lock(request_id)
             if hold is None:
                 return
+            # Keep this row locked across the bounded Stripe call so parallel workers
+            # cannot authorize/capture this request concurrently. Stripe also gets the
+            # stable request-based key to cover process crashes after provider success.
             await self.use_case(session, hold.correlation_id).authorize(request_id, now)
             current = await SQLAlchemyHolds(session).lock(request_id)
             if current and current.status is HoldStatus.SCHEDULED and current.retry_at is None:
