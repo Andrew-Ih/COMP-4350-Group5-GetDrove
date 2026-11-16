@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import RowMapping, insert, select
+from sqlalchemy import ColumnElement, RowMapping, and_, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import trips
@@ -11,9 +11,9 @@ from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, SearchWindow, TripStatus
 
 
-def _trip(row: RowMapping) -> Trip:
+def trip_from_row(row: RowMapping) -> Trip:
     return Trip(
-        id=row["id"],
+        id=row[trips.c.id],
         driver_id=row["driver_id"],
         direction=Direction(row["direction"]),
         origin=Location(row["origin_label"], row["origin_lat"], row["origin_lng"]),
@@ -26,8 +26,18 @@ def _trip(row: RowMapping) -> Trip:
         distance_meters=row["distance_meters"],
         seats_total=row["seats_total"],
         seats_available=row["seats_available"],
-        status=TripStatus(row["status"]),
+        status=TripStatus(row[trips.c.status]),
     )
+
+
+def trip_list_filter(now: datetime, *, past: bool) -> ColumnElement[bool]:
+    cutoff = func.coalesce(trips.c.estimated_arrival_at, trips.c.departure_at)
+    status = trips.c.status
+    is_past = or_(
+        status == TripStatus.COMPLETED.value,
+        and_(cutoff <= now, status != TripStatus.IN_PROGRESS.value),
+    )
+    return is_past if past else ~is_past
 
 
 class SQLAlchemyTripRepository:
@@ -61,17 +71,17 @@ class SQLAlchemyTripRepository:
     async def get(self, trip_id: UUID) -> Trip | None:
         result = await self.session.execute(select(trips).where(trips.c.id == trip_id))
         row = result.mappings().one_or_none()
-        return _trip(row) if row is not None else None
+        return trip_from_row(row) if row is not None else None
 
-    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
+    async def list_by_driver(self, driver_id: UUID, now: datetime, *, past: bool) -> list[Trip]:
+        departure = trips.c.departure_at
         result = await self.session.execute(
             select(trips)
             .where(trips.c.driver_id == driver_id)
-            .where(trips.c.departure_at > now)
-            .where(trips.c.status == TripStatus.SCHEDULED.value)
-            .order_by(trips.c.departure_at.asc())
+            .where(trip_list_filter(now, past=past))
+            .order_by(departure.desc() if past else departure.asc(), trips.c.id)
         )
-        return [_trip(row) for row in result.mappings()]
+        return [trip_from_row(row) for row in result.mappings()]
 
     async def search(
         self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
@@ -89,4 +99,4 @@ class SQLAlchemyTripRepository:
             )
             .order_by(trips.c.departure_at, trips.c.id)
         )
-        return [_trip(row) for row in result.mappings()]
+        return [trip_from_row(row) for row in result.mappings()]

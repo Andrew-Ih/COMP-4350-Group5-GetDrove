@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import RowMapping, case, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trips.adapters.persistence.repository import trip_from_row, trip_list_filter
 from trips.adapters.persistence.tables import seat_requests, trips
+from trips.domain.entities import Trip
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Location, Quote, TripStatus
 
@@ -41,6 +43,18 @@ def _request(row: RowMapping) -> SeatRequest:
 class SQLAlchemySeatRequestRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def list_by_rider(
+        self, rider_id: UUID, now: datetime, *, past: bool
+    ) -> list[tuple[Trip, SeatRequest]]:
+        departure = trips.c.departure_at
+        result = await self.session.execute(
+            select(seat_requests, trips)
+            .join(trips, trips.c.id == seat_requests.c.trip_id)
+            .where(seat_requests.c.rider_id == rider_id, trip_list_filter(now, past=past))
+            .order_by(departure.desc() if past else departure.asc(), trips.c.id, seat_requests.c.id)
+        )
+        return [(trip_from_row(row), _request(row)) for row in result.mappings()]
 
     async def add(self, request: SeatRequest) -> None:
         await self.session.execute(
