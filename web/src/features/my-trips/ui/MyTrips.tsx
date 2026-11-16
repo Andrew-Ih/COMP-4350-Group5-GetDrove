@@ -184,7 +184,7 @@ function DriveRow({ trip }: { trip: Trip }) {
       {canCancel(trip) && (
         <div className="border-t border-line px-4 py-3">
           {confirming ? (
-            <CancelConfirm trip={trip} onKeep={() => setConfirming(false)} />
+            <CancelConfirm trip={trip} onClose={() => setConfirming(false)} />
           ) : (
             <Button variant="secondary" size="sm" onClick={() => setConfirming(true)}>
               Cancel trip
@@ -203,7 +203,7 @@ function cancelError(error: ApiError): string {
   return "We couldn't cancel this trip. Try again.";
 }
 
-function CancelConfirm({ trip, onKeep }: { trip: Trip; onKeep: () => void }) {
+function CancelConfirm({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   const cancel = useCancelTrip();
   const [scope, setScope] = useState<CancelChoice["scope"]>("trip");
   const late = isLateCancel(trip);
@@ -228,7 +228,7 @@ function CancelConfirm({ trip, onKeep }: { trip: Trip; onKeep: () => void }) {
       {late && (
         <p className="flex items-start gap-2 rounded-md bg-surface-muted px-3 py-2 text-sm font-semibold">
           <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          It&apos;s less than an hour before departure, so this counts as a late cancellation on your record.
+          It&apos;s less than an hour before departure, so this is a late cancellation.
         </p>
       )}
 
@@ -239,10 +239,10 @@ function CancelConfirm({ trip, onKeep }: { trip: Trip; onKeep: () => void }) {
       )}
 
       <div className="flex gap-3">
-        <Button variant="secondary" size="sm" onClick={onKeep} disabled={cancel.isPending}>
+        <Button variant="secondary" size="sm" onClick={onClose} disabled={cancel.isPending}>
           Keep trip
         </Button>
-        <Button variant="dark" size="sm" loading={cancel.isPending} onClick={() => cancel.mutate({ trip, scope })}>
+        <Button variant="dark" size="sm" loading={cancel.isPending} onClick={() => cancel.mutate({ trip, scope }, { onSuccess: onClose })}>
           {scope === "series" ? "Cancel series" : "Cancel trip"}
         </Button>
       </div>

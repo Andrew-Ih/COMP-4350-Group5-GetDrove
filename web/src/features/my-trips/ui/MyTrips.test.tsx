@@ -195,6 +195,7 @@ describe("MyTrips: driving", () => {
 
     expect(await within(section("Upcoming")).findByText("Cancelled")).toBeInTheDocument();
     expect(calls(fetchSpy, "/trips/t1/cancel")).toHaveLength(1);
+    expect(screen.queryByRole("group", { name: "Cancel this trip?" })).not.toBeInTheDocument();
   });
 
   it("keeps the trip when the driver changes their mind", async () => {
@@ -242,7 +243,10 @@ describe("MyTrips: driving", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
 
-    expect(screen.getByRole("group", { name: "Cancel this trip?" })).toHaveTextContent("counts as a late cancellation");
+    const confirm = screen.getByRole("group", { name: "Cancel this trip?" });
+    expect(confirm).toHaveTextContent("this is a late cancellation");
+    // Late cancellations aren't recorded against the driver until #134.
+    expect(confirm).not.toHaveTextContent("record");
   });
 
   it("explains when the trip can't be cancelled anymore", async () => {
