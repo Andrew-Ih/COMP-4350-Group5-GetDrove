@@ -63,7 +63,12 @@ class FakeRouting:
         self.trip_ids: list[UUID] = []
 
     async def compute_route(
-        self, trip_id: UUID, origin: Location, destination: Location
+        self,
+        trip_id: UUID,
+        origin: Location,
+        destination: Location,
+        driver_id: UUID,
+        direction: Direction,
     ) -> RouteEstimate:
         self.trip_ids.append(trip_id)
         return RouteEstimate(
@@ -134,7 +139,7 @@ async def test_routes_at_most_eight_occurrences_and_keeps_departure_order() -> N
     later_finished = asyncio.Event()
     peak = 0
 
-    async def compute(trip_id: UUID, *_: Location) -> RouteEstimate:
+    async def compute(trip_id: UUID, *_: Location | UUID | Direction) -> RouteEstimate:
         nonlocal peak
         started.append(trip_id)
         peak = max(peak, len(started) - len(finished))

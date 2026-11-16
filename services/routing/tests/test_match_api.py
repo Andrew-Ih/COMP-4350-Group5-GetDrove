@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.adapters.persistence.tables import routes
-from routing.application.match_rider import DEFAULT_PICKUP_LABEL
+from routing.application.pickups import DEFAULT_PICKUP_LABEL
 from routing.domain.corridor import distance_meters, sample_route
 from routing.domain.entities import Route
 from routing.domain.values import Corridor, LatLng

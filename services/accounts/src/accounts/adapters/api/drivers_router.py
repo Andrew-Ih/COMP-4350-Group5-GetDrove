@@ -2,7 +2,8 @@
 profiles, and the internal user lookups other services use.
 
 Every endpoint returns 501 until its task implements it: documents (#9), status (#10),
-vehicle (#125), admin approval (#127), profiles and the internal lookups (#143, #146).
+vehicle (#125), admin approval (#127), profiles and /internal/users (#143). The contacts
+lookup Notifications needs for emails is implemented (#146).
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
 """
@@ -12,10 +13,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 
+from accounts.adapters.api.dependencies import Uow
 from accounts.adapters.api.schemas import (
     AdminDriver,
     DocumentKind,
     DriverProfile,
+    InternalContact,
     InternalContacts,
     InternalUsers,
     Problem,
@@ -23,6 +26,7 @@ from accounts.adapters.api.schemas import (
     RejectDriverRequest,
     Vehicle,
 )
+from accounts.application.contacts import ListContacts
 from common_security.dependencies import AuthenticatedUser, require_role
 from common_security.user import CurrentUser
 
@@ -222,5 +226,11 @@ async def internal_users(ids: UserIds) -> InternalUsers:
     description="For Notifications only: where to send emails.",
     responses=INVALID,
 )
-async def internal_contacts(ids: UserIds) -> InternalContacts:
-    _not_implemented()
+async def internal_contacts(ids: UserIds, uow: Uow) -> InternalContacts:
+    users = await ListContacts(uow)(ids)
+    return InternalContacts(
+        contacts=[
+            InternalContact(id=user.id, first_name=user.first_name, email=user.email.value)
+            for user in users
+        ]
+    )

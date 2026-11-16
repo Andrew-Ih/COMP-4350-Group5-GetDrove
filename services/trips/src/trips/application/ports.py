@@ -7,11 +7,24 @@ from typing import Protocol
 from uuid import UUID
 
 from trips.domain.entities import Trip, TripSeries
-from trips.domain.values import Location, Point, Quote, SearchWindow, TripMatch
+from trips.domain.seat_request import RequestStatus, SeatRequest
+from trips.domain.values import (
+    Direction,
+    Location,
+    PickupOffer,
+    Point,
+    Quote,
+    SearchWindow,
+    TripMatch,
+)
 
 
 class TripRepository(Protocol):
     async def add(self, trip: Trip) -> None: ...
+
+    async def get(self, trip_id: UUID) -> Trip | None:
+        """The trip, whatever its status, or None if there's no trip with this ID."""
+        ...
 
     async def search(
         self, window: SearchWindow, departs_after: datetime, exclude_driver_id: UUID
@@ -31,6 +44,28 @@ class TripSeriesRepository(Protocol):
     async def add(self, series: TripSeries) -> None: ...
 
 
+class TripCancellationRepository(Protocol):
+    async def get_for_update(self, trip_id: UUID) -> Trip | None: ...
+
+    async def save_cancellation(self, trip: Trip) -> list[UUID]:
+        """Persist the cancellation and return the riders whose requests were closed."""
+        ...
+
+
+class TripCancellationEvents(Protocol):
+    async def trip_cancelled(self, trip: Trip, rider_ids: list[UUID]) -> None: ...
+
+    async def driver_late_cancellation(self, trip: Trip, cancelled_at: datetime) -> None: ...
+
+
+class RiderRequestLookup(Protocol):
+    """What the trip detail needs from seat requests (#350)."""
+
+    async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
+        """The rider's pending or accepted request on this trip, if any."""
+        ...
+
+
 class TripEvents(Protocol):
     async def trip_posted(self, trip_id: UUID) -> None:
         """Record TripPosted in the same transaction as the Trip."""
@@ -43,17 +78,48 @@ class RouteEstimate:
     duration_seconds: int
 
 
+@dataclass(frozen=True)
+class RiderProfile:
+    id: UUID
+    first_name: str
+    rating: float | None
+    rating_count: int
+    no_show_count: int
+
+
+class RiderProfileService(Protocol):
+    async def get_many(self, rider_ids: Sequence[UUID]) -> dict[UUID, RiderProfile]:
+        """Names, ratings and no-shows for these riders in as few calls as possible.
+
+        Unknown IDs are left out. Raise AccountsUnavailableError if Accounts can't answer.
+        """
+        ...
+
+
 class RoutingService(Protocol):
     async def compute_route(
         self,
         trip_id: UUID,
         origin: Location,
         destination: Location,
-    ) -> RouteEstimate: ...
+        driver_id: UUID,
+        direction: Direction,
+    ) -> RouteEstimate:
+        """``driver_id`` and ``direction`` let Routing show the whole route to the driver
+        only, and hide the driver's own end from everyone else (#135)."""
+        ...
 
     async def match(self, rider: Point, trip_ids: Sequence[UUID]) -> list[TripMatch]:
         """The trips the rider can walk to, with a pickup point for each. Raise
         RoutingUnavailableError if Routing can't answer."""
+        ...
+
+    async def pickup_points(
+        self, trip_id: UUID, rider: Point, limit: int, exclude: Sequence[str]
+    ) -> list[PickupOffer]:
+        """Up to ``limit`` pickup points on the trip's route for the rider, best first, never
+        one in ``exclude`` (#29). Empty if the route doesn't pass within walking distance, or
+        the trip has no route. Raise RoutingUnavailableError if Routing can't answer."""
         ...
 
 
@@ -62,3 +128,79 @@ class PricingService(Protocol):
         """The rider's share for riding this far. Raise PricingUnavailableError if Payments
         can't answer."""
         ...
+
+
+class RiderCardService(Protocol):
+    async def has_card(self, rider_id: UUID) -> bool:
+        """Return saved-card status.
+
+        Raise CardStatusUnavailableError if the status cannot be determined.
+        """
+        ...
+
+
+class SeatRequestRepository(Protocol):
+    async def lock_rider(self, rider_id: UUID) -> None:
+        """Until the transaction ends, makes the rider's other seat requests wait (#359), so
+        checking for an overlapping request and saving the new one happen one at a time for
+        each rider. Other riders aren't affected."""
+        ...
+
+    async def add(self, request: SeatRequest) -> None: ...
+
+    async def get(self, request_id: UUID) -> SeatRequest | None: ...
+
+    async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
+        """The rider's pending or accepted request on this trip, if any."""
+        ...
+
+    async def has_overlapping_active_request(
+        self, rider_id: UUID, starts_at: datetime, ends_at: datetime
+    ) -> bool:
+        """Whether a pending or accepted request is on a trip overlapping this time."""
+        ...
+
+    async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]: ...
+
+    async def list_open_for_trip(self, trip_id: UUID) -> list[SeatRequest]:
+        """The trip's pending requests first, then accepted ones, oldest first in each."""
+        ...
+
+    async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
+        """Save the request's new status only if it is still `expected`. False if not."""
+        ...
+
+    async def take_seat(self, trip_id: UUID) -> bool:
+        """Take one seat in a single atomic update. False if none is left (#47)."""
+        ...
+
+    async def lock_trip(self, trip_id: UUID) -> None:
+        """Locks the trip until the transaction ends, so its pickup order changes one
+        accept, decline or cancel at a time (#310, #360)."""
+        ...
+
+    async def release_seat(self, trip_id: UUID) -> None:
+        """Give one seat back (#48)."""
+        ...
+
+    async def place_accepted(self, request: SeatRequest, *, position: int | None) -> int:
+        """Number a just-accepted request in the pickup order and push later ones down."""
+        ...
+
+    async def renumber_accepted(self, trip_id: UUID) -> None:
+        """Number the trip's accepted requests 1..n in their current order."""
+        ...
+
+
+class SeatRequestEvents(Protocol):
+    async def seat_requested(self, request: SeatRequest, trip: Trip) -> None: ...
+
+    async def request_accepted(self, request: SeatRequest, trip: Trip) -> None: ...
+
+    async def request_declined(
+        self, request: SeatRequest, trip: Trip, *, was_accepted: bool
+    ) -> None: ...
+
+    async def request_cancelled(
+        self, request: SeatRequest, trip: Trip, *, was_accepted: bool
+    ) -> None: ...

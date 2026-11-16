@@ -122,6 +122,7 @@ describe("PostTrip", () => {
     expect(screen.getByText("8:07 AM")).toBeInTheDocument();
     expect(screen.getByText("22 min · 14 km")).toBeInTheDocument();
     expect(await screen.findByText("route route")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "See requests" })).toHaveAttribute("href", "/drive/trips/trip-1");
   });
 
   it("posts a trip from campus with the seats chosen", async () => {
