@@ -64,7 +64,8 @@ async def test_driver_and_rider_my_trips_time_buckets(trips_database: str) -> No
     auth.install(app)
     driver = auth.user_id
     rider, other_rider, other_driver = uuid4(), uuid4(), uuid4()
-    underway = make_trip(driver, -5, TripStatus.IN_PROGRESS)
+    underway = make_trip(driver, -25, TripStatus.IN_PROGRESS)
+    assert underway.estimated_arrival_at < NOW
     departing_now = make_trip(driver, 0, TripStatus.SCHEDULED)
     boundary = make_trip(driver, -15, TripStatus.SCHEDULED)
     cancelled_tomorrow = make_trip(driver, 1440, TripStatus.CANCELLED, Direction.FROM_CAMPUS)

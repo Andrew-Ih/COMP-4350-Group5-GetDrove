@@ -3,7 +3,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, RowMapping, func, insert, or_, select
+from sqlalchemy import ColumnElement, RowMapping, and_, func, insert, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trips.adapters.persistence.tables import trips
@@ -32,7 +32,11 @@ def trip_from_row(row: RowMapping) -> Trip:
 
 def trip_list_filter(now: datetime, *, past: bool) -> ColumnElement[bool]:
     cutoff = func.coalesce(trips.c.estimated_arrival_at, trips.c.departure_at)
-    is_past = or_(trips.c.status == TripStatus.COMPLETED.value, cutoff <= now)
+    status = trips.c.status
+    is_past = or_(
+        status == TripStatus.COMPLETED.value,
+        and_(cutoff <= now, status != TripStatus.IN_PROGRESS.value),
+    )
     return is_past if past else ~is_past
 
 
