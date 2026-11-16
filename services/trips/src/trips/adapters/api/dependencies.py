@@ -21,6 +21,7 @@ from trips.adapters.persistence.seat_request_repository import (
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.request_routing import HTTPRequestRoutingService
 from trips.adapters.routing import HTTPRoutingService
+from trips.application.cancel_trip import CancelTrip
 from trips.application.decide_request import (
     AcceptRequest,
     CancelRequest,
@@ -101,6 +102,33 @@ def get_post_trip(request: Request) -> PostTripCommand:
 
 
 PostTripService = Annotated[PostTripCommand, Depends(get_post_trip)]
+
+
+class CancelTripCommand:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+
+    async def execute(self, *, trip_id: UUID, driver_id: UUID) -> Trip:
+        async with self.session_factory.begin() as session:
+            repository = SQLAlchemyTripRepository(session)
+            events = OutboxTripEvents(
+                OutboxPublisher(
+                    session,
+                    outbox,
+                    producer="trips",
+                    correlation_id=current_request_id(),
+                )
+            )
+            return await CancelTrip(repository, events).execute(
+                trip_id=trip_id, driver_id=driver_id
+            )
+
+
+def get_cancel_trip(request: Request) -> CancelTripCommand:
+    return CancelTripCommand(request.app.state.session_factory)
+
+
+CancelTripService = Annotated[CancelTripCommand, Depends(get_cancel_trip)]
 
 
 class SearchTripsQuery:

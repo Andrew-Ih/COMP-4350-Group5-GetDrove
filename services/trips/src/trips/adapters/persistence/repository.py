@@ -3,10 +3,10 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import ColumnElement, RowMapping, and_, func, insert, or_, select
+from sqlalchemy import ColumnElement, RowMapping, and_, func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from trips.adapters.persistence.tables import trips
+from trips.adapters.persistence.tables import seat_requests, trips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, SearchWindow, TripStatus
 
@@ -72,6 +72,28 @@ class SQLAlchemyTripRepository:
         result = await self.session.execute(select(trips).where(trips.c.id == trip_id))
         row = result.mappings().one_or_none()
         return trip_from_row(row) if row is not None else None
+
+    async def get_for_update(self, trip_id: UUID) -> Trip | None:
+        result = await self.session.execute(
+            select(trips).where(trips.c.id == trip_id).with_for_update()
+        )
+        row = result.mappings().one_or_none()
+        return trip_from_row(row) if row is not None else None
+
+    async def save_cancellation(self, trip: Trip) -> list[UUID]:
+        await self.session.execute(
+            update(trips).where(trips.c.id == trip.id).values(status=trip.status.value)
+        )
+        result = await self.session.execute(
+            update(seat_requests)
+            .where(
+                seat_requests.c.trip_id == trip.id,
+                seat_requests.c.status.in_(("pending", "accepted")),
+            )
+            .values(status="cancelled", decided_at=func.now(), pickup_order=None)
+            .returning(seat_requests.c.rider_id)
+        )
+        return sorted(result.scalars())
 
     async def list_by_driver(self, driver_id: UUID, now: datetime, *, past: bool) -> list[Trip]:
         departure = trips.c.departure_at

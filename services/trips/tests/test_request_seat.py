@@ -99,6 +99,9 @@ class FakeRequests:
         self.calls.append("lock")
         self.locked.append(rider_id)
 
+    async def lock_trip(self, trip_id: UUID) -> None:
+        self.calls.append("lock_trip")
+
     async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
         self.calls.append("check")
         return self.existing
@@ -330,4 +333,4 @@ async def test_the_rider_is_locked_before_the_checks_and_the_insert() -> None:
     await harness.use_case.execute(command)
 
     assert harness.requests.locked == [command.rider_id]
-    assert harness.requests.calls == ["lock", "check", "add"]
+    assert harness.requests.calls == ["lock", "check", "lock_trip", "add"]
