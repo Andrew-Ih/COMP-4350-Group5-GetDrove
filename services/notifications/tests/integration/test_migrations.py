@@ -14,6 +14,7 @@ TABLES = {
     "failed_events",
     "notifications",
     "trip_members",
+    "scheduled_notifications",
     "alembic_version",
 }
 

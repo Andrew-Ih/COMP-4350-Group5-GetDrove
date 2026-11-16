@@ -8,6 +8,7 @@ from uuid import UUID
 from notifications.application.notify import Notify
 from notifications.application.ports import TripMembers
 from notifications.domain import messages
+from notifications.domain.directions import TripDirection
 from notifications.domain.messages import PaymentFailureReason
 
 
@@ -41,6 +42,7 @@ class TripEventNotifications:
         departure_at: datetime,
         pickup_label: str,
         auto_accepted: bool,
+        direction: TripDirection | None = None,
     ) -> None:
         await self._members.add_driver(trip_id, driver_id)
         await self._members.add_rider(trip_id, rider_id)
@@ -50,7 +52,8 @@ class TripEventNotifications:
                 trip_id=trip_id,
                 request_id=request_id,
                 departure_at=departure_at,
-                pickup_label=pickup_label,
+                stop_label=pickup_label,
+                direction=direction,
             )
         ]
         if auto_accepted:

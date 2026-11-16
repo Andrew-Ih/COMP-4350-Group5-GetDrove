@@ -14,13 +14,16 @@ from sqlalchemy import (
     String,
     Table,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
     text,
 )
 
 from events.consumer import consumer_tables
+from notifications.domain.directions import TripDirection
 from notifications.domain.notifications import NotificationType
+from notifications.domain.reminders import ReminderStatus, ScheduledNotificationType
 from notifications.domain.trip_members import TripRole
 
 SCHEMA = "notifications"
@@ -39,6 +42,47 @@ metadata = MetaData(
 # Which events have been handled (so a repeat delivery is skipped, even after a restart)
 # and which kept failing (parked after 5 tries). From libs/events.
 consumer = consumer_tables(metadata)
+
+_STATUSES = ", ".join(f"'{status}'" for status in ReminderStatus)
+_DIRECTIONS = ", ".join(f"'{direction}'" for direction in TripDirection)
+_SCHEDULED_TYPES = ", ".join(f"'{kind}'" for kind in ScheduledNotificationType)
+
+# Notifications waiting to be sent at a set time by the scheduler (#149). So far only trip
+# reminders (#148), one per accepted request.
+scheduled_notifications = Table(
+    "scheduled_notifications",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("type", String(30), nullable=False),
+    Column("rider_id", Uuid, nullable=False),
+    Column("trip_id", Uuid, nullable=False),
+    Column("request_id", Uuid, nullable=False),
+    Column("departure_at", DateTime(timezone=True), nullable=False),
+    Column("pickup_label", Text, nullable=False),
+    Column("send_at", DateTime(timezone=True), nullable=False),
+    Column("status", String(20), nullable=False),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # Who drives, so the reminder can name them (#149). Null for reminders stored before.
+    Column("driver_id", Uuid, nullable=True),
+    # When it was sent or skipped (#149).
+    Column("handled_at", DateTime(timezone=True), nullable=True),
+    # Which way the trip goes, so the reminder calls pickup_label a pickup or a drop-off
+    # (#355). Null for reminders stored before.
+    Column("direction", String(20), nullable=True),
+    CheckConstraint(f"status IN ({_STATUSES})", name="valid_status"),
+    CheckConstraint(f"type IN ({_SCHEDULED_TYPES})", name="valid_type"),
+    CheckConstraint(f"direction IS NULL OR direction IN ({_DIRECTIONS})", name="valid_direction"),
+    # A request accepted twice (a repeated event) still gets one reminder.
+    UniqueConstraint("type", "request_id", name="uq_scheduled_notifications_type_request_id"),
+    # Cancelling a trip cancels its reminders.
+    Index("ix_scheduled_notifications_trip_id", "trip_id"),
+    # What the scheduler looks for: pending reminders that are due.
+    Index(
+        "ix_scheduled_notifications_pending_send_at",
+        "send_at",
+        postgresql_where=text("status = 'pending'"),
+    ),
+)
 
 _TYPES = ", ".join(f"'{value}'" for value in NotificationType)
 
