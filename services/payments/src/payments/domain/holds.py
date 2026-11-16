@@ -1,0 +1,45 @@
+"""Saved rider shares and provider references, independent of Stripe and HTTP."""
+
+from dataclasses import dataclass
+from datetime import datetime
+from enum import StrEnum
+from typing import Literal
+from uuid import UUID
+
+FailureReason = Literal["card_declined", "authentication_required", "no_card", "other"]
+
+
+class HoldStatus(StrEnum):
+    SCHEDULED = "SCHEDULED"
+    AUTHORIZED = "AUTHORIZED"
+    CAPTURED = "CAPTURED"
+    RELEASED = "RELEASED"
+    FAILED = "FAILED"
+
+
+@dataclass(frozen=True)
+class SavedPaymentCard:
+    customer_id: str
+    payment_method_id: str
+
+
+@dataclass(frozen=True)
+class PaymentHold:
+    request_id: UUID
+    trip_id: UUID
+    rider_id: UUID
+    driver_id: UUID
+    amount_cents: int
+    currency: Literal["CAD"]
+    departure_at: datetime
+    status: HoldStatus = HoldStatus.SCHEDULED
+    stripe_id: str | None = None
+    card: SavedPaymentCard | None = None
+    first_attempt_at: datetime | None = None
+    correlation_id: str | None = None
+    # None on a scheduled hold means manual reconciliation is required, not retry forever.
+    retry_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        if self.amount_cents <= 0 or self.currency != "CAD":
+            raise ValueError("A hold requires a positive CAD amount")

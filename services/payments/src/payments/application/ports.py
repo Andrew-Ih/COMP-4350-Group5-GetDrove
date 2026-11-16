@@ -1,8 +1,12 @@
 """Framework-free gateway interface; amounts are integer cents."""
 
 from dataclasses import dataclass
+from datetime import datetime
 from enum import StrEnum
 from typing import Protocol
+from uuid import UUID
+
+from payments.domain.holds import FailureReason, PaymentHold, SavedPaymentCard
 
 
 class PaymentGatewayError(Exception):
@@ -65,3 +69,25 @@ class PaymentGatewayPort(Protocol):
     async def cancel(
         self, *, payment_intent_id: str, idempotency_key: str
     ) -> PaymentIntentResult: ...
+
+
+class SavedCardLookup(Protocol):
+    async def for_rider(self, rider_id: UUID) -> SavedPaymentCard | None:
+        """Return the saved references, None for no card; raise on lookup failure.
+
+        Production integration follows #151. Configuration failures must not be
+        reported as a rider having no card.
+        """
+        ...
+
+
+class HoldRepository(Protocol):
+    async def schedule(self, hold: PaymentHold) -> None: ...
+    async def lock(self, request_id: UUID) -> PaymentHold | None: ...
+    async def save(self, hold: PaymentHold) -> None: ...
+    async def due(self, now: datetime, limit: int = 20) -> list[UUID]: ...
+
+
+class HoldEvents(Protocol):
+    async def held(self, hold: PaymentHold) -> None: ...
+    async def failed(self, hold: PaymentHold, reason: FailureReason) -> None: ...
