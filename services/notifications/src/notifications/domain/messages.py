@@ -12,6 +12,7 @@ from typing import Literal
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
+from notifications.domain.directions import TripDirection
 from notifications.domain.notifications import NotificationType
 
 # Every trip is in Winnipeg, so times are shown in its time zone.
@@ -69,13 +70,26 @@ def request_accepted(
     trip_id: UUID,
     request_id: UUID,
     departure_at: datetime,
-    pickup_label: str,
+    stop_label: str,
+    direction: TripDirection | None,
 ) -> Message:
+    """``stop_label`` is the rider's point on the route (``RequestAccepted.pickupLabel``):
+    the pickup going to campus, the drop-off leaving it (#355)."""
+    if direction is TripDirection.FROM_CAMPUS:
+        body = (
+            f"You have a seat on the trip leaving campus on {when(departure_at)}. You'll be "
+            f"picked up on campus and dropped off at {stop_label}."
+        )
+    elif direction is TripDirection.TO_CAMPUS:
+        body = f"You have a seat on the trip on {when(departure_at)}. Pickup: {stop_label}."
+    else:
+        # Events from before #352 don't say which way: word it so it's right either way.
+        body = f"You have a seat on the trip on {when(departure_at)}. Your stop: {stop_label}."
     return Message(
         user_id=rider_id,
         type=NotificationType.REQUEST_ACCEPTED,
         title="Request accepted",
-        body=f"You have a seat on the trip on {when(departure_at)}. Pickup: {pickup_label}.",
+        body=body,
         link_path=MY_TRIPS,
         trip_id=trip_id,
         request_id=request_id,
@@ -201,6 +215,41 @@ def payment_failed(
         title="Payment failed",
         body=f"{_PAYMENT_PROBLEMS[reason]} Your seat isn't confirmed. "
         "Check your card, then request the seat again.",
+        link_path=MY_TRIPS,
+        trip_id=trip_id,
+        request_id=request_id,
+    )
+
+
+def trip_reminder(
+    *,
+    rider_id: UUID,
+    trip_id: UUID,
+    request_id: UUID,
+    departure_at: datetime,
+    stop_label: str,
+    direction: TripDirection | None,
+    driver_first_name: str | None,
+) -> Message:
+    """The rider's reminder shortly before departure (#149), worded by direction (#355).
+    Names the driver (it's the rider's own trip) when Accounts knows them."""
+    driver = driver_first_name or "Your driver"
+    if direction is TripDirection.FROM_CAMPUS:
+        meet = "them" if driver_first_name else "your driver"
+        body = (
+            f"{driver} leaves campus on {when(departure_at)}. Meet {meet} on campus; "
+            f"you'll be dropped off at {stop_label}."
+        )
+    elif direction is TripDirection.TO_CAMPUS:
+        body = f"{driver} leaves on {when(departure_at)}. Be at your pickup point: {stop_label}."
+    else:
+        # Reminders stored before #355 don't know the direction: right either way.
+        body = f"{driver} leaves on {when(departure_at)}. Your stop: {stop_label}."
+    return Message(
+        user_id=rider_id,
+        type=NotificationType.TRIP_REMINDER,
+        title="Your trip leaves soon",
+        body=body,
         link_path=MY_TRIPS,
         trip_id=trip_id,
         request_id=request_id,
