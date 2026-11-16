@@ -33,16 +33,15 @@ ADMIN_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/admin/drivers/{ID}/reject", {"json": {"reason": "Expired insurance."}}),
 ]
 # Implemented endpoints need the database, so they're tested in tests/integration/
-# (status #10, documents #9, vehicle #125). The rest still return 501.
+# (status #10, documents #9, vehicle #125, and every admin endpoint, #127). The rest still
+# return 501.
 IMPLEMENTED = {
     "/me/driver",
     "/me/driver/documents",
     "/me/driver/documents/licence",
     "/me/driver/vehicle",
 }
-IMPLEMENTED_ADMIN = {f"/admin/drivers/{ID}/documents/insurance"}
 NOT_YET_DRIVER = [endpoint for endpoint in DRIVER_ENDPOINTS if endpoint[1] not in IMPLEMENTED]
-NOT_YET_ADMIN = [endpoint for endpoint in ADMIN_ENDPOINTS if endpoint[1] not in IMPLEMENTED_ADMIN]
 
 
 @pytest.fixture
@@ -110,16 +109,6 @@ async def test_admin_endpoints_need_the_admin_role(
 
     assert refused.status_code == 403
     assert refused.json()["code"] == "forbidden"
-
-
-@pytest.mark.parametrize(("method", "path", "kwargs"), NOT_YET_ADMIN)
-async def test_admins_reach_the_not_yet_implemented_handler(
-    auth: TestAuth, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    async with _client(auth, roles=["user", "admin"]) as admin:
-        allowed = await admin.request(method, path, **kwargs)
-
-    assert allowed.status_code == 501, allowed.text
 
 
 @pytest.mark.parametrize(

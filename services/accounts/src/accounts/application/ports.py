@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from typing import Protocol, Self
 from uuid import UUID
 
-from accounts.domain.driver import DriverProfile
+from accounts.domain.driver import DriverProfile, DriverStatus
 from accounts.domain.email import Email
 from accounts.domain.refresh_token import RefreshToken
 from accounts.domain.user import User
@@ -131,6 +131,10 @@ class DriverProfileRepository(Protocol):
 
     async def save(self, profile: DriverProfile) -> None:
         """Creates or updates the application."""
+        ...
+
+    async def list_by_status(self, status: DriverStatus) -> list[DriverProfile]:
+        """Applications with this status, oldest upload first (#127)."""
         ...
 
 
