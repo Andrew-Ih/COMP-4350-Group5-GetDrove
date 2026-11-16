@@ -268,13 +268,21 @@ async def test_lifespan_retries_pending_event_and_stops_relay(
 
     monkeypatch.setattr(OutboxRelay, "publish_pending", publish_pending)
     redis.xadd.side_effect = xadd
-    monkeypatch.setattr("trips.infrastructure.main.Redis.from_url", lambda url: redis)
+    redis.xgroup_create = AsyncMock()
+    redis.xautoclaim = AsyncMock(return_value=[b"0-0", [], []])
+
+    async def wait_for_payment_events(*args, **kwargs):
+        await asyncio.Event().wait()  # Like an idle blocking Redis read, until shutdown.
+
+    redis.xreadgroup = AsyncMock(side_effect=wait_for_payment_events)
+    monkeypatch.setattr("trips.infrastructure.main.Redis.from_url", lambda url, **kwargs: redis)
     app = api[0]
     async with app.router.lifespan_context(app), asyncio.timeout(5):
         await delivered.wait()
         assert (await saved_events(api))[0]["published_at"] is not None
 
     assert attempts == 2
+    redis.xgroup_create.assert_awaited_once_with("events.payments", "trips", id="0", mkstream=True)
     redis.aclose.assert_awaited_once()
 
 
