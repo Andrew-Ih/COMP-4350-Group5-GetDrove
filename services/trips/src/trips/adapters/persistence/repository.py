@@ -41,7 +41,7 @@ class SQLAlchemyTripRepository:
         """Serialize recurring posts for this driver until the transaction ends."""
         await self.session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:driver_id, 0))"),
-            {"driver_id": str(driver_id)},
+            {"driver_id": f"trips.driver-trips:{driver_id}"},
         )
 
     async def add(self, trip: Trip) -> None:
@@ -82,7 +82,7 @@ class SQLAlchemyTripRepository:
             select(trips)
             .where(trips.c.driver_id == driver_id)
             .where(trips.c.estimated_arrival_at > now)
-            .where(trips.c.status == TripStatus.SCHEDULED.value)
+            .where(trips.c.status.in_((TripStatus.SCHEDULED.value, TripStatus.IN_PROGRESS.value)))
             .order_by(trips.c.departure_at.asc())
         )
         return [_trip(row) for row in result.mappings()]

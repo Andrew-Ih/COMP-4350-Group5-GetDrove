@@ -10,11 +10,14 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
+from trips.adapters.persistence.repository import SQLAlchemyTripRepository
 from trips.adapters.persistence.tables import outbox, trip_series, trips
+from trips.domain.entities import Trip
+from trips.domain.values import Direction, Location, TripStatus
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
@@ -333,20 +336,81 @@ async def test_concurrent_series_do_not_duplicate_trips(
     }
 
 
+async def test_in_progress_trip_blocks_overlapping_occurrence(
+    api: tuple[Any, TestAuth, Any],
+) -> None:
+    app, auth, _ = api
+    body = series_payload()
+    first = datetime.fromisoformat(body["departureAt"])
+    started_at = datetime.now(UTC) - timedelta(minutes=1)
+    existing = Trip.create(
+        driver_id=auth.user_id,
+        direction=Direction.TO_CAMPUS,
+        place=Location("Pembina Highway", 49.82, -97.15),
+        departure_at=started_at,
+        duration_seconds=int((first - started_at).total_seconds()) + 900,
+        distance_meters=6000,
+        seats_total=3,
+    )
+    existing.status = TripStatus.IN_PROGRESS
+    async with app.state.session_factory.begin() as session:
+        await SQLAlchemyTripRepository(session).add(existing)
+
+    async with (
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(route), base_url="http://routing:8000"
+        ) as routing_client,
+        httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers={**auth.headers(), "X-Request-ID": str(auth.user_id)},
+        ) as client,
+    ):
+        app.state.routing_client = routing_client
+        response = await client.post("/series", json=body)
+
+    assert response.status_code == 201, response.text
+    result = response.json()
+    assert result["skippedDates"] == [first.astimezone(WINNIPEG).date().isoformat()]
+    assert len(result["trips"]) == 2
+
+
+async def test_recurring_lock_uses_a_separate_namespace_from_seat_requests(
+    api: tuple[Any, TestAuth, Any],
+) -> None:
+    app, auth, _ = api
+    sessions = app.state.session_factory
+    try_lock = text("SELECT pg_try_advisory_xact_lock(hashtextextended(:key, 0))")
+
+    async with sessions.begin() as recurring, sessions.begin() as other:
+        await SQLAlchemyTripRepository(recurring).lock_driver(auth.user_id)
+        assert await other.scalar(try_lock, {"key": f"trips.driver-trips:{auth.user_id}"}) is False
+        assert await other.scalar(try_lock, {"key": f"trips.seat-requests:{auth.user_id}"}) is True
+
+
 async def test_post_series_rolls_back_when_routing_fails(
     api: tuple[Any, TestAuth, Any],
 ) -> None:
     """A routing failure must not persist a partial series."""
     app, auth, engine = api
     routing_calls = 0
+    sibling_started = asyncio.Event()
+    sibling_stopped = asyncio.Event()
 
-    def failing_route(
+    async def failing_route(
         request: httpx.Request,
     ) -> httpx.Response:
         nonlocal routing_calls
         routing_calls += 1
         if routing_calls == 1:
             return route(request)
+        if routing_calls == 3:
+            sibling_started.set()
+            try:
+                await asyncio.Future()
+            finally:
+                sibling_stopped.set()
+        await sibling_started.wait()
         assert request.url.path == "/internal/routes"
         return httpx.Response(
             503,
@@ -372,11 +436,13 @@ async def test_post_series_rolls_back_when_routing_fails(
                 "X-Request-ID": str(auth.user_id),
             },
         ) as client:
-            response = await client.post("/series", json=body)
+            async with asyncio.timeout(5):
+                response = await client.post("/series", json=body)
 
     assert response.status_code == 503, response.text
     assert response.json()["code"] == "routing_unavailable"
-    assert routing_calls == 2
+    assert routing_calls == 3
+    assert sibling_stopped.is_set()
 
     saved_series, saved_trips, saved_events = await saved_rows(engine, auth.user_id)
 

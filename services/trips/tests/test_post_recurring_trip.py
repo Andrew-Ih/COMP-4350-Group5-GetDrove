@@ -1,6 +1,9 @@
 """Unit tests for posting recurring trips."""
 
+import asyncio
+from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -9,6 +12,7 @@ from trips.application.ports import RouteEstimate
 from trips.application.post_recurring_trip import PostRecurringTrip
 from trips.domain.entities import WINNIPEG_TZ, Trip, TripSeries
 from trips.domain.errors import DepartureInPastError
+from trips.domain.recurrence import expand_trip_series
 from trips.domain.values import Direction, Location
 
 NOW = datetime(2026, 11, 14, 12, tzinfo=UTC)
@@ -119,6 +123,40 @@ async def test_creates_recurring_trips() -> None:
     assert all(trip.series_id == series.id for trip in result.created_trips)
 
     assert events.posted == [trip.id for trip in result.created_trips]
+
+
+async def test_routes_at_most_eight_occurrences_and_keeps_departure_order() -> None:
+    use_case, _, _, routing, _ = setup_use_case()
+    series = replace(make_series(), end_date=date(2026, 12, 11))
+    started: list[UUID] = []
+    finished: list[UUID] = []
+    batch_started = asyncio.Event()
+    later_finished = asyncio.Event()
+    peak = 0
+
+    async def compute(trip_id: UUID, *_: Location) -> RouteEstimate:
+        nonlocal peak
+        started.append(trip_id)
+        peak = max(peak, len(started) - len(finished))
+        if len(started) == 8:
+            batch_started.set()
+        await batch_started.wait()
+        await asyncio.sleep(0)
+        if trip_id == started[0]:
+            await later_finished.wait()
+        finished.append(trip_id)
+        later_finished.set()
+        return RouteEstimate(distance_meters=6000, duration_seconds=1800)
+
+    routing.compute_route = AsyncMock(side_effect=compute)
+    async with asyncio.timeout(5):
+        candidates = await use_case.prepare(series)
+
+    assert len(candidates) > 8
+    assert peak == 8
+    assert finished[0] != started[0]
+    assert [trip.id for trip in candidates] == started
+    assert [trip.departure_at for trip in candidates] == expand_trip_series(series)
 
 
 async def test_skips_overlapping_departure() -> None:

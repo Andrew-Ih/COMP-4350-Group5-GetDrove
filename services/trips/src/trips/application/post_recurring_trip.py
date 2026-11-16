@@ -1,5 +1,6 @@
 """Application use case for posting recurring trips."""
 
+import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -46,24 +47,36 @@ class PostRecurringTrip:
             raise DepartureInPastError()
 
         origin, destination = trip_ends(series.direction, series.place)
-        candidates = []
-        for departure in expand_trip_series(series):
+        routing_slots = asyncio.Semaphore(8)
+
+        async def prepare_occurrence(departure: datetime) -> Trip:
             trip_id = uuid4()
-            route = await self.routing.compute_route(trip_id, origin, destination)
-            candidates.append(
-                Trip.create(
-                    driver_id=series.driver_id,
-                    direction=series.direction,
-                    place=series.place,
-                    departure_at=departure,
-                    duration_seconds=route.duration_seconds,
-                    distance_meters=route.distance_meters,
-                    seats_total=series.seats_total,
-                    series_id=series.id,
-                    trip_id=trip_id,
-                )
+            async with routing_slots:
+                route = await self.routing.compute_route(trip_id, origin, destination)
+            return Trip.create(
+                driver_id=series.driver_id,
+                direction=series.direction,
+                place=series.place,
+                departure_at=departure,
+                duration_seconds=route.duration_seconds,
+                distance_meters=route.distance_meters,
+                seats_total=series.seats_total,
+                series_id=series.id,
+                trip_id=trip_id,
             )
-        return candidates
+
+        tasks = [
+            asyncio.create_task(prepare_occurrence(departure))
+            for departure in expand_trip_series(series)
+        ]
+        try:
+            return await asyncio.gather(*tasks)
+        except BaseException:
+            # gather propagates the first failure without stopping sibling tasks.
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            raise
 
     async def execute(self, series: TripSeries, candidates: list[Trip]) -> PostRecurringTripResult:
         """Check clashes and save prepared trips under the caller's transaction and lock."""
