@@ -201,3 +201,48 @@ async def test_conflicting_duplicate_cannot_change_saved_price(setup) -> None:
     payload = {**event.payload, "amountCents": 900}
     with pytest.raises(HoldConflictError):
         await schedule(sessions, event.model_copy(update={"event_id": uuid4(), "payload": payload}))
+
+
+async def test_app_processes_acceptance_using_configured_card_lookup(
+    setup, payments_redis: str, payments_database: str, monkeypatch
+) -> None:
+    from pydantic import SecretStr
+
+    import payments.infrastructure.main as main
+    from payments.infrastructure.settings import Settings
+
+    sessions, provider, _, _ = setup
+    event = accepted()
+    data = event.payload_as(RequestAccepted)
+    redis_url = payments_redis.rsplit("/", 1)[0] + "/5"
+    settings = Settings(
+        _env_file=None,
+        database_url=payments_database,
+        redis_url=redis_url,
+        stripe_secret_key=SecretStr("sk_test_mock"),
+        hold_processing_enabled=True,
+        saved_card_references={data.rider_id: SavedPaymentCard("cus_configured", "pm_configured")},
+    )
+    monkeypatch.setattr(main, "get_settings", lambda: settings)
+    monkeypatch.setattr(main, "create_payment_gateway", lambda settings, client: provider.gateway)
+    app = main.create_app()  # No custom lookup injection: exercise the normal settings path.
+    redis = Redis.from_url(redis_url)
+    try:
+        async with app.router.lifespan_context(app):
+            await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: event.to_json()})
+            async with asyncio.timeout(10):
+                for _ in range(200):
+                    if await outcomes(sessions, data.request_id):
+                        break
+                    await asyncio.sleep(0.05)
+                else:
+                    pytest.fail("Configured hold processor did not publish an outcome")
+            provider.gateway.authorize.assert_awaited_once_with(
+                customer_id="cus_configured",
+                payment_method_id="pm_configured",
+                amount_cents=625,
+                currency="CAD",
+                idempotency_key=f"hold:{data.request_id}",
+            )
+    finally:
+        await redis.aclose()

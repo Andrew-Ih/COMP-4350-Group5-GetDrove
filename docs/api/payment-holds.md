@@ -2,18 +2,33 @@
 
 ## Branch and integration scope
 
-This implements the hold domain, persistence, RequestAccepted consumer, background worker,
-outcome events and explicit capture use case on the #67 story branch. It does not merge
-#151 or add customer/card storage. SavedCardLookup is an injected application interface;
-tests provide fake Stripe references. The live adapter for that interface will be connected
-when #151 is integrated through develop.
+This implements hold persistence, the RequestAccepted consumer, background authorization,
+outcome events and explicit capture on the #67 story branch. It does not merge #151 or
+add its customer/card tables or endpoints.
 
-Automatic processing is disabled by default. PAYMENTS_HOLD_PROCESSING_ENABLED=true requires
-both a Stripe test secret key and an implementation supplied to create_app(saved_cards=...).
-Startup fails if either is missing. Do not enable it with a fake lookup on a shared server.
-This branch alone does not prove a real rider's acceptance creates a dashboard-visible hold;
-that end-to-end check remains pending the saved-card integration. Do not close #70 on the
-basis of fake-gateway tests alone.
+SavedCardLookup remains an application interface. ConfiguredSavedCardLookup is a real,
+per-rider sandbox adapter populated from operator-supplied Stripe references. An unmapped
+rider raises a configuration error; it is not reported as no_card. Stripe verifies that
+the supplied payment method belongs to the supplied customer when authorizing.
+
+Automatic processing is disabled by default. To enable it locally, configure these values
+in the root, gitignored .env (replace every example ID with a real reference):
+
+```dotenv
+PAYMENTS_STRIPE_SECRET_KEY=sk_test_replace_me
+PAYMENTS_HOLD_PROCESSING_ENABLED=true
+PAYMENTS_SAVED_CARD_REFERENCES='{"00000000-0000-0000-0000-000000000001":{"customer_id":"cus_example","payment_method_id":"pm_example"}}'
+```
+
+The UUID must be the riderId in RequestAccepted, and both Stripe IDs must belong to the
+same sandbox as the secret key. No card number, CVC or client secret belongs in this map.
+The app uses this lookup automatically; an explicitly injected lookup still takes priority.
+Local Compose forwards these settings to Payments. Its default remains disabled.
+Do not enable a shared server without configuring every participating rider.
+
+This is operator-configured test-mode integration, not automatic onboarding: adding or
+changing a card through the UI remains #151. That later integration can replace this
+adapter without changing hold logic or merging #151 into this task.
 
 ## Flow
 
@@ -85,12 +100,40 @@ belongs to this branch. A database already migrated on the separate #151 branch 
 clean #70 database; do not delete its migration stamp or reset its tables to make it fit.
 Docker applies the migration through the existing service entrypoint on a compatible base.
 
-## Remaining manual verification
+## Verification recorded on 2026-11-15
 
-After the real saved-card lookup is connected, use a rider with a Stripe sandbox card,
-request and accept a trip, and verify one uncaptured PaymentIntent for the saved quote.
-Replay the acceptance event and verify there is still only one hold. Do not manually
-capture it as part of the normal acceptance flow. Capture-on-completion belongs to #71.
+- Normal Payments suite: 91 passed; only the opt-in sandbox test skipped.
+- Opt-in real Stripe test: 1 passed. Verified PaymentIntent
+  `pi_3UcDYmIQXqskkTT20cMVJOyk` for 625 CAD cents, manual capture,
+  `requires_capture`, zero received, and exactly one intent after duplicate acceptance.
+- The test cancelled that authorization in cleanup; it did not capture a payment.
+- Formatting, lint, strict types, architecture checks and local Compose validation passed.
+- No #151 commits, customer tables or card-setup endpoints were merged into this branch.
+
+## Real Stripe sandbox verification (opt-in)
+
+The following test creates a dedicated sandbox customer and attaches Stripe's standard
+pm_card_visa test payment method. It runs the normal configured app, Redis consumer and
+worker with a fresh PostgreSQL database. It checks requires_capture, manual capture,
+625 CAD cents and zero amount received, then replays acceptance and checks one intent and
+one PaymentHeld. It finally cancels the uncaptured test authorization. No capture is made.
+It never migrates or resets a developer database, and it does not need #151's code.
+
+Run from the repository root with Docker running and a real test secret key in .env.
+Remove PAYMENTS_STRIPE_API_BASE overrides so the test uses https://api.stripe.com.
+
+```powershell
+$env:RUN_STRIPE_SANDBOX_HOLD="1"
+uv run pytest services/payments/tests/test_stripe_sandbox_hold.py -q -s
+Remove-Item Env:RUN_STRIPE_SANDBOX_HOLD
+```
+
+It prints only the verified PaymentIntent ID and status, never keys or client secrets.
+In the same Stripe sandbox's Dashboard, look up that ID. The test verifies its uncaptured
+state before cleanup; after cleanup it appears cancelled, with no captured payment.
+The regular suite skips this test unless RUN_STRIPE_SANDBOX_HOLD=1 is explicitly supplied.
+A pass verifies the event-to-provider component; real UI onboarding and trip-completion
+integration remain the responsibilities of #151 and #71.
 
 References: [manual capture](https://docs.stripe.com/payments/place-a-hold-on-a-payment-method),
 [idempotency](https://docs.stripe.com/api/idempotent_requests).

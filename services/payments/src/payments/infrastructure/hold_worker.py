@@ -3,7 +3,8 @@
 import asyncio
 import contextlib
 import logging
-from datetime import UTC, datetime
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -56,12 +57,23 @@ class HoldWorker:
             current = await SQLAlchemyHolds(session).lock(request_id)
             if current and current.status is HoldStatus.SCHEDULED and current.retry_at is None:
                 logger.error(
-                    "Hold requires provider reconciliation", extra={"request_id": str(request_id)}
+                    "Hold requires provider reconciliation",
+                    extra={"seat_request_id": str(request_id)},
                 )
 
     async def capture(self, request_id: UUID) -> PaymentHold:
         async with self.sessions() as session, session.begin():
             return await self.use_case(session, None).capture(request_id)
+
+    async def defer(self, request_id: UUID) -> None:
+        """A missing lookup must not monopolize every batch or mean no_card."""
+        async with self.sessions() as session, session.begin():
+            repository = SQLAlchemyHolds(session)
+            hold = await repository.lock(request_id)
+            if hold and hold.status is HoldStatus.SCHEDULED and hold.retry_at is not None:
+                await repository.save(
+                    replace(hold, retry_at=datetime.now(UTC) + timedelta(seconds=30))
+                )
 
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
@@ -73,8 +85,9 @@ class HoldWorker:
                         await self.process(request_id)
                     except Exception:
                         logger.exception(
-                            "Hold processing failed", extra={"request_id": str(request_id)}
+                            "Hold processing failed", extra={"seat_request_id": str(request_id)}
                         )
+                        await self.defer(request_id)
             except Exception:
                 logger.exception("Could not poll scheduled holds")
             with contextlib.suppress(TimeoutError):
