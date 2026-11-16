@@ -8,6 +8,7 @@ import pytest
 
 from notifications.application.notify import Notify
 from notifications.application.trip_events import TripEventNotifications
+from notifications.domain.directions import TripDirection
 from notifications.domain.notification_email import Contact
 from notifications.domain.notifications import NotificationType
 from notifications.domain.trip_members import TripRole
@@ -161,3 +162,20 @@ async def test_a_failed_payment_tells_the_rider_and_frees_their_place(world: Wor
 
     assert world.told()[-1] == (RIDER, NotificationType.PAYMENT_FAILED)
     assert await world.active() == [(DRIVER, TripRole.DRIVER)]
+
+
+async def test_leaving_campus_the_rider_hears_where_they_are_dropped_off(world: World) -> None:
+    await world.events.request_accepted(
+        request_id=uuid4(),
+        trip_id=TRIP,
+        rider_id=RIDER,
+        driver_id=DRIVER,
+        departure_at=DEPARTURE,
+        pickup_label="Pembina Hwy at Chancellor Matheson Rd",
+        auto_accepted=False,
+        direction=TripDirection.FROM_CAMPUS,
+    )
+
+    [note] = world.store.notifications.values()
+    assert "dropped off at Pembina Hwy at Chancellor Matheson Rd" in note.body
+    assert "Pickup" not in note.body
