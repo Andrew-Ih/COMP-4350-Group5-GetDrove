@@ -136,6 +136,25 @@ class FakeDriverProfiles:
         self.rows[profile.user_id] = replace(profile)
 
 
+class FakeDocumentStorage:
+    """Files in a dict. ``fail_on_save`` makes the next save raise, for testing cleanup."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.fail_on_save = False
+
+    async def save(self, key: str, content: bytes) -> None:
+        if self.fail_on_save:
+            raise OSError("disk full")
+        self.files[key] = content
+
+    async def read(self, key: str) -> bytes | None:
+        return self.files.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.files.pop(key, None)
+
+
 class FakeEvents:
     def __init__(self) -> None:
         self.published: list[EventPayload] = []

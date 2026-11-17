@@ -1,8 +1,8 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Implemented: status (#10). The rest return 501 until their task implements them:
-documents (#9), vehicle (#125), admin approval (#127), profiles and the internal lookups
+Implemented: status (#10) and documents (#9). The rest return 501 until their task
+implements them: vehicle (#125), admin approval (#127), profiles and the internal lookups
 (#143, #146).
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
@@ -13,7 +13,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 
-from accounts.adapters.api.dependencies import Uow
+from accounts.adapters.api.dependencies import AppClock, Documents, Uow
 from accounts.adapters.api.schemas import (
     AdminDriver,
     DocumentKind,
@@ -27,8 +27,15 @@ from accounts.adapters.api.schemas import (
     RejectDriverRequest,
     Vehicle,
 )
+from accounts.application.documents import (
+    OpenDriverDocument,
+    StoredDocument,
+    UploadDriverDocuments,
+)
 from accounts.application.drivers import GetMyDriverProfile
 from accounts.domain import driver as domain
+from accounts.domain.documents import MAX_DOCUMENT_BYTES
+from accounts.domain.documents import DocumentKind as DomainDocumentKind
 from common_security.dependencies import AuthenticatedUser, require_role
 from common_security.user import CurrentUser
 
@@ -67,6 +74,24 @@ def driver_profile_out(profile: domain.DriverProfile) -> DriverProfile:
         else None,
         submitted_at=profile.submitted_at,
         reviewed_at=profile.reviewed_at,
+    )
+
+
+async def _read(upload: UploadFile) -> bytes:
+    # One byte over the limit is enough to know it's too big, without reading the rest.
+    return await upload.read(MAX_DOCUMENT_BYTES + 1)
+
+
+def _file_response(document: StoredDocument) -> Response:
+    return Response(
+        content=document.content,
+        media_type=document.content_type,
+        headers={
+            "Content-Disposition": "inline",
+            # Private documents: never kept by the browser or anything in between.
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -121,8 +146,14 @@ async def upload_documents(
     user: AuthenticatedUser,
     licence: Annotated[UploadFile, File(description="Driver's licence.")],
     insurance: Annotated[UploadFile, File(description="Proof of insurance.")],
+    uow: Uow,
+    storage: Documents,
+    clock: AppClock,
 ) -> DriverProfile:
-    _not_implemented()
+    profile = await UploadDriverDocuments(uow, storage, clock)(
+        user.id, await _read(licence), await _read(insurance)
+    )
+    return driver_profile_out(profile)
 
 
 @driver_router.get(
@@ -131,8 +162,11 @@ async def upload_documents(
     response_class=Response,
     responses={**UNAUTHORIZED, **INVALID, **DOCUMENT_FILE},
 )
-async def my_document(kind: DocumentKind, user: AuthenticatedUser) -> Response:
-    _not_implemented()
+async def my_document(
+    kind: DocumentKind, user: AuthenticatedUser, uow: Uow, storage: Documents
+) -> Response:
+    document = await OpenDriverDocument(uow, storage)(user.id, DomainDocumentKind(kind.value))
+    return _file_response(document)
 
 
 @driver_router.put(
@@ -168,8 +202,11 @@ async def list_drivers(
     response_class=Response,
     responses={**NOT_ADMIN, **INVALID, **DOCUMENT_FILE},
 )
-async def driver_document(user_id: UUID, kind: DocumentKind, admin: Admin) -> Response:
-    _not_implemented()
+async def driver_document(
+    user_id: UUID, kind: DocumentKind, admin: Admin, uow: Uow, storage: Documents
+) -> Response:
+    document = await OpenDriverDocument(uow, storage)(user_id, DomainDocumentKind(kind.value))
+    return _file_response(document)
 
 
 DECISION_ERRORS: Responses = {

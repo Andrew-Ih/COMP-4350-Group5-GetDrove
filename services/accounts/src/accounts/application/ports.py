@@ -134,6 +134,23 @@ class DriverProfileRepository(Protocol):
         ...
 
 
+class DocumentStorage(Protocol):
+    """Where driver documents are kept (ADR 0011: a Docker volume). Only Accounts reads
+    them, through permission-checked endpoints; keys never leave the service."""
+
+    async def save(self, key: str, content: bytes) -> None:
+        """Stores the file under ``key``, replacing any file already there."""
+        ...
+
+    async def read(self, key: str) -> bytes | None:
+        """The file, or None if there's none under ``key``."""
+        ...
+
+    async def delete(self, key: str) -> None:
+        """Removes the file; does nothing if it's already gone."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """One use case's database work: the repositories and the event publisher share one
     transaction, so changes and the events about them are saved together or not at all.
