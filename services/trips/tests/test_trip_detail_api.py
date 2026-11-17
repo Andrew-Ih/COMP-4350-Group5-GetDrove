@@ -30,6 +30,7 @@ type Handler = Callable[[httpx.Request], httpx.Response]
 
 TIME = datetime.now(UTC).replace(microsecond=0) + timedelta(days=30)
 RIDER = {"lat": 49.85, "lng": -97.15}
+CIVIC = {"make": "Honda", "model": "Civic", "colour": "Blue", "plate": "ABC123"}
 # The driver's own end of the trip: never shown to anyone else.
 HOME = Location("Driver's home street", 49.82, -97.15)
 
@@ -61,6 +62,23 @@ class API:
         self.driver = uuid4()
         self.routing_requests: list[httpx.Request] = []
         self.trips: list[Trip] = []
+
+    def accounts_service(self, request: httpx.Request) -> httpx.Response:
+        """Accounts' /internal/users: this test's driver has a Civic (#361)."""
+        assert request.url.path == "/internal/users"
+        users = [
+            {
+                "id": user_id,
+                "firstName": "Maya",
+                "rating": None,
+                "ratingCount": 0,
+                "tripCount": 0,
+                "noShowCount": 0,
+                "vehicle": CIVIC if user_id == str(self.driver) else None,
+            }
+            for user_id in request.url.params.get_list("ids")
+        ]
+        return httpx.Response(200, json={"users": users})
 
     async def add(self, direction: Direction = Direction.TO_CAMPUS) -> Trip:
         trip = Trip.create(
@@ -101,6 +119,7 @@ class API:
         headers: dict[str, str] | None = None,
         routing: "Handler | None" = None,
         payments: "Handler | None" = None,
+        accounts: "Handler | None" = None,
     ) -> httpx.Response:
         handler = routing or routing_service
 
@@ -116,9 +135,14 @@ class API:
                 transport=httpx.MockTransport(payments or payments_service),
                 base_url="http://payments:8000",
             ) as payments_client,
+            httpx.AsyncClient(
+                transport=httpx.MockTransport(accounts or self.accounts_service),
+                base_url="http://accounts:8000",
+            ) as accounts_client,
         ):
             self.app.state.routing_client = routing_client
             self.app.state.payments_client = payments_client
+            self.app.state.accounts_client = accounts_client
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(app=self.app, raise_app_exceptions=False),
                 base_url="http://test",
@@ -401,3 +425,55 @@ async def test_requires_a_login(api: API) -> None:
 
     assert response.status_code == 401
     assert response.json()["code"] == "unauthorized"
+
+
+# ---------------------------------------------------------------- the vehicle (#361)
+
+
+async def test_an_accepted_rider_sees_the_vehicle_with_its_plate(api: API) -> None:
+    trip = await api.add()
+    rider = uuid4()
+    await api.add_request(trip, rider, RequestStatus.ACCEPTED)
+
+    response = await api.get(f"/{trip.id}", headers=api.auth.headers(user_id=rider))
+
+    assert response.status_code == 200, response.text
+    assert response.json()["vehicle"] == CIVIC
+
+
+async def test_the_driver_sees_their_vehicle(api: API) -> None:
+    trip = await api.add()
+
+    response = await api.get(f"/{trip.id}", headers=api.auth.headers(user_id=api.driver))
+
+    assert response.json()["vehicle"] == CIVIC
+
+
+async def test_a_pending_rider_gets_no_vehicle(api: API) -> None:
+    trip = await api.add()
+    rider = uuid4()
+    await api.add_request(trip, rider, RequestStatus.PENDING)
+
+    def accounts(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("Accounts shouldn't be asked for a pending rider")
+
+    response = await api.get(
+        f"/{trip.id}", headers=api.auth.headers(user_id=rider), accounts=accounts
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["vehicle"] is None
+
+
+async def test_accounts_down_still_loads_the_trip_without_the_vehicle(api: API) -> None:
+    trip = await api.add()
+
+    response = await api.get(
+        f"/{trip.id}",
+        headers=api.auth.headers(user_id=api.driver),
+        accounts=lambda request: httpx.Response(501),  # #143 not deployed yet
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["vehicle"] is None
+    assert response.json()["trip"]["id"] == str(trip.id)
