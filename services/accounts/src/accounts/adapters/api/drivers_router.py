@@ -1,8 +1,9 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Every endpoint returns 501 until its task implements it: documents (#9), status (#10),
-vehicle (#125), admin approval (#127), profiles and the internal lookups (#143, #146).
+Implemented: status (#10). The rest return 501 until their task implements them:
+documents (#9), vehicle (#125), admin approval (#127), profiles and the internal lookups
+(#143, #146).
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
 """
@@ -12,10 +13,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 
+from accounts.adapters.api.dependencies import Uow
 from accounts.adapters.api.schemas import (
     AdminDriver,
     DocumentKind,
+    DocumentsUploaded,
     DriverProfile,
+    DriverStatus,
     InternalContacts,
     InternalUsers,
     Problem,
@@ -23,6 +27,8 @@ from accounts.adapters.api.schemas import (
     RejectDriverRequest,
     Vehicle,
 )
+from accounts.application.drivers import GetMyDriverProfile
+from accounts.domain import driver as domain
 from common_security.dependencies import AuthenticatedUser, require_role
 from common_security.user import CurrentUser
 
@@ -44,6 +50,24 @@ UserIds = Annotated[
 
 def _problem(description: str, code: str) -> dict[str, Any]:
     return {"model": Problem, "description": f"{description} (code `{code}`)"}
+
+
+def driver_profile_out(profile: domain.DriverProfile) -> DriverProfile:
+    vehicle = profile.vehicle
+    return DriverProfile(
+        status=DriverStatus(profile.status.value),
+        rejection_reason=profile.rejection_reason,
+        documents=DocumentsUploaded(
+            licence=profile.licence_key is not None, insurance=profile.insurance_key is not None
+        ),
+        vehicle=Vehicle(
+            make=vehicle.make, model=vehicle.model, colour=vehicle.colour, plate=vehicle.plate
+        )
+        if vehicle
+        else None,
+        submitted_at=profile.submitted_at,
+        reviewed_at=profile.reviewed_at,
+    )
 
 
 def _not_implemented() -> NoReturn:
@@ -75,8 +99,8 @@ DOCUMENT_FILE: Responses = {
     "`none`, `pending`, `approved` or `rejected` (with the reason).",
     responses=UNAUTHORIZED,
 )
-async def my_driver_profile(user: AuthenticatedUser) -> DriverProfile:
-    _not_implemented()
+async def my_driver_profile(user: AuthenticatedUser, uow: Uow) -> DriverProfile:
+    return driver_profile_out(await GetMyDriverProfile(uow)(user.id))
 
 
 @driver_router.put(

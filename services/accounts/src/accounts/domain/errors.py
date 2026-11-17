@@ -6,6 +6,7 @@ from common_web import (
     DomainError,
     ForbiddenError,
     InvalidInputError,
+    NotFoundError,
     UnauthorizedError,
 )
 
@@ -54,3 +55,34 @@ class InvalidRefreshTokenError(UnauthorizedError):
 
     code = "invalid_refresh_token"
     title = "Session expired"
+
+
+# ---------------------------------------------------------------- drivers (#8)
+
+
+class DriverAlreadyApprovedError(ConflictError):
+    """An approved driver can't replace their documents (409)."""
+
+    code = "driver_already_approved"
+    title = "Already approved"
+
+
+class DriverNotPendingError(ConflictError):
+    """Only an application waiting for a decision can be approved or rejected (409)."""
+
+    code = "driver_not_pending"
+    title = "Application not pending"
+
+
+class VehicleMissingError(ConflictError):
+    """Approving needs a saved vehicle: riders need it to find their driver (409)."""
+
+    code = "vehicle_missing"
+    title = "No vehicle saved"
+
+
+class DriverNotFoundError(NotFoundError):
+    """This user has never applied to drive (404)."""
+
+    code = "driver_not_found"
+    title = "No driver application"
