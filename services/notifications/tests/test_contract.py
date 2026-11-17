@@ -1,5 +1,5 @@
 """The Notifications API contract (#262): the bell's endpoints exist, need a token, validate
-their input, document their errors, and return 501 until #145 implements them."""
+their input and document their errors. What they return is in test_notifications_api.py."""
 
 from typing import Any
 
@@ -27,17 +27,13 @@ def test_spec_documents_the_endpoints() -> None:
 
 
 @pytest.mark.parametrize(("method", "path"), ENDPOINTS)
-async def test_endpoints_need_a_token_then_return_501(
-    auth: TestAuth, method: str, path: str
-) -> None:
+async def test_endpoints_need_a_token(auth: TestAuth, method: str, path: str) -> None:
     app = create_app()
     auth.install(app)
     async with _client(app) as client:
         anonymous = await client.request(method, path)
-        logged_in = await client.request(method, path, headers=auth.headers())
 
     assert anonymous.status_code == 401
-    assert logged_in.status_code == 501
 
 
 @pytest.mark.parametrize("query", ["limit=0", "limit=101", "limit=many"])

@@ -49,6 +49,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 
 - [Technology stack](docs/architecture/tech-stack.md)
 - [Architecture](docs/architecture/architecture.md)
+- [Location privacy](docs/architecture/location-privacy.md) (where riders' and drivers' locations go, and the tests that prove it)
 - [Architecture Decision Records](docs/architecture/adr/README.md)
 - [API documentation](docs/api/README.md) (Swagger UI for each service, endpoints and events)
 - [API contracts](contracts/README.md)

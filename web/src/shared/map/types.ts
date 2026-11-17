@@ -13,7 +13,8 @@ export type MapRoute = {
 export type MapMarker = {
   id: string;
   lngLat: LngLat;
-  kind: "pickup" | "campus" | "you" | "stop";
+  /** accepted: an accepted rider's pickup on the driver's route (green, with a tick). */
+  kind: "pickup" | "campus" | "you" | "stop" | "accepted";
   /** Short text shown next to the marker, e.g. "Jordan 8:01". */
   label?: string;
 };
