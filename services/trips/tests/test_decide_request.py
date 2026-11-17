@@ -1,0 +1,600 @@
+"""Accept, decline and cancel use case tests (#138)."""
+
+from collections.abc import Sequence
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+import pytest
+
+from trips.application.decide_request import (
+    AcceptRequest,
+    CancelRequest,
+    DeclineRequest,
+    GetSeatRequest,
+    RequestActionCommand,
+)
+from trips.application.request_routing import DetourEstimate
+from trips.domain.entities import Trip
+from trips.domain.errors import RoutingUnavailableError
+from trips.domain.request_errors import (
+    NotTripDriverError,
+    NotYourRequestError,
+    RequestNotCancellableError,
+    RequestNotDecidableError,
+    RequestNotFoundError,
+    RequestNotPendingError,
+    RequestNotVisibleError,
+    SeatTakenError,
+)
+from trips.domain.seat_request import RequestStatus, SeatRequest
+from trips.domain.values import Direction, Location, Quote, TripStatus
+
+DEPARTURE = datetime(2030, 1, 1, 9, 0, tzinfo=UTC)
+NOW = datetime(2029, 12, 31, tzinfo=UTC)
+NOT_PENDING = [
+    RequestStatus.ACCEPTED,
+    RequestStatus.DECLINED,
+    RequestStatus.CANCELLED,
+    RequestStatus.EXPIRED,
+    RequestStatus.PAYMENT_FAILED,
+]
+FINISHED = [
+    RequestStatus.DECLINED,
+    RequestStatus.CANCELLED,
+    RequestStatus.EXPIRED,
+    RequestStatus.PAYMENT_FAILED,
+]
+
+
+def make_trip(*, seats_available: int, status: TripStatus) -> Trip:
+    return Trip(
+        id=uuid4(),
+        driver_id=uuid4(),
+        direction=Direction.TO_CAMPUS,
+        origin=Location("Home", 49.8, -97.2),
+        destination=Location("Campus", 49.8075, -97.1366),
+        departure_at=DEPARTURE,
+        estimated_arrival_at=DEPARTURE.replace(hour=10),
+        duration_seconds=3600,
+        distance_meters=10000,
+        seats_total=3,
+        seats_available=seats_available,
+        status=status,
+    )
+
+
+def make_request(trip: Trip, status: RequestStatus) -> SeatRequest:
+    request = SeatRequest.create(
+        trip_id=trip.id,
+        rider_id=uuid4(),
+        pickup=Location("Pembina pickup", 49.82, -97.15),
+        walk_seconds=120,
+        rider_distance_meters=4000,
+        detour_seconds=180,
+        cost=Quote(450, "CAD", "$4.50 for 10 km"),
+        now=NOW,
+    )
+    return replace(request, status=status)
+
+
+class FakeTrips:
+    def __init__(self, trip: Trip) -> None:
+        self.trip = trip
+
+    async def get(self, trip_id: UUID) -> Trip | None:
+        return self.trip if trip_id == self.trip.id else None
+
+
+class FakeRequests:
+    def __init__(self, trip: Trip, request: SeatRequest) -> None:
+        self.trip = trip
+        self.items = {request.id: request}
+        self.locked: list[UUID] = []
+        self.calls: list[str] = []
+
+    async def lock_trip(self, trip_id: UUID) -> None:
+        self.locked.append(trip_id)
+        self.calls.append("lock")
+
+    async def list_accepted_pickups(self, trip_id: UUID) -> list[Location]:
+        accepted = sorted(
+            (item for item in self.items.values() if item.status is RequestStatus.ACCEPTED),
+            key=lambda item: item.pickup_order or 0,
+        )
+        return [item.pickup for item in accepted]
+
+    async def get(self, request_id: UUID) -> SeatRequest | None:
+        return self.items.get(request_id)
+
+    async def save_decision(self, request: SeatRequest, *, expected: RequestStatus) -> bool:
+        self.calls.append("save")
+        if self.items[request.id].status is not expected:
+            return False
+        self.items[request.id] = request
+        return True
+
+    async def take_seat(self, trip_id: UUID) -> bool:
+        if self.trip.seats_available == 0:
+            return False
+        self.trip.seats_available -= 1
+        return True
+
+    async def release_seat(self, trip_id: UUID) -> None:
+        self.trip.seats_available += 1
+
+    async def place_accepted(self, request: SeatRequest, *, position: int | None) -> int:
+        others = sorted(
+            (
+                item
+                for item in self.items.values()
+                if item.status is RequestStatus.ACCEPTED
+                and item.id != request.id
+                and item.pickup_order is not None
+            ),
+            key=lambda item: item.pickup_order or 0,
+        )
+        index = len(others) if position is None else min(position, len(others))
+        for number, item in enumerate([*others[:index], request, *others[index:]], start=1):
+            self.items[item.id] = replace(self.items[item.id], pickup_order=number)
+        return index + 1
+
+    async def renumber_accepted(self, trip_id: UUID) -> None:
+        accepted = sorted(
+            (item for item in self.items.values() if item.status is RequestStatus.ACCEPTED),
+            key=lambda item: item.pickup_order or 0,
+        )
+        for number, item in enumerate(accepted, start=1):
+            self.items[item.id] = replace(item, pickup_order=number)
+
+
+class FakeRouting:
+    """Routing's detour estimate when accepting (#360). With no ``positions`` it can't
+    answer, like Routing being down, so the position saved with the request is used."""
+
+    def __init__(self, positions: list[int] | None = None) -> None:
+        self.positions = list(positions) if positions is not None else None
+        self.calls: list[int] = []  # how many accepted pickups it was given each time
+
+    async def estimate_detour(
+        self, *, trip_id: UUID, accepted_pickups: Sequence[Location], new_pickup: Location
+    ) -> DetourEstimate:
+        self.calls.append(len(accepted_pickups))
+        if self.positions is None:
+            raise RoutingUnavailableError()
+        return DetourEstimate(added_seconds=60, position=self.positions.pop(0), total_seconds=900)
+
+
+class FakeEvents:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, UUID, bool | None]] = []
+
+    async def request_accepted(self, request: SeatRequest, trip: Trip) -> None:
+        self.calls.append(("accepted", request.id, None))
+
+    async def request_declined(
+        self, request: SeatRequest, trip: Trip, *, was_accepted: bool
+    ) -> None:
+        self.calls.append(("declined", request.id, was_accepted))
+
+    async def request_cancelled(
+        self, request: SeatRequest, trip: Trip, *, was_accepted: bool
+    ) -> None:
+        self.calls.append(("cancelled", request.id, was_accepted))
+
+
+class Setup:
+    def __init__(
+        self,
+        *,
+        status: RequestStatus = RequestStatus.PENDING,
+        seats_available: int = 2,
+        trip_status: TripStatus = TripStatus.SCHEDULED,
+    ) -> None:
+        self.trip = make_trip(seats_available=seats_available, status=trip_status)
+        self.request = make_request(self.trip, status)
+        self.requests = FakeRequests(self.trip, self.request)
+        self.events = FakeEvents()
+        self.routing = FakeRouting()
+
+    def accept(self) -> AcceptRequest:
+        return AcceptRequest(
+            trips=FakeTrips(self.trip),
+            requests=self.requests,
+            events=self.events,
+            routing=self.routing,
+        )
+
+    def decline(self) -> DeclineRequest:
+        return DeclineRequest(
+            trips=FakeTrips(self.trip), requests=self.requests, events=self.events
+        )
+
+    def cancel(self) -> CancelRequest:
+        return CancelRequest(trips=FakeTrips(self.trip), requests=self.requests, events=self.events)
+
+    def command(self, user_id: UUID, now: datetime = NOW) -> RequestActionCommand:
+        return RequestActionCommand(request_id=self.request.id, user_id=user_id, now=now)
+
+    @property
+    def stored_status(self) -> RequestStatus:
+        return self.requests.items[self.request.id].status
+
+
+# ---------------------------------------------------------------- accept
+
+
+async def test_driver_accepts_a_pending_request() -> None:
+    s = Setup()
+
+    result = await s.accept().execute(s.command(s.trip.driver_id))
+
+    assert result.status == RequestStatus.ACCEPTED
+    assert result.decided_at == NOW
+    assert s.trip.seats_available == 1
+    assert s.events.calls == [("accepted", s.request.id, None)]
+
+
+@pytest.mark.parametrize("who", ["rider", "stranger"])
+async def test_only_the_trips_driver_can_accept(who: str) -> None:
+    s = Setup()
+    user_id = s.request.rider_id if who == "rider" else uuid4()
+
+    with pytest.raises(NotTripDriverError):
+        await s.accept().execute(s.command(user_id))
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
+async def test_accepting_an_unknown_request_is_not_found() -> None:
+    s = Setup()
+    command = RequestActionCommand(request_id=uuid4(), user_id=s.trip.driver_id, now=NOW)
+
+    with pytest.raises(RequestNotFoundError):
+        await s.accept().execute(command)
+
+
+@pytest.mark.parametrize("status", NOT_PENDING)
+async def test_only_a_pending_request_can_be_accepted(status: RequestStatus) -> None:
+    s = Setup(status=status)
+
+    with pytest.raises(RequestNotPendingError):
+        await s.accept().execute(s.command(s.trip.driver_id))
+
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
+async def test_accepting_when_no_seat_is_left_returns_seat_taken() -> None:
+    s = Setup(seats_available=0)
+
+    with pytest.raises(SeatTakenError):
+        await s.accept().execute(s.command(s.trip.driver_id))
+
+    assert s.trip.seats_available == 0
+    assert s.events.calls == []
+
+
+async def test_accepting_twice_publishes_once() -> None:
+    s = Setup()
+    command = s.command(s.trip.driver_id)
+    await s.accept().execute(command)
+
+    with pytest.raises(RequestNotPendingError):
+        await s.accept().execute(command)
+
+    assert len(s.events.calls) == 1
+    assert s.trip.seats_available == 1
+
+
+async def test_accepting_after_departure_is_rejected() -> None:
+    s = Setup()
+    command = s.command(s.trip.driver_id, now=DEPARTURE + timedelta(minutes=1))
+
+    with pytest.raises(RequestNotPendingError):
+        await s.accept().execute(command)
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
+async def test_accepting_on_a_cancelled_trip_is_not_reported_as_seat_taken() -> None:
+    s = Setup(trip_status=TripStatus.CANCELLED)
+
+    with pytest.raises(RequestNotPendingError):
+        await s.accept().execute(s.command(s.trip.driver_id))
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
+# ---------------------------------------------------------------- decline
+
+
+async def test_declining_a_pending_request_keeps_the_seats() -> None:
+    s = Setup()
+
+    result = await s.decline().execute(s.command(s.trip.driver_id))
+
+    assert result.status == RequestStatus.DECLINED
+    assert s.trip.seats_available == 2
+    assert s.events.calls == [("declined", s.request.id, False)]
+
+
+async def test_declining_an_accepted_request_gives_the_seat_back() -> None:
+    s = Setup(status=RequestStatus.ACCEPTED, seats_available=1)
+
+    await s.decline().execute(s.command(s.trip.driver_id))
+
+    assert s.trip.seats_available == 2
+    assert s.events.calls == [("declined", s.request.id, True)]
+
+
+async def test_only_the_trips_driver_can_decline() -> None:
+    s = Setup()
+
+    with pytest.raises(NotTripDriverError):
+        await s.decline().execute(s.command(s.request.rider_id))
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.events.calls == []
+
+
+@pytest.mark.parametrize("status", FINISHED)
+async def test_a_finished_request_cannot_be_declined(status: RequestStatus) -> None:
+    s = Setup(status=status)
+
+    with pytest.raises(RequestNotDecidableError):
+        await s.decline().execute(s.command(s.trip.driver_id))
+
+    assert s.trip.seats_available == 2
+    assert s.events.calls == []
+
+
+async def test_declining_after_departure_is_rejected() -> None:
+    s = Setup(status=RequestStatus.ACCEPTED, seats_available=1)
+    command = s.command(s.trip.driver_id, now=DEPARTURE + timedelta(minutes=1))
+
+    with pytest.raises(RequestNotDecidableError):
+        await s.decline().execute(command)
+
+    assert s.trip.seats_available == 1
+    assert s.events.calls == []
+
+
+async def test_declining_on_a_cancelled_trip_is_rejected() -> None:
+    s = Setup(trip_status=TripStatus.CANCELLED)
+
+    with pytest.raises(RequestNotDecidableError):
+        await s.decline().execute(s.command(s.trip.driver_id))
+
+
+# ---------------------------------------------------------------- cancel
+
+
+async def test_rider_cancels_a_pending_request() -> None:
+    s = Setup()
+
+    result = await s.cancel().execute(s.command(s.request.rider_id))
+
+    assert result.status == RequestStatus.CANCELLED
+    assert s.trip.seats_available == 2
+    assert s.events.calls == [("cancelled", s.request.id, False)]
+
+
+async def test_rider_cancelling_an_accepted_request_gives_the_seat_back() -> None:
+    s = Setup(status=RequestStatus.ACCEPTED, seats_available=1)
+
+    await s.cancel().execute(s.command(s.request.rider_id))
+
+    assert s.trip.seats_available == 2
+    assert s.events.calls == [("cancelled", s.request.id, True)]
+
+
+@pytest.mark.parametrize("who", ["driver", "stranger"])
+async def test_only_the_rider_can_cancel(who: str) -> None:
+    s = Setup()
+    user_id = s.trip.driver_id if who == "driver" else uuid4()
+
+    with pytest.raises(NotYourRequestError):
+        await s.cancel().execute(s.command(user_id))
+
+    assert s.stored_status == RequestStatus.PENDING
+    assert s.events.calls == []
+
+
+@pytest.mark.parametrize("status", FINISHED)
+async def test_a_finished_request_cannot_be_cancelled(status: RequestStatus) -> None:
+    s = Setup(status=status)
+
+    with pytest.raises(RequestNotCancellableError):
+        await s.cancel().execute(s.command(s.request.rider_id))
+
+    assert s.events.calls == []
+
+
+async def test_cancelling_after_departure_is_rejected() -> None:
+    s = Setup(status=RequestStatus.ACCEPTED, seats_available=1)
+    command = s.command(s.request.rider_id, now=DEPARTURE + timedelta(minutes=1))
+
+    with pytest.raises(RequestNotCancellableError):
+        await s.cancel().execute(command)
+
+    assert s.trip.seats_available == 1
+
+
+async def test_cancelling_twice_gives_back_one_seat_and_publishes_once() -> None:
+    s = Setup(status=RequestStatus.ACCEPTED, seats_available=1)
+    command = s.command(s.request.rider_id)
+    await s.cancel().execute(command)
+
+    with pytest.raises(RequestNotCancellableError):
+        await s.cancel().execute(command)
+
+    assert s.trip.seats_available == 2
+    assert len(s.events.calls) == 1
+
+
+def add_pending(setup: Setup, position: int | None) -> SeatRequest:
+    request = replace(make_request(setup.trip, RequestStatus.PENDING), detour_position=position)
+    setup.requests.items[request.id] = request
+    return request
+
+
+def by_driver(setup: Setup, request: SeatRequest) -> RequestActionCommand:
+    return RequestActionCommand(request_id=request.id, user_id=setup.trip.driver_id, now=NOW)
+
+
+async def test_two_accepts_in_a_row_number_the_pickups_in_route_order() -> None:
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    second = add_pending(setup, 0)
+
+    accepted_first = await setup.accept().execute(by_driver(setup, first))
+    accepted_second = await setup.accept().execute(by_driver(setup, second))
+
+    assert accepted_first.pickup_order == 1
+    assert accepted_second.pickup_order == 1
+    assert setup.requests.items[first.id].pickup_order == 2
+    assert setup.requests.items[second.id].pickup_order == 1
+
+
+@pytest.mark.parametrize("action", ["decline", "cancel"])
+async def test_removing_an_accepted_pickup_from_the_middle_closes_the_gap(action: str) -> None:
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    middle = add_pending(setup, 1)
+    last = add_pending(setup, 2)
+    for request in (first, middle, last):
+        await setup.accept().execute(by_driver(setup, request))
+    trips = FakeTrips(setup.trip)
+
+    if action == "decline":
+        await DeclineRequest(trips=trips, requests=setup.requests, events=setup.events).execute(
+            by_driver(setup, middle)
+        )
+    else:
+        await CancelRequest(trips=trips, requests=setup.requests, events=setup.events).execute(
+            RequestActionCommand(request_id=middle.id, user_id=middle.rider_id, now=NOW)
+        )
+
+    items = setup.requests.items
+    assert items[middle.id].pickup_order is None
+    assert items[first.id].pickup_order == 1
+    assert items[last.id].pickup_order == 2
+
+
+# ---------------------------------------------------------------- read one (#358)
+
+
+@pytest.mark.parametrize("status", list(RequestStatus))
+async def test_the_rider_reads_their_request_whatever_its_status(status: RequestStatus) -> None:
+    """So the screen sees it accepted, declined, expired..."""
+    s = Setup(status=status)
+
+    result = await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+        s.request.id, s.request.rider_id
+    )
+
+    assert result == s.request
+
+
+async def test_the_trips_driver_reads_a_request_on_it() -> None:
+    s = Setup()
+
+    result = await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+        s.request.id, s.trip.driver_id
+    )
+
+    assert result == s.request
+
+
+async def test_anyone_else_is_refused() -> None:
+    s = Setup()
+
+    with pytest.raises(RequestNotVisibleError):
+        await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+            s.request.id, uuid4()
+        )
+
+
+async def test_an_unknown_request_is_not_found() -> None:
+    s = Setup()
+
+    with pytest.raises(RequestNotFoundError):
+        await GetSeatRequest(trips=FakeTrips(s.trip), requests=s.requests).execute(
+            uuid4(), s.request.rider_id
+        )
+
+
+# ---------------------------------------------------------------- placing on accept (#360)
+
+
+async def test_accepting_places_the_pickup_where_the_route_is_now() -> None:
+    """Both asked before anyone was accepted, so both saved position 0. Accepting the second
+    puts it where Routing places it now, after the first, not at the stale 0."""
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    second = add_pending(setup, 0)
+    setup.routing = FakeRouting(positions=[0, 1])
+
+    await setup.accept().execute(by_driver(setup, first))
+    await setup.accept().execute(by_driver(setup, second))
+
+    assert setup.requests.items[first.id].pickup_order == 1
+    assert setup.requests.items[second.id].pickup_order == 2
+    # Routing was given the pickups accepted at that moment: none, then the first one.
+    assert setup.routing.calls == [0, 1]
+    assert setup.requests.locked == [setup.trip.id, setup.trip.id]
+
+
+async def test_with_routing_down_the_position_from_the_request_is_used(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    setup = Setup(seats_available=3)
+    first = replace(setup.request, detour_position=0)
+    setup.requests.items[first.id] = first
+    second = add_pending(setup, 0)
+
+    await setup.accept().execute(by_driver(setup, first))
+    accepted = await setup.accept().execute(by_driver(setup, second))
+
+    assert accepted.status is RequestStatus.ACCEPTED
+    assert setup.requests.items[second.id].pickup_order == 1  # saved position 0
+    assert setup.events.calls[-1] == ("accepted", second.id, None)
+    assert "using its position from when it was requested" in caplog.text
+    assert str(second.id) in caplog.text
+
+
+async def test_a_request_that_isnt_pending_doesnt_ask_routing() -> None:
+    setup = Setup(status=RequestStatus.DECLINED)
+
+    with pytest.raises(RequestNotPendingError):
+        await setup.accept().execute(setup.command(setup.trip.driver_id))
+
+    assert setup.routing.calls == []
+    assert setup.requests.locked == []
+
+
+# ---------------------------------------------------------------- lock order
+
+
+@pytest.mark.parametrize("action", ["accept", "decline", "cancel"])
+async def test_every_action_locks_the_trip_before_changing_a_request(action: str) -> None:
+    """One lock order for all three, so they can't deadlock each other on one trip."""
+    s = Setup(status=RequestStatus.PENDING if action == "accept" else RequestStatus.ACCEPTED)
+    if action == "accept":
+        await s.accept().execute(s.command(s.trip.driver_id))
+    elif action == "decline":
+        await s.decline().execute(s.command(s.trip.driver_id))
+    else:
+        await s.cancel().execute(s.command(s.request.rider_id))
+
+    assert s.requests.calls[:2] == ["lock", "save"]

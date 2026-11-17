@@ -137,6 +137,19 @@ describe("TripResults", () => {
     expect(within(map).getByText("route walk")).toBeInTheDocument();
   });
 
+  it("opens the selected trip, keeping the search", async () => {
+    api();
+    renderWithProviders(<TripResults query={query} />);
+
+    await screen.findByRole("heading", { name: "2 trips tomorrow" });
+    expect(screen.getByRole("link", { name: "See trip · $4.60" }).getAttribute("href")).toMatch(
+      /^\/ride\/trip\/a\?lat=49\.87680&lng=-97\.14380&direction=to_campus&time=/,
+    );
+
+    await userEvent.click(cards()[1]!);
+    expect(screen.getByRole("link", { name: "See trip · $4.20" }).getAttribute("href")).toMatch(/^\/ride\/trip\/b\?/);
+  });
+
   it("highlights another trip when it's chosen, without moving the map", async () => {
     api();
     renderWithProviders(<TripResults query={query} />);
