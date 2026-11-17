@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { type ApiError, retryServerErrors } from "@/shared/api";
 
 import { acceptRequest, declineRequest, getRoute, getTrip, getTripRequests } from "../api/tripsApi";
+import type { Trip } from "../model/postTrip";
 import { applyDecision, type DriverRequest, type TripDetail } from "../model/requests";
 
 const tripKey = (tripId: string) => ["trips", "detail", tripId] as const;
@@ -64,4 +65,27 @@ export function useDecideRequest(tripId: string) {
       void queryClient.invalidateQueries({ queryKey: requestsKey(tripId) });
     },
   });
+}
+
+/**
+ * For the Cancel trip action on the trip page (#273): once cancelled, the page shows the trip
+ * as cancelled straight away (so Accept and Decline go), then the trip and its requests are
+ * fetched again, since cancelling closes every request. After a failed cancel (e.g. the trip
+ * started meanwhile) they're fetched again too.
+ */
+export function useTripCancelled(tripId: string) {
+  const queryClient = useQueryClient();
+  const refresh = () => {
+    void queryClient.invalidateQueries({ queryKey: tripKey(tripId) });
+    void queryClient.invalidateQueries({ queryKey: requestsKey(tripId) });
+  };
+  return {
+    cancelled: (trips: Trip[]) => {
+      const detail = queryClient.getQueryData<TripDetail>(tripKey(tripId));
+      const trip = trips.find((t) => t.id === tripId);
+      if (detail && trip) queryClient.setQueryData<TripDetail>(tripKey(tripId), { ...detail, trip });
+      refresh();
+    },
+    failed: refresh,
+  };
 }

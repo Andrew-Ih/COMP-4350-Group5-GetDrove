@@ -58,7 +58,7 @@ async def test_add_trip_saves_to_database() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
+async def test_list_by_driver_filters_and_sorts_upcoming_trips() -> None:
     engine = create_async_engine(get_settings().database_url)
 
     try:
@@ -141,13 +141,15 @@ async def test_get_upcoming_by_driver_filters_and_sorts_trips() -> None:
 
             await session.flush()
 
-            result = await repository.get_upcoming_by_driver(
+            result = await repository.list_by_driver(
                 driver_id=driver_id,
                 now=now,
+                past=False,
             )
 
             assert [trip.id for trip in result] == [
                 earlier_trip.id,
+                cancelled_trip.id,
                 later_trip.id,
             ]
 

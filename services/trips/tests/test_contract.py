@@ -169,6 +169,7 @@ async def test_post_trip_uses_injected_service() -> None:
                 seats_total=3,
                 seats_available=3,
                 status="scheduled",
+                series_id=None,
             )
 
     fake_service = FakePostTripService()
@@ -233,11 +234,13 @@ async def test_my_trips_returns_upcoming_trips() -> None:
         seats_total=3,
         seats_available=3,
         status="scheduled",
+        series_id=None,
     )
 
     class FakeUpcomingTripsService:
-        async def execute(self, *, driver_id: UUID) -> list[SimpleNamespace]:
+        async def execute(self, *, driver_id: UUID, past: bool) -> list[SimpleNamespace]:
             assert driver_id == auth.user_id
+            assert not past
             return [expected_trip]
 
     app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
@@ -266,7 +269,7 @@ async def test_my_trips_returns_empty_list() -> None:
     auth.install(app)
 
     class FakeUpcomingTripsService:
-        async def execute(self, *, driver_id: UUID) -> list[SimpleNamespace]:
+        async def execute(self, *, driver_id: UUID, past: bool) -> list[SimpleNamespace]:
             return []
 
     app.dependency_overrides[get_upcoming_trips] = lambda: FakeUpcomingTripsService()
