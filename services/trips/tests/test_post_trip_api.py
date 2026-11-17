@@ -277,8 +277,9 @@ async def test_lifespan_retries_pending_event_and_stops_relay(
     monkeypatch.setattr(OutboxRelay, "publish_pending", publish_pending)
     redis.xadd.side_effect = xadd
 
-    # The event consumer (#11) shares this Redis. There are no Accounts events to read, and
-    # like a real idle Redis, each read waits a moment before answering "nothing new".
+    # The event consumer (driver decisions #11, and failed payments) shares this Redis. There
+    # are no events to read, and like a real idle Redis, each read waits a moment before
+    # answering "nothing new".
     async def no_new_events(*args: object, **kwargs: object) -> list[object]:
         await asyncio.sleep(0.05)
         return []
@@ -293,8 +294,11 @@ async def test_lifespan_retries_pending_event_and_stops_relay(
         assert (await saved_events(api))[0]["published_at"] is not None
 
     assert attempts == 2
-    # Trips listens to Accounts' events (#11) from the start of the stream.
-    redis.xgroup_create.assert_awaited_with("events.accounts", "trips", id="0", mkstream=True)
+    # One consumer listens from the start of both streams: Accounts' driver decisions (#11)
+    # and failed payments.
+    redis.xgroup_create.assert_any_await("events.accounts", "trips", id="0", mkstream=True)
+    redis.xgroup_create.assert_any_await("events.payments", "trips", id="0", mkstream=True)
+    assert redis.xgroup_create.await_count == 2
     redis.aclose.assert_awaited_once()
 
 
