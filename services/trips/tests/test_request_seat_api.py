@@ -507,10 +507,8 @@ async def test_a_request_meeting_the_drivers_rules_is_auto_accepted(api: API) ->
 
     [row] = await saved_requests(api)
     assert (row["status"], row["auto_accepted"], row["pickup_order"]) == ("accepted", True, 1)
-    assert [event["type"] for event in await saved_events(api)] == [
-        "SeatRequested",
-        "RequestAccepted",
-    ]
+    # Only RequestAccepted: seat-requested.v1 isn't published for an auto-accepted request.
+    assert [event["type"] for event in await saved_events(api)] == ["RequestAccepted"]
     async with api[2].connect() as connection:
         seats = await connection.execute(
             select(trips.c.seats_available).where(trips.c.id == trip.id)

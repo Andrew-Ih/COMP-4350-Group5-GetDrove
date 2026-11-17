@@ -18,10 +18,11 @@ from trips.application.ports import (
 from trips.application.request_routing import RequestRoutingService
 from trips.domain.auto_accept import AutoAcceptRules, auto_accept_allows
 from trips.domain.entities import Trip
+from trips.domain.errors import RoutingUnavailableError
 from trips.domain.request_eligibility import RequestEligibility, ensure_request_eligible
 from trips.domain.request_errors import AccountsUnavailableError, TripNotFoundError
 from trips.domain.seat_request import SeatRequest
-from trips.domain.values import Point, ride_meters
+from trips.domain.values import Location, Point, ride_meters
 
 logger = logging.getLogger(__name__)
 
@@ -129,19 +130,57 @@ class RequestSeat:
         await self.requests.lock_trip(trip.id)
         current_trip = await self.trips.get(trip.id)
         ensure_request_eligible(replace(facts, trip=current_trip, has_card=has_card))
+        detour_known = True
+        if rules.enabled:
+            request, detour_known = await self._detour_now(request, accepted_pickups)
         await self.requests.add(request)
-        await self.events.seat_requested(request, trip)
 
-        allowed = current_trip is not None and auto_accept_allows(
-            rules,
-            detour_seconds=request.detour_seconds,
-            rating_known=rating_known,
-            rider_rating=rider_rating,
-            seats_available=current_trip.seats_available,
-        )
-        if allowed and current_trip is not None:
-            return await self._auto_accept(request, current_trip, command.now)
+        if current_trip is not None and detour_known:
+            allowed = auto_accept_allows(
+                rules,
+                detour_seconds=request.detour_seconds,
+                rating_known=rating_known,
+                rider_rating=rider_rating,
+                seats_available=current_trip.seats_available,
+            )
+            accepted = (
+                await self._auto_accept(request, current_trip, command.now) if allowed else None
+            )
+            if accepted is not None:
+                # Only RequestAccepted (seat-requested.v1): the driver gets "accepted
+                # automatically", not a request to accept a rider who's already in.
+                return accepted
+
+        await self.events.seat_requested(request, trip)
         return request
+
+    async def _detour_now(
+        self, request: SeatRequest, estimated_with: list[Location]
+    ) -> tuple[SeatRequest, bool]:
+        """(request, detour known). The detour was worked out before the trip was locked, so
+        another accept may have landed since. Under the lock, if the accepted pickups have
+        changed, ask Routing again and use that for the limit, the pickup position and the
+        saved request, like AcceptRequest does. If Routing can't answer, the detour is
+        unknown and the request waits for the driver."""
+        accepted_now = await self.requests.list_accepted_pickups(request.trip_id)
+        if accepted_now == estimated_with:
+            return request, True
+        try:
+            detour = await self.routing.estimate_detour(
+                trip_id=request.trip_id,
+                accepted_pickups=accepted_now,
+                new_pickup=request.pickup,
+            )
+        except RoutingUnavailableError:
+            logger.warning(
+                "Routing couldn't re-estimate request %s's detour; leaving it pending",
+                request.id,
+            )
+            return request, False
+        return (
+            replace(request, detour_seconds=detour.added_seconds, detour_position=detour.position),
+            True,
+        )
 
     async def _rider_rating(
         self, rules: AutoAcceptRules, rider_id: UUID
@@ -159,13 +198,15 @@ class RequestSeat:
         profile = profiles.get(rider_id)
         return (True, profile.rating) if profile is not None else (False, None)
 
-    async def _auto_accept(self, request: SeatRequest, trip: Trip, now: datetime) -> SeatRequest:
+    async def _auto_accept(
+        self, request: SeatRequest, trip: Trip, now: datetime
+    ) -> SeatRequest | None:
         """Accepts like a driver would (#138): the same atomic seat update, so auto-accept
         never goes over the seat count. The seat is taken first: if none is left, nothing
-        has changed and the request simply stays pending. The trip is still locked, so the
-        pickups accepted so far haven't moved since the detour was worked out."""
+        has changed and it returns None, so the request stays pending. Called under the trip
+        lock, after _detour_now, so the detour and position are current."""
         if not await self.requests.take_seat(trip.id):
-            return request
+            return None
         accepted = replace(request.accept(now), auto_accepted=True)
         await self.requests.save_decision(accepted, expected=request.status)
         order = await self.requests.place_accepted(accepted, position=request.detour_position)
