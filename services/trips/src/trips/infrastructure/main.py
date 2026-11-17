@@ -11,7 +11,6 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
-    create_async_engine,
 )
 
 from common_security.dependencies import install_security
@@ -23,6 +22,7 @@ from trips.adapters.account_events import register_handlers
 from trips.adapters.api import health, trips_router
 from trips.adapters.persistence.tables import consumer as consumer_tables
 from trips.adapters.persistence.tables import outbox
+from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -49,10 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
 
-    engine = create_async_engine(
-        settings.database_url,
-        pool_pre_ping=True,
-    )
+    engine = create_database_engine(settings.database_url)
 
     app.state.session_factory = async_sessionmaker(
         engine,
@@ -84,9 +81,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             base_url=settings.payments_url,
             timeout=2.0,
         ) as payments_client,
+        httpx.AsyncClient(
+            base_url=settings.accounts_url,
+            timeout=2.0,
+        ) as accounts_client,
     ):
         app.state.routing_client = routing_client
         app.state.payments_client = payments_client
+        app.state.accounts_client = accounts_client
         stop = asyncio.Event()
         relay_task = asyncio.create_task(relay.run(stop))
         consumer_task = asyncio.create_task(consumer.run(stop))
