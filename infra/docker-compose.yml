@@ -222,6 +222,8 @@ services:
     environment:
       NOTIFICATIONS_DATABASE_URL: postgresql+asyncpg://notifications:${NOTIFICATIONS_DB_PASSWORD:-notifications}@postgres:5432/getdrove
       NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
+      # Names and emails for notification emails (#146); /internal isn't public.
+      NOTIFICATIONS_ACCOUNTS_URL: http://accounts:8000
       NOTIFICATIONS_SMTP_HOST: mailpit
       NOTIFICATIONS_SMTP_PORT: "1025"
       # Links in emails open the web app through the gateway.

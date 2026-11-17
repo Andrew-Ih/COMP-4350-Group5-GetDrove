@@ -1,8 +1,9 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Implemented: status (#10), documents (#9), vehicle (#125) and admin approval (#127).
-Profiles and the internal lookups (#143, #146) return 501 until their task implements them.
+Implemented: status (#10), documents (#9), vehicle (#125), admin approval (#127), and
+the contacts lookup Notifications needs for emails (#146). Profiles and /internal/users
+(#143) return 501 until their task implements them.
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
 """
@@ -19,6 +20,7 @@ from accounts.adapters.api.schemas import (
     DocumentsUploaded,
     DriverProfile,
     DriverStatus,
+    InternalContact,
     InternalContacts,
     InternalUsers,
     Problem,
@@ -32,6 +34,7 @@ from accounts.application.admin import (
     ListDriverApplications,
     RejectDriver,
 )
+from accounts.application.contacts import ListContacts
 from accounts.application.documents import (
     OpenDriverDocument,
     StoredDocument,
@@ -310,5 +313,11 @@ async def internal_users(ids: UserIds) -> InternalUsers:
     description="For Notifications only: where to send emails.",
     responses=INVALID,
 )
-async def internal_contacts(ids: UserIds) -> InternalContacts:
-    _not_implemented()
+async def internal_contacts(ids: UserIds, uow: Uow) -> InternalContacts:
+    users = await ListContacts(uow)(ids)
+    return InternalContacts(
+        contacts=[
+            InternalContact(id=user.id, first_name=user.first_name, email=user.email.value)
+            for user in users
+        ]
+    )
