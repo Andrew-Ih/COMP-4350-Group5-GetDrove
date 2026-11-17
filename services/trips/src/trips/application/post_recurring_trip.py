@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 from trips.application.ports import (
+    ApprovedDrivers,
     RoutingService,
     TripEvents,
     TripRepository,
@@ -14,7 +15,7 @@ from trips.application.ports import (
 )
 from trips.domain.conflicts import has_trip_conflict
 from trips.domain.entities import Trip, TripSeries
-from trips.domain.errors import DepartureInPastError
+from trips.domain.errors import DepartureInPastError, DriverNotApprovedError
 from trips.domain.recurrence import expand_trip_series
 from trips.domain.values import trip_ends
 
@@ -33,16 +34,22 @@ class PostRecurringTrip:
         series_repository: TripSeriesRepository,
         routing: RoutingService,
         events: TripEvents,
+        approved_drivers: ApprovedDrivers,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.trip_repository = trip_repository
         self.series_repository = series_repository
         self.routing = routing
         self.events = events
+        self.approved_drivers = approved_drivers
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def prepare(self, series: TripSeries) -> list[Trip]:
         """Store a route under each candidate occurrence's ID before database work."""
+        # First, like a one-off trip (#11): only approved drivers can post, and an
+        # unapproved one shouldn't wait for routes that won't be used.
+        if not await self.approved_drivers.is_approved(series.driver_id):
+            raise DriverNotApprovedError()
         if series.departure_at <= self.clock():
             raise DepartureInPastError()
 

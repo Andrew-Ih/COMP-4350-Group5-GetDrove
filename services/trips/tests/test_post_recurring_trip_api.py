@@ -10,12 +10,12 @@ from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, insert, select, text
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import outbox, trip_series, trips
+from trips.adapters.persistence.tables import approved_drivers, outbox, trip_series, trips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, TripStatus
 from trips.infrastructure.main import create_app
@@ -33,6 +33,11 @@ async def api() -> AsyncIterator[tuple[Any, TestAuth, Any]]:
 
     engine = create_async_engine(get_settings().database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    # Only approved drivers can post (#11), recurring trips too; this test's driver is one.
+    async with engine.begin() as connection:
+        await connection.execute(
+            insert(approved_drivers).values(driver_id=auth.user_id, approved_at=datetime.now(UTC))
+        )
 
     try:
         yield app, auth, engine
@@ -47,6 +52,9 @@ async def api() -> AsyncIterator[tuple[Any, TestAuth, Any]]:
                 await connection.execute(delete(trips).where(trips.c.driver_id == auth.user_id))
                 await connection.execute(
                     delete(trip_series).where(trip_series.c.driver_id == auth.user_id)
+                )
+                await connection.execute(
+                    delete(approved_drivers).where(approved_drivers.c.driver_id == auth.user_id)
                 )
         finally:
             await engine.dispose()
@@ -469,3 +477,36 @@ async def test_post_series_rolls_back_when_routing_fails(
     assert saved_series == []
     assert saved_trips == []
     assert saved_events == []
+
+
+async def test_an_unapproved_driver_gets_403_and_nothing_is_saved(
+    api: tuple[Any, TestAuth, Any],
+) -> None:
+    """#8, #11: POST /series is refused like POST /, before Routing is asked."""
+    app, auth, engine = api
+    async with engine.begin() as connection:
+        await connection.execute(
+            delete(approved_drivers).where(approved_drivers.c.driver_id == auth.user_id)
+        )
+
+    def routing(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("an unapproved driver's series shouldn't be routed")
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(routing), base_url="http://routing:8000"
+    ) as routing_client:
+        app.state.routing_client = routing_client
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app),
+            base_url="http://test",
+            headers=auth.headers(),
+        ) as client:
+            response = await client.post("/series", json=series_payload())
+
+    assert response.status_code == 403
+    assert response.json()["code"] == "driver_not_approved"
+    async with engine.connect() as connection:
+        saved = await connection.execute(
+            select(trip_series).where(trip_series.c.driver_id == auth.user_id)
+        )
+        assert saved.first() is None

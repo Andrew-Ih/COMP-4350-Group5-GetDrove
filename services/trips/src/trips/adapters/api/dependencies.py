@@ -130,7 +130,9 @@ class PostRecurringTripCommand:
         *,
         series: TripSeries,
     ) -> PostRecurringTripResult:
-        async with self.session_factory() as session:
+        # The approval check runs in prepare(), before the write transaction, so it gets its
+        # own session: reading on `session` would start a transaction there early.
+        async with self.session_factory() as session, self.session_factory() as lookup:
             trip_repository = SQLAlchemyTripRepository(session)
             series_repository = SQLAlchemyTripSeriesRepository(session)
 
@@ -148,6 +150,7 @@ class PostRecurringTripCommand:
                 series_repository=series_repository,
                 routing=self.routing,
                 events=events,
+                approved_drivers=SQLAlchemyApprovedDrivers(lookup),
             )
 
             candidates = await use_case.prepare(series)
