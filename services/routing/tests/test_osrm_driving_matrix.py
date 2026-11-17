@@ -28,14 +28,14 @@ def table(request: httpx.Request) -> httpx.Response:
 
 
 async def durations(
-    handler: Handler, stops: list[LatLng], timeout: float | None = DETOUR_TIMEOUT
+    handler: Handler, stops: list[LatLng], detour_timeout: float | None = DETOUR_TIMEOUT
 ) -> list[list[float]]:
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler),
         base_url="http://osrm-car:5000",
         timeout=CLIENT_TIMEOUT,
     ) as client:
-        engine = OSRMRoutingEngine(client, detour_timeout_seconds=timeout)
+        engine = OSRMRoutingEngine(client, detour_timeout_seconds=detour_timeout)
         return await engine.durations(stops)
 
 
@@ -86,7 +86,7 @@ async def test_durations_without_a_detour_timeout_uses_the_clients() -> None:
         requests.append(request)
         return table(request)
 
-    await durations(handler, points(3), timeout=None)
+    await durations(handler, points(3), detour_timeout=None)
 
     [request] = requests
     assert request.extensions["timeout"]["read"] == CLIENT_TIMEOUT
