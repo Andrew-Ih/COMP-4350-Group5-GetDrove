@@ -54,6 +54,11 @@ jobs:
       - name: mypy (strict)
         run: uv run mypy
 
+      - name: Contracts match the code
+        # Exports every service's OpenAPI spec and every event's JSON Schema and compares them
+        # with contracts/ (#178). Fails if an endpoint or event changed without regenerating.
+        run: uv run python scripts/export_openapi.py --check
+
       - name: Architecture rules (import-linter)
         run: |
           for service in services/*/; do
