@@ -1,6 +1,8 @@
 """Creates the FastAPI app for the trips service."""
 
 import asyncio
+import contextlib
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,15 +11,21 @@ from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
-    create_async_engine,
 )
 
 from common_security.dependencies import install_security
 from common_web.app import install
+from events import stream_name
+from events.consumer import StreamConsumer
 from events.outbox import OutboxRelay
 from trips.adapters.api import health, trips_router
+from trips.adapters.payment_events import register_payment_handlers
+from trips.adapters.persistence.tables import consumer as consumer_tables
 from trips.adapters.persistence.tables import outbox
+from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -26,17 +34,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings = get_settings()
 
-    engine = create_async_engine(
-        settings.database_url,
-        pool_pre_ping=True,
-    )
+    engine = create_database_engine(settings.database_url)
 
     app.state.session_factory = async_sessionmaker(
         engine,
         expire_on_commit=False,
     )
 
-    redis = Redis.from_url(settings.redis_url)
+    redis = Redis.from_url(settings.redis_url, socket_timeout=10)
     relay = OutboxRelay(
         session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
     )
@@ -51,17 +56,40 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             base_url=settings.payments_url,
             timeout=2.0,
         ) as payments_client,
+        httpx.AsyncClient(
+            base_url=settings.accounts_url,
+            timeout=2.0,
+        ) as accounts_client,
     ):
         app.state.routing_client = routing_client
         app.state.payments_client = payments_client
+        app.state.accounts_client = accounts_client
         stop = asyncio.Event()
         relay_task = asyncio.create_task(relay.run(stop))
+        consumer = StreamConsumer(
+            redis=redis,
+            session_factory=app.state.session_factory,
+            group="trips",
+            streams=[stream_name("payments")],
+            tables=consumer_tables,
+        )
+        register_payment_handlers(consumer)
+        consumer_task = asyncio.create_task(consumer.run(stop))
+
+        def report_stopped(task: asyncio.Task[None]) -> None:
+            if not task.cancelled() and task.exception() is not None:
+                logger.error("Payment failure consumer stopped", exc_info=task.exception())
+
+        consumer_task.add_done_callback(report_stopped)
 
         try:
             yield
         finally:
             stop.set()
+            consumer_task.cancel()
             try:
+                with contextlib.suppress(asyncio.CancelledError):
+                    await consumer_task
                 await relay_task
             finally:
                 await redis.aclose()

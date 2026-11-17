@@ -4,8 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { ApiError } from "@/shared/api";
 
-import { getMyDrivingTrips, getRoute, postTrip } from "../api/tripsApi";
-import type { PostTripRequest, Trip } from "../model/postTrip";
+import { getMyDrivingTrips, getRoute, postTrip, postTripSeries } from "../api/tripsApi";
+import type { PostTripRequest, PostTripSeriesRequest, Trip, TripSeriesResult } from "../model/postTrip";
 
 const MY_DRIVING_TRIPS = ["trips", "mine", "driver"] as const;
 
@@ -14,6 +14,15 @@ export function usePostTrip() {
   return useMutation<Trip, ApiError, PostTripRequest>({
     mutationFn: postTrip,
     // The new trip is one of "my trips" now.
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: MY_DRIVING_TRIPS }),
+  });
+}
+
+/** Posts a trip that repeats on weekdays (#19). */
+export function usePostTripSeries() {
+  const queryClient = useQueryClient();
+  return useMutation<TripSeriesResult, ApiError, PostTripSeriesRequest>({
+    mutationFn: postTripSeries,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: MY_DRIVING_TRIPS }),
   });
 }

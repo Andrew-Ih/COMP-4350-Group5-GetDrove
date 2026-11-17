@@ -77,10 +77,17 @@ class _TableResponse(BaseModel):
 
 
 class OSRMRoutingEngine:
-    """The car profile."""
+    """The car profile.
 
-    def __init__(self, client: httpx.AsyncClient) -> None:
+    ``detour_timeout_seconds`` is how long ``durations`` waits for OSRM (#36). Detours fail
+    fast, so it is shorter than the client's own timeout; without it the client's is used.
+    """
+
+    def __init__(
+        self, client: httpx.AsyncClient, detour_timeout_seconds: float | None = None
+    ) -> None:
         self.client = client
+        self.detour_timeout_seconds = detour_timeout_seconds
 
     async def road_name(self, point: LatLng) -> str | None:
         try:
@@ -133,6 +140,67 @@ class OSRMRoutingEngine:
             distance_meters=round(route.distance),
             duration_seconds=round(route.duration),
         )
+
+    async def durations(self, points: Sequence[LatLng]) -> list[list[float]]:
+        if not points:
+            return []
+        return await self._table(points, {}, rows=len(points), columns=len(points))
+
+    async def durations_around(
+        self, point: LatLng, others: Sequence[LatLng]
+    ) -> tuple[list[float], list[float]]:
+        if not others:
+            return [], []
+        points = [point, *others]
+        indexes = ";".join(str(i) for i in range(1, len(points)))
+        # Two small requests, sent together: the point's row, then its column.
+        row, column = await asyncio.gather(
+            self._table(
+                points, {"sources": "0", "destinations": indexes}, rows=1, columns=len(others)
+            ),
+            self._table(
+                points, {"sources": indexes, "destinations": "0"}, rows=len(others), columns=1
+            ),
+        )
+        return row[0], [seconds for [seconds] in column]
+
+    async def _table(
+        self, points: Sequence[LatLng], selection: dict[str, str], *, rows: int, columns: int
+    ) -> list[list[float]]:
+        coordinates = ";".join(_coordinate(point) for point in points)
+        try:
+            response = await self.client.get(
+                f"/table/v1/driving/{coordinates}",
+                params={
+                    "annotations": "duration",
+                    "radiuses": ";".join([str(MAX_SNAP_METERS)] * len(points)),
+                    **selection,
+                },
+                # None would mean no timeout at all in httpx, so fall back to the client's.
+                timeout=(
+                    httpx.USE_CLIENT_DEFAULT
+                    if self.detour_timeout_seconds is None
+                    else self.detour_timeout_seconds
+                ),
+            )
+            data = _TableResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError) as exc:
+            raise RoutingEngineUnavailableError() from exc
+
+        if (
+            response.status_code != 200
+            or data.code != "Ok"
+            or len(data.durations) != rows
+            or any(len(row) != columns for row in data.durations)
+        ):
+            raise RoutingEngineUnavailableError()
+
+        # A pair with no route comes back as null. A detour worked out from a guess would be
+        # a wrong number, so fail instead (the contract's 503).
+        if any(seconds is None for row in data.durations for seconds in row):
+            raise RoutingEngineUnavailableError()
+
+        return [[seconds for seconds in row if seconds is not None] for row in data.durations]
 
 
 class OSRMWalkingEngine:
