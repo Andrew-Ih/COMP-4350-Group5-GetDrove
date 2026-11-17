@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ChevronRight, MapPin, Repeat } from "lucide-react";
+import { ChevronRight, MapPin, Repeat } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 
@@ -9,14 +9,12 @@ import type { ApiError } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 import { AppHeader, Badge, Button, buttonStyles, Spinner } from "@/shared/ui";
 
-import { type CancelChoice, useCancelTrip, useDrivingTrips, useRidingTrips } from "../hooks/useMyTrips";
+import { useDrivingTrips, useRidingTrips } from "../hooks/useMyTrips";
 import {
   canCancel,
   drivingRoute,
-  formatDay,
   formatMoney,
   formatWhen,
-  isLateCancel,
   rideBadge,
   type RiderTrip,
   type Role,
@@ -24,6 +22,7 @@ import {
   type Trip,
   tripStatusLabel,
 } from "../model/myTrips";
+import { CancelTrip } from "./CancelTrip";
 
 const BADGE_VARIANT = { confirmed: "solid", done: "status", pending: "outline", ended: "neutral" } as const;
 
@@ -161,7 +160,6 @@ function RideRow({ ride }: { ride: RiderTrip }) {
 }
 
 function DriveRow({ trip }: { trip: Trip }) {
-  const [confirming, setConfirming] = useState(false);
   const status = tripStatusLabel(trip);
   return (
     <li aria-label={`Trip ${formatWhen(trip.departureAt)}`} className={cn("rounded-lg border-2 border-line", trip.status === "cancelled" && "opacity-70")}>
@@ -183,79 +181,10 @@ function DriveRow({ trip }: { trip: Trip }) {
       </Link>
       {canCancel(trip) && (
         <div className="border-t border-line px-4 py-3">
-          {confirming ? (
-            <CancelConfirm trip={trip} onClose={() => setConfirming(false)} />
-          ) : (
-            <Button variant="secondary" size="sm" onClick={() => setConfirming(true)}>
-              Cancel trip
-            </Button>
-          )}
+          <CancelTrip trip={trip} />
         </div>
       )}
     </li>
-  );
-}
-
-/** What the driver is told when cancelling fails. */
-function cancelError(error: ApiError): string {
-  if (error.code === "trip_not_cancellable") return "This trip has already started or was cancelled. The list has been updated.";
-  if (error.code === "trip_not_found" || error.code === "series_not_found") return "This trip no longer exists. The list has been updated.";
-  return "We couldn't cancel this trip. Try again.";
-}
-
-function CancelConfirm({ trip, onClose }: { trip: Trip; onClose: () => void }) {
-  const cancel = useCancelTrip();
-  const [scope, setScope] = useState<CancelChoice["scope"]>("trip");
-  const late = isLateCancel(trip);
-
-  return (
-    <div role="group" aria-label="Cancel this trip?" className="space-y-3">
-      <p className="font-bold">Cancel this trip?</p>
-      <p className="text-ink-soft">Riders on it will be told.</p>
-
-      {trip.seriesId && (
-        <fieldset className="space-y-2">
-          <legend className="sr-only">What to cancel</legend>
-          <Choice name={`scope-${trip.id}`} checked={scope === "trip"} onChange={() => setScope("trip")}>
-            Just this day ({formatDay(trip.departureAt)})
-          </Choice>
-          <Choice name={`scope-${trip.id}`} checked={scope === "series"} onChange={() => setScope("series")}>
-            The whole series (every trip in it that hasn&apos;t started)
-          </Choice>
-        </fieldset>
-      )}
-
-      {late && (
-        <p className="flex items-start gap-2 rounded-md bg-surface-muted px-3 py-2 text-sm font-semibold">
-          <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
-          It&apos;s less than an hour before departure, so this is a late cancellation.
-        </p>
-      )}
-
-      {cancel.error && (
-        <p role="alert" className="text-sm font-semibold">
-          {cancelError(cancel.error)}
-        </p>
-      )}
-
-      <div className="flex gap-3">
-        <Button variant="secondary" size="sm" onClick={onClose} disabled={cancel.isPending}>
-          Keep trip
-        </Button>
-        <Button variant="dark" size="sm" loading={cancel.isPending} onClick={() => cancel.mutate({ trip, scope }, { onSuccess: onClose })}>
-          {scope === "series" ? "Cancel series" : "Cancel trip"}
-        </Button>
-      </div>
-    </div>
-  );
-}
-
-function Choice({ name, checked, onChange, children }: { name: string; checked: boolean; onChange: () => void; children: ReactNode }) {
-  return (
-    <label className="flex cursor-pointer items-center gap-3">
-      <input type="radio" name={name} checked={checked} onChange={onChange} className="size-4 accent-ink" />
-      <span>{children}</span>
-    </label>
   );
 }
 
