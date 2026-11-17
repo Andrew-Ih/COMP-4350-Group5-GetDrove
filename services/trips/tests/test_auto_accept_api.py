@@ -80,12 +80,15 @@ async def test_saving_again_replaces_the_rules_and_turns_them_off(api: API) -> N
 
 async def test_each_driver_has_their_own_rules(api: API) -> None:
     app, auth, _ = api
-    async with client(app, auth) as maya:
+    tomas_rules = {"enabled": True, "maxDetourMinutes": 3, "minRating": None}
+    async with client(app, auth) as maya, client(app, auth, user_id=uuid4()) as tomas:
         await maya.put("/auto-accept", json=RULES)
-    async with client(app, auth, user_id=uuid4()) as tomas:
-        response = await tomas.get("/auto-accept")
+        await tomas.put("/auto-accept", json=tomas_rules)
 
-    assert response.json() == DEFAULTS
+        assert (await maya.get("/auto-accept")).json() == RULES
+        assert (await tomas.get("/auto-accept")).json() == tomas_rules
+    async with client(app, auth, user_id=uuid4()) as aisha:  # never saved any
+        assert (await aisha.get("/auto-accept")).json() == DEFAULTS
 
 
 @pytest.mark.parametrize(

@@ -54,10 +54,18 @@ def test_every_invalid_field_is_named() -> None:
     assert {error.field for error in refused.value.errors} == {"maxDetourMinutes", "minRating"}
 
 
-@pytest.mark.parametrize(("detour_seconds", "allowed"), [(299, True), (300, True), (301, False)])
+@pytest.mark.parametrize(
+    ("detour_seconds", "allowed"), [(0, True), (299, True), (300, True), (301, False)]
+)
 def test_the_detour_limit_is_inclusive(detour_seconds: int, allowed: bool) -> None:
     # detourSeconds <= maxDetourMinutes * 60, as the contract says.
     assert AutoAcceptRules(max_detour_minutes=5).allows_detour(detour_seconds) is allowed
+
+
+def test_a_negative_detour_is_refused_not_allowed() -> None:
+    # Routing never returns one and a seat request can't hold one, so it's a bug upstream.
+    with pytest.raises(ValueError, match="cannot be negative"):
+        AutoAcceptRules(max_detour_minutes=5).allows_detour(-1)
 
 
 async def test_a_driver_who_never_saved_rules_gets_the_defaults() -> None:

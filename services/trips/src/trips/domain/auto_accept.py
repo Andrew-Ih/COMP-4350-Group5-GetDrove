@@ -33,5 +33,8 @@ class AutoAcceptRules:
 
     def allows_detour(self, detour_seconds: int) -> bool:
         """Whether a pickup adding this much fits the rules (``detourSeconds <=
-        maxDetourMinutes * 60``, as the contract says)."""
+        maxDetourMinutes * 60``, as the contract says). A detour can't be negative (a seat
+        request refuses one too), so that's a bug in the caller, not a "yes"."""
+        if detour_seconds < 0:
+            raise ValueError("Detour time cannot be negative")
         return detour_seconds <= self.max_detour_minutes * 60
