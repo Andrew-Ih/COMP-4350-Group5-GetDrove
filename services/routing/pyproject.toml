@@ -16,6 +16,7 @@ dependencies = [
     "events",
     "geoalchemy2>=0.18",
     "httpx>=0.28",
+    "redis>=6.0"
 ]
 
 [build-system]
@@ -49,4 +50,4 @@ type = "forbidden"
 source_modules = ["routing.domain", "routing.application"]
 # import-linter only accepts external packages this service actually imports somewhere.
 # Add httpx, redis and stripe here when the service starts using them.
-forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "geoalchemy2"]
+forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "geoalchemy2", "redis"]

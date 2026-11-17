@@ -13,6 +13,7 @@ from routing.application.compute_route import ComputeRoute
 from routing.application.detour import Detour, DetourCost
 from routing.application.get_route import GetRoute
 from routing.application.match_rider import MatchRider
+from routing.application.ports import DetourPlanCache
 from routing.application.suggest_pickups import SuggestPickups
 from routing.domain.entities import Route
 from routing.domain.values import Corridor, Direction, LatLng, PickupCandidate, RiderMatch
@@ -171,16 +172,20 @@ class DetourQuery:
     """Works out a new pickup's detour, reading the route in its own database session."""
 
     def __init__(
-        self, session_factory: async_sessionmaker[AsyncSession], driving: OSRMRoutingEngine
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        driving: OSRMRoutingEngine,
+        plans: DetourPlanCache,
     ) -> None:
         self.session_factory = session_factory
         self.driving = driving
+        self.plans = plans
 
     async def execute(
         self, *, trip_id: UUID, accepted_pickups: Sequence[LatLng], new_pickup: LatLng
     ) -> Detour:
         async with self.session_factory() as session:
-            use_case = DetourCost(SQLAlchemyRouteRepository(session), self.driving)
+            use_case = DetourCost(SQLAlchemyRouteRepository(session), self.driving, self.plans)
             return await use_case.execute(trip_id, accepted_pickups, new_pickup)
 
 
@@ -191,6 +196,7 @@ def get_detour(request: Request) -> DetourQuery:
         driving=OSRMRoutingEngine(
             state.osrm_car_client, detour_timeout_seconds=state.detour_timeout_seconds
         ),
+        plans=state.detour_plans,
     )
 
 
