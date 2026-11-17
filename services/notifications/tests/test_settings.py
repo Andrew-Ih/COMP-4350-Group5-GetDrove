@@ -64,3 +64,15 @@ def test_the_reminder_lead_time_must_be_sensible(
 
 def test_reminders_are_looked_for_every_30_seconds_by_default() -> None:
     assert Settings().reminder_interval_seconds == 30
+
+
+def test_no_address_is_skipped_by_default() -> None:
+    """Locally Mailpit catches every email, demo accounts' included (#415)."""
+    assert Settings().email_skip_patterns == []
+
+
+def test_the_skip_list_is_read_as_production_sets_it(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Exactly as infra/docker-compose.prod.yml writes it.
+    monkeypatch.setenv("NOTIFICATIONS_EMAIL_SKIP_PATTERNS", '["getdrove.demo.*@myumanitoba.ca"]')
+
+    assert Settings().email_skip_patterns == ["getdrove.demo.*@myumanitoba.ca"]

@@ -225,6 +225,9 @@ services:
       NOTIFICATIONS_SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:?set in .env}
       # A sender verified in Brevo, e.g. "GetDrove <team@example.com>".
       NOTIFICATIONS_EMAIL_FROM: ${NOTIFICATIONS_EMAIL_FROM:?set in .env}
+      # The demo accounts' addresses are made up: never email them, or Brevo bounces (#415).
+      # They still get in-app notifications.
+      NOTIFICATIONS_EMAIL_SKIP_PATTERNS: '["getdrove.demo.*@myumanitoba.ca"]'
       # Links in emails (e.g. /verify?token=...) open the live site. SITE_URL is the site's
       # one address, set at the top of deploy.yml; each service reads it through its own
       # NOTIFICATIONS_* style setting, like the database passwords above.
