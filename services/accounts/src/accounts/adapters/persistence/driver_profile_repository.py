@@ -1,6 +1,7 @@
 """The PostgreSQL ``DriverProfileRepository``: applications to drive in
 accounts.driver_profiles."""
 
+from collections.abc import Collection
 from uuid import UUID
 
 from sqlalchemy import Row, select
@@ -43,6 +44,14 @@ class SqlDriverProfileRepository:
             .order_by(driver_profiles.c.submitted_at, driver_profiles.c.user_id)
         )
         return [_to_profile(row) for row in rows]
+
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, DriverProfile]:
+        if not user_ids:
+            return {}
+        rows = await self._session.execute(
+            select(driver_profiles).where(driver_profiles.c.user_id.in_(user_ids))
+        )
+        return {row.user_id: _to_profile(row) for row in rows}
 
 
 def _to_row(profile: DriverProfile) -> dict[str, object]:

@@ -8,6 +8,7 @@ Like ``common_security.testing``: for tests only, never used by the running serv
 """
 
 import hashlib
+from collections.abc import Collection
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Self
@@ -17,6 +18,7 @@ from accounts.domain.driver import DriverProfile, DriverStatus
 from accounts.domain.email import Email
 from accounts.domain.errors import EmailTakenError
 from accounts.domain.refresh_token import RefreshToken
+from accounts.domain.reputation import Reputation
 from accounts.domain.user import User
 from accounts.domain.verification import VerificationToken
 from events import EventPayload
@@ -80,6 +82,9 @@ class FakeUsers:
         found = [user for user in self.rows.values() if user.email == email]
         return replace(found[0]) if found else None
 
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, User]:
+        return {i: replace(self.rows[i]) for i in user_ids if i in self.rows}
+
     async def save(self, user: User) -> None:
         self.rows[user.id] = replace(user)
 
@@ -139,6 +144,19 @@ class FakeDriverProfiles:
         found = [replace(p) for p in self.rows.values() if p.status is status]
         return sorted(found, key=lambda p: (p.submitted_at is None, p.submitted_at, p.user_id))
 
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, DriverProfile]:
+        return {i: replace(self.rows[i]) for i in user_ids if i in self.rows}
+
+
+class FakeReputation:
+    """Rows only for users a test gives numbers to, like the real table."""
+
+    def __init__(self) -> None:
+        self.rows: dict[UUID, Reputation] = {}
+
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, Reputation]:
+        return {i: self.rows[i] for i in user_ids if i in self.rows}
+
 
 class FakeDocumentStorage:
     """Files in a dict. ``fail_on_save`` makes the next save raise, for testing cleanup."""
@@ -176,6 +194,7 @@ class FakeUnitOfWork:
         self.verification_tokens = FakeVerificationTokens()
         self.refresh_tokens = FakeRefreshTokens()
         self.drivers = FakeDriverProfiles()
+        self.reputation = FakeReputation()
         self.events = FakeEvents()
         self.committed = False
 

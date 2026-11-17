@@ -3,6 +3,7 @@
 Adapters implement these, and tests use in-memory fakes.
 """
 
+from collections.abc import Collection
 from datetime import datetime, timedelta
 from typing import Protocol, Self
 from uuid import UUID
@@ -10,6 +11,7 @@ from uuid import UUID
 from accounts.domain.driver import DriverProfile, DriverStatus
 from accounts.domain.email import Email
 from accounts.domain.refresh_token import RefreshToken
+from accounts.domain.reputation import Reputation
 from accounts.domain.user import User
 from accounts.domain.verification import VerificationToken
 from events import EventPublisher
@@ -68,6 +70,10 @@ class UserRepository(Protocol):
 
     async def get_by_email(self, email: Email) -> User | None:
         """The user with this email, or None."""
+        ...
+
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, User]:
+        """The users with these IDs, in one query. Unknown IDs are left out."""
         ...
 
     async def save(self, user: User) -> None:
@@ -137,6 +143,19 @@ class DriverProfileRepository(Protocol):
         """Applications with this status, oldest upload first (#127)."""
         ...
 
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, DriverProfile]:
+        """These users' applications, in one query. Users who never applied are left out."""
+        ...
+
+
+class ReputationRepository(Protocol):
+    """Ratings, trips and no-shows (#143). Implementations never commit."""
+
+    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, Reputation]:
+        """These users' reputations, in one query. Users with no row yet are left out:
+        their numbers are all zero."""
+        ...
+
 
 class DocumentStorage(Protocol):
     """Where driver documents are kept (ADR 0011: a Docker volume). Only Accounts reads
@@ -174,6 +193,9 @@ class UnitOfWork(Protocol):
 
     @property
     def drivers(self) -> DriverProfileRepository: ...
+
+    @property
+    def reputation(self) -> ReputationRepository: ...
 
     @property
     def events(self) -> EventPublisher: ...
