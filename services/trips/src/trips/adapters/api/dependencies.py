@@ -352,11 +352,13 @@ class RequestSeatRunner:
         routing: HTTPRequestRoutingService,
         pricing: HTTPPricingService,
         cards: HTTPRiderCardService,
+        riders: HTTPRiderProfileService,
     ) -> None:
         self.session_factory = session_factory
         self.routing = routing
         self.pricing = pricing
         self.cards = cards
+        self.riders = riders
 
     async def execute(self, command: RequestSeatCommand) -> SeatRequest:
         try:
@@ -376,6 +378,8 @@ class RequestSeatRunner:
                     pricing=self.pricing,
                     cards=self.cards,
                     events=events,
+                    auto_accept=SQLAlchemyAutoAcceptRulesRepository(session),
+                    riders=self.riders,
                 )
                 async with session.begin():
                     return await use_case.execute(command)
@@ -393,6 +397,7 @@ def get_request_seat(request: Request) -> RequestSeatRunner:
         routing=HTTPRequestRoutingService(request.app.state.routing_client),
         pricing=HTTPPricingService(request.app.state.payments_client),
         cards=HTTPRiderCardService(request.app.state.payments_client),
+        riders=HTTPRiderProfileService(request.app.state.accounts_client),
     )
 
 

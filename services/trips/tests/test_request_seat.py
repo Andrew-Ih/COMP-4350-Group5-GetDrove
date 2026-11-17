@@ -168,6 +168,19 @@ class FakeEvents:
         self.trips.append(trip)
 
 
+class NoAutoAcceptRules:
+    """The driver never set auto-accept rules, so it's off (#43 is tested in
+    test_auto_accept_requests.py)."""
+
+    async def get(self, driver_id: UUID) -> None:
+        return None
+
+
+class AccountsNeverAsked:
+    async def get_many(self, rider_ids: object) -> dict[UUID, object]:
+        raise AssertionError("Accounts is only asked when auto-accept has a minimum rating")
+
+
 @dataclass
 class Harness:
     use_case: RequestSeat
@@ -197,6 +210,8 @@ def build(
         pricing=FakePricing(pricing_error),
         cards=cards,
         events=events,
+        auto_accept=NoAutoAcceptRules(),
+        riders=AccountsNeverAsked(),  # type: ignore[arg-type]
     )
     return Harness(use_case, requests, cards, events)
 

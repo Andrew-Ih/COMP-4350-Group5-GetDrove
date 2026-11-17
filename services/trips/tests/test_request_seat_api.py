@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from common_security.testing import TestAuth
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import outbox, seat_requests, trips
+from trips.adapters.persistence.tables import auto_accept_rules, outbox, seat_requests, trips
 from trips.domain.entities import Trip
 from trips.domain.values import Direction, Location, TripStatus
 from trips.infrastructure.main import create_app
@@ -37,6 +37,11 @@ PICKUP = {
     "walkSeconds": 120,
     "riderDistanceMeters": 4000,
 }
+
+
+def accounts_not_called(request: httpx.Request) -> httpx.Response:
+    """These drivers have no auto-accept rules, so Accounts is never asked for a rating (#43)."""
+    raise AssertionError(f"Accounts was called: {request.url}")
 
 
 @pytest.fixture
@@ -61,6 +66,9 @@ async def api() -> AsyncIterator[API]:
                 )
                 await connection.execute(
                     delete(trips).where(trips.c.driver_id.in_([auth.user_id, DRIVER_ID]))
+                )
+                await connection.execute(
+                    delete(auto_accept_rules).where(auto_accept_rules.c.driver_id == DRIVER_ID)
                 )
         finally:
             await engine.dispose()
@@ -150,9 +158,13 @@ async def request_seat(
             transport=httpx.MockTransport(payments_handler or payments()),
             base_url="http://payments:8000",
         ) as payments_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(accounts_not_called), base_url="http://accounts:8000"
+        ) as accounts_client,
     ):
         app.state.routing_client = routing_client
         app.state.payments_client = payments_client
+        app.state.accounts_client = accounts_client
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
             base_url="http://test",
@@ -404,9 +416,13 @@ async def request_together(
         httpx.AsyncClient(
             transport=httpx.MockTransport(payments()), base_url="http://payments:8000"
         ) as payments_client,
+        httpx.AsyncClient(
+            transport=httpx.MockTransport(accounts_not_called), base_url="http://accounts:8000"
+        ) as accounts_client,
     ):
         app.state.routing_client = routing_client
         app.state.payments_client = payments_client
+        app.state.accounts_client = accounts_client
         async with httpx.AsyncClient(
             transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
             base_url="http://test",
@@ -465,3 +481,48 @@ async def test_two_riders_requesting_at_once_both_get_a_seat(api: API) -> None:
             await connection.execute(
                 delete(seat_requests).where(seat_requests.c.rider_id == other_rider)
             )
+
+
+async def set_rules(api: API, *, max_detour_minutes: int) -> None:
+    """The trip's driver turns auto-accept on, with no minimum rating (#42)."""
+    async with api[2].begin() as connection:
+        await connection.execute(
+            auto_accept_rules.insert().values(
+                driver_id=DRIVER_ID, enabled=True, max_detour_minutes=max_detour_minutes
+            )
+        )
+
+
+async def test_a_request_meeting_the_drivers_rules_is_auto_accepted(api: API) -> None:
+    """#43: Routing says the pickup adds 180 seconds, within the driver's 5 minutes."""
+    trip = await add_trip(api)
+    await set_rules(api, max_detour_minutes=5)
+
+    response = await request_seat(api, trip.id)
+
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert (body["status"], body["autoAccepted"]) == ("accepted", True)
+    assert body["decidedAt"] is not None
+
+    [row] = await saved_requests(api)
+    assert (row["status"], row["auto_accepted"], row["pickup_order"]) == ("accepted", True, 1)
+    assert [event["type"] for event in await saved_events(api)] == [
+        "SeatRequested",
+        "RequestAccepted",
+    ]
+    async with api[2].connect() as connection:
+        seats = await connection.execute(
+            select(trips.c.seats_available).where(trips.c.id == trip.id)
+        )
+        assert seats.scalar_one() == 2
+
+
+async def test_a_request_over_the_drivers_detour_limit_stays_pending(api: API) -> None:
+    trip = await add_trip(api)
+    await set_rules(api, max_detour_minutes=2)  # 120 seconds, less than the 180 it adds
+
+    response = await request_seat(api, trip.id)
+
+    assert (response.json()["status"], response.json()["autoAccepted"]) == ("pending", False)
+    assert [event["type"] for event in await saved_events(api)] == ["SeatRequested"]
