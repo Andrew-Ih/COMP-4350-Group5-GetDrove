@@ -138,7 +138,7 @@ async def test_cancellation_closes_requests_and_records_events_once(trips_databa
 
         async with sessions() as session:
             repository = SQLAlchemyTripRepository(session)
-            mine = await repository.get_upcoming_by_driver(trip.driver_id, now)
+            mine = await repository.list_by_driver(trip.driver_id, now, past=False)
             assert [item.status for item in mine] == [TripStatus.CANCELLED]
             window = SearchWindow.for_rider(trip.direction, now)
             assert trip.id not in {
