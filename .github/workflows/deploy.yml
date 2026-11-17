@@ -2,16 +2,24 @@
 #
 # Runs on every push to main (a release or hotfix) and from the Actions tab
 # ("Run workflow"). Steps:
-#   1. build  — builds the eight images (five services, the web app, and OSRM car and
-#               foot with the Winnipeg map built in) and pushes them to GitHub Container
-#               Registry, tagged with the commit SHA (build-images.yml, shared with
-#               delivery.yml)
-#   2. deploy — copies the production Compose file to the server, writes its .env from
+#   1. images — a release has exactly develop's files, so the images Delivery already built
+#               and tested for that develop commit are tagged with this commit instead of
+#               being built again (#177)
+#   2. build  — only when there's nothing to reuse (a hotfix, develop's images not
+#               published yet, or refresh_map): builds the eight images (five services,
+#               the web app, and OSRM car and foot with the Winnipeg map built in) and
+#               pushes them to GitHub Container Registry, tagged with the commit SHA
+#               (build-images.yml, shared with delivery.yml)
+#   3. deploy — copies the production Compose file to the server, writes its .env from
 #               GitHub Secrets, pulls the images and restarts what changed
-#   3. smoke  — checks the home page and every service's /health through the gateway
+#   4. smoke  — checks the home page and every service's /health through the gateway, then
+#               a browser test logs in as a demo rider and searches (e2e/, Playwright)
+#   5. alert  — posts to Discord if any of the above failed
 # Roll back by running it by hand with "image_tag" set to an earlier deploy's commit SHA.
 # Get newer map data by running it by hand with "refresh_map" ticked (otherwise the OSRM
 # images reuse the map that's cached).
+# Check the Discord alert by running it by hand with "test_alert" ticked: nothing is
+# deployed, and the browser test runs with a wrong password so it fails on purpose.
 # See docs/deployment/deployment.md.
 name: Deploy
 
@@ -26,6 +34,11 @@ on:
         default: ""
       refresh_map:
         description: "Download the latest OpenStreetMap data for OSRM instead of the cached map"
+        type: boolean
+        required: false
+        default: false
+      test_alert:
+        description: "Check the Discord alert: deploy nothing, make the smoke test fail on purpose"
         type: boolean
         required: false
         default: false
@@ -52,9 +65,65 @@ env:
   ACME_EMAIL: getdrove.noreply@gmail.com
 
 jobs:
+  images:
+    name: Reuse develop's images
+    # Not when rolling back (the images exist), checking the alert, or refreshing the map
+    # (that needs a new OSRM build).
+    if: github.ref == 'refs/heads/main' && !inputs.image_tag && !inputs.test_alert && !inputs.refresh_map
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      reused: ${{ steps.reuse.outputs.reused }}
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # this commit and its parents
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag develop's images with this commit
+        id: reuse
+        # Never fails the run: if anything here doesn't work out, the build job builds.
+        run: |
+          reused=false
+          # A release is a merge commit whose second parent is develop's tip. Reuse its
+          # images only if this commit has exactly the same files.
+          if develop=$(git rev-parse -q --verify 'HEAD^2') &&
+             [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "$develop^{tree}")" ]; then
+            images="accounts trips routing payments notifications web osrm-car osrm-foot"
+            missing=""
+            for image in $images; do
+              docker buildx imagetools inspect "$REGISTRY/getdrove-$image:$develop" > /dev/null 2>&1 || missing="$missing $image"
+            done
+            if [ -z "$missing" ]; then
+              # Adds this commit's tag to the same image in the registry: nothing is downloaded.
+              for image in $images; do
+                docker buildx imagetools create --tag "$REGISTRY/getdrove-$image:$GITHUB_SHA" "$REGISTRY/getdrove-$image:$develop" || { reused=false; break; }
+                reused=true
+              done
+            else
+              echo "::notice::Building instead: develop's ${develop:0:7} has no published image for$missing (Delivery may not have finished)."
+            fi
+          else
+            echo "::notice::Building instead: this commit isn't a release merge with develop's exact files (a hotfix?)."
+          fi
+          echo "reused=$reused" >> "$GITHUB_OUTPUT"
+          if [ "$reused" = true ]; then
+            echo "Deploying the images Delivery built for develop's \`${develop:0:7}\`, tagged \`${GITHUB_SHA:0:7}\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   build:
     name: Build
-    if: github.ref == 'refs/heads/main' && inputs.image_tag == ''
+    needs: images
+    # When there was nothing to reuse. always(): the images job is skipped when refreshing
+    # the map, and a failure there just means building.
+    if: always() && github.ref == 'refs/heads/main' && !inputs.image_tag && !inputs.test_alert && needs.images.outputs.reused != 'true'
     uses: ./.github/workflows/build-images.yml
     with:
       image_tag: ${{ github.sha }}
@@ -62,9 +131,13 @@ jobs:
 
   deploy:
     name: Deploy to the live server
-    needs: build
-    # Runs after a successful build, or straight away when rolling back to existing images.
-    if: always() && github.ref == 'refs/heads/main' && (needs.build.result == 'success' || needs.build.result == 'skipped')
+    needs: [images, build]
+    # Runs after the images were reused or built, or straight away when rolling back to
+    # existing images. Never when only checking the alert.
+    if: >-
+      always() && github.ref == 'refs/heads/main' && !inputs.test_alert &&
+      (needs.build.result == 'success' ||
+       (needs.build.result == 'skipped' && (needs.images.outputs.reused == 'true' || inputs.image_tag != '')))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment:
@@ -184,10 +257,17 @@ jobs:
   smoke:
     name: Smoke test
     needs: deploy
-    if: always() && needs.deploy.result == 'success'
+    if: always() && (needs.deploy.result == 'success' || inputs.test_alert)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    # For the demo accounts' password (DEMO_ACCOUNT_PASSWORD), the same one the seed uses.
+    environment:
+      name: production
+      url: ${{ env.SITE_URL }}
     steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
       - name: Home page and every service's /health answer over HTTPS
         env:
           BASE_URL: ${{ env.SITE_URL }}
@@ -215,3 +295,69 @@ jobs:
           status=$(curl -s -o /dev/null -w '%{http_code}' -X POST "$BASE_URL/api/routing/internal/routes")
           if [ "$status" != "404" ]; then echo "::error::/internal answered $status, expected 404"; failed=1; fi
           exit $failed
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: web/.nvmrc
+          cache: npm
+          cache-dependency-path: e2e/package-lock.json
+
+      - name: Install Playwright and Chromium
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+
+      - name: A demo rider can log in and search (Playwright)
+        working-directory: e2e
+        env:
+          SMOKE_BASE_URL: ${{ env.SITE_URL }}
+          # test_alert: a wrong password, so the test fails on purpose and the alert fires.
+          SMOKE_PASSWORD: ${{ inputs.test_alert && 'deliberately-wrong-password' || secrets.DEMO_ACCOUNT_PASSWORD }}
+        run: |
+          if [ -z "$SMOKE_PASSWORD" ]; then
+            echo "::error::Add the DEMO_ACCOUNT_PASSWORD secret to the production environment, and run Seed demo data once."
+            exit 1
+          fi
+          npm run smoke
+
+      - name: Keep the screenshot and trace of a failed browser test
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-report
+          path: |
+            e2e/test-results/
+            e2e/playwright-report/
+          retention-days: 14
+          if-no-files-found: ignore
+
+  alert:
+    name: Alert on Discord
+    needs: [build, deploy, smoke]
+    # The images job isn't here: when it can't reuse anything, the build job builds instead.
+    if: always() && (needs.build.result == 'failure' || needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Post the failed run to Discord
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FAILED: >-
+            ${{ needs.build.result == 'failure' && 'build ' || '' }}${{ needs.deploy.result == 'failure' && 'deploy ' || '' }}${{ needs.smoke.result == 'failure' && 'smoke test' || '' }}
+          TEST_ALERT: ${{ inputs.test_alert == true }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK_URL" ]; then
+            echo "::warning::DISCORD_WEBHOOK_URL isn't set, so nobody was told about this failure."
+            exit 0
+          fi
+          sha="${GITHUB_SHA:0:7}"
+          if [ "$TEST_ALERT" = true ]; then
+            message="Test alert: the smoke test failed on purpose (nothing was deployed). Alerts work. $RUN_URL"
+          else
+            message="Deploy of \`$sha\` to $SITE_URL failed (${FAILED% }). $RUN_URL"
+          fi
+          jq -n --arg content "$message" '{content: $content, allowed_mentions: {parse: []}}' |
+            curl -fsS --retry 3 -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
