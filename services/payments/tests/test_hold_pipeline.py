@@ -558,3 +558,57 @@ async def test_cancellation_leaves_failed_hold_unchanged_without_stripe_or_relea
     assert provider.gateway.mock_calls == []
     cards.for_rider.assert_not_awaited()
     assert [row["type"] for row in await outcomes(sessions, request_id)] == ["PaymentFailed"]
+
+
+@pytest.mark.parametrize(
+    ("lead", "delay"),
+    [
+        (timedelta(days=6) - timedelta(microseconds=1), timedelta(0)),
+        (timedelta(days=6), timedelta(0)),
+        (timedelta(days=6, microseconds=1), timedelta(days=5, microseconds=1)),
+        (timedelta(days=14), timedelta(days=13)),
+    ],
+)
+async def test_acceptance_persists_authorization_time_at_six_day_boundary(setup, lead, delay):
+    sessions, provider, cards, _worker = setup
+    event = accepted()
+    accepted_at = datetime.now(UTC)
+    payload = dict(event.payload)
+    payload["departureAt"] = (accepted_at + lead).isoformat()
+    event = event.model_copy(update={"payload": payload, "occurred_at": accepted_at})
+    data = event.payload_as(RequestAccepted)
+    await schedule(sessions, event)
+    async with sessions() as session:
+        hold = await SQLAlchemyHolds(session).lock(data.request_id)
+        assert hold is not None
+        assert hold.status is HoldStatus.SCHEDULED
+        assert hold.authorize_at == accepted_at + delay
+        assert hold.retry_at == hold.authorize_at
+        assert hold.first_attempt_at is None
+        assert hold.card is None
+        due = await SQLAlchemyHolds(session).due(accepted_at)
+        assert (data.request_id in due) == (delay == timedelta(0))
+    cards.for_rider.assert_not_awaited()
+    provider.gateway.authorize.assert_not_awaited()
+
+
+async def test_delayed_or_republished_acceptance_keeps_original_authorization_schedule(setup):
+    sessions, _provider, _cards, _worker = setup
+    event = accepted()
+    # Accepted a week ago for a trip still five days away: use acceptance time,
+    # not the consumer's current clock, to decide whether this was a far-ahead booking.
+    accepted_at = datetime.now(UTC) - timedelta(days=7)
+    departure = accepted_at + timedelta(days=12)
+    payload = dict(event.payload)
+    payload["departureAt"] = departure.isoformat()
+    event = event.model_copy(update={"payload": payload, "occurred_at": accepted_at})
+    data = event.payload_as(RequestAccepted)
+    await schedule(sessions, event)
+    await schedule(
+        sessions,
+        event.model_copy(update={"event_id": uuid4(), "occurred_at": datetime.now(UTC)}),
+    )
+    async with sessions() as session:
+        hold = await SQLAlchemyHolds(session).lock(data.request_id)
+        assert hold.authorize_at == departure - timedelta(hours=24)
+        assert hold.retry_at == hold.authorize_at

@@ -1,7 +1,7 @@
 """Saved rider shares and provider references, independent of Stripe and HTTP."""
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID
@@ -32,6 +32,7 @@ class PaymentHold:
     amount_cents: int
     currency: Literal["CAD"]
     departure_at: datetime
+    authorize_at: datetime
     status: HoldStatus = HoldStatus.SCHEDULED
     stripe_id: str | None = None
     release_requested: bool = False
@@ -44,3 +45,10 @@ class PaymentHold:
     def __post_init__(self) -> None:
         if self.amount_cents <= 0 or self.currency != "CAD":
             raise ValueError("A hold requires a positive CAD amount")
+
+
+def authorization_time(accepted_at: datetime, departure_at: datetime) -> datetime:
+    """Far-ahead bookings wait until the day before departure (#154)."""
+    if departure_at - accepted_at > timedelta(days=6):
+        return departure_at - timedelta(hours=24)
+    return accepted_at

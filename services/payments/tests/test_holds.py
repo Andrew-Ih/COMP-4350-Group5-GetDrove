@@ -33,6 +33,7 @@ def saved_hold() -> PaymentHold:
         amount_cents=625,
         currency="CAD",
         departure_at=NOW + timedelta(hours=12),
+        authorize_at=NOW,
         retry_at=NOW,
     )
 
