@@ -51,7 +51,16 @@ class RequestAccepted(EventPayload):
     rider_id: UUID
     driver_id: UUID
     departure_at: datetime
-    pickup_label: str = Field(description="Where the rider is picked up, for the reminder.")
+    pickup_label: str = Field(
+        description="The rider's point on the route, for the reminder: where they're picked up "
+        "going to campus, where they're dropped off leaving it (see `direction`)."
+    )
+    direction: Literal["to_campus", "from_campus"] | None = Field(
+        default=None,
+        description="Which way the trip goes (#352), so consumers know whether `pickupLabel` is "
+        "the pickup (to campus) or the drop-off (from campus; the rider is picked up on "
+        "campus). Null in events published before it was added.",
+    )
     amount_cents: int = Field(
         ge=0, description="The rider's share saved when they requested (#69). Never recalculated."
     )

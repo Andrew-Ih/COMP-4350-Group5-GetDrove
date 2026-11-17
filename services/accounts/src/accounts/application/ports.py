@@ -3,6 +3,7 @@
 Adapters implement these, and tests use in-memory fakes.
 """
 
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from typing import Protocol, Self
 from uuid import UUID
@@ -67,6 +68,10 @@ class UserRepository(Protocol):
 
     async def get_by_email(self, email: Email) -> User | None:
         """The user with this email, or None."""
+        ...
+
+    async def get_many(self, user_ids: Sequence[UUID]) -> list[User]:
+        """The users with these IDs, in no particular order. Unknown IDs are left out."""
         ...
 
     async def save(self, user: User) -> None:

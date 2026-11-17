@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ReactElement, ReactNode } from "react";
 import { vi } from "vitest";
 
 /** Renders a component with the app's providers (a fresh TanStack Query client per test). */
@@ -8,10 +8,28 @@ export function renderWithProviders(ui: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  // A wrapper rather than wrapping `ui`, so `rerender` keeps the same providers and cache.
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  return render(ui, { wrapper });
 }
 
-type FakeResponse = { status: number; body?: unknown };
+/** In place of a response: the request never gets through, as when offline (fetch rejects). */
+export const OFFLINE = { offline: true } as const;
+
+type FakeResponse = { status: number; body?: unknown } | typeof OFFLINE;
+
+function answer(next: FakeResponse): Response {
+  if ("offline" in next) {
+    throw new TypeError("Failed to fetch");
+  }
+  const hasBody = next.body !== undefined && next.status !== 204;
+  return new Response(hasBody ? JSON.stringify(next.body) : null, {
+    status: next.status,
+    headers: { "Content-Type": next.status >= 400 ? "application/problem+json" : "application/json" },
+  });
+}
 
 /**
  * Replaces fetch for one test. Each API call gets the next response in the list; the
@@ -22,12 +40,7 @@ type FakeResponse = { status: number; body?: unknown };
 export function mockFetch(...responses: FakeResponse[]) {
   const queue = [...responses];
   return vi.spyOn(globalThis, "fetch").mockImplementation(async () => {
-    const next = queue.shift() ?? { status: 500, body: { detail: "No more fake responses" } };
-    const hasBody = next.body !== undefined && next.status !== 204;
-    return new Response(hasBody ? JSON.stringify(next.body) : null, {
-      status: next.status,
-      headers: { "Content-Type": next.status >= 400 ? "application/problem+json" : "application/json" },
-    });
+    return answer(queue.shift() ?? { status: 500, body: { detail: "No more fake responses" } });
   });
 }
 
@@ -50,12 +63,7 @@ export function mockApi(routes: Record<string, FakeResponse | ((url: URL) => Fak
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input: RequestInfo | URL) => {
     const url = new URL(input instanceof Request ? input.url : String(input));
     const match = Object.entries(routes).find(([path]) => url.pathname.endsWith(path));
-    const answer = match ? match[1] : { status: 500, body: problem(500, "unexpected_error", `No fake response for ${url.pathname}`) };
-    const next = typeof answer === "function" ? answer(url) : answer;
-    const hasBody = next.body !== undefined && next.status !== 204;
-    return new Response(hasBody ? JSON.stringify(next.body) : null, {
-      status: next.status,
-      headers: { "Content-Type": next.status >= 400 ? "application/problem+json" : "application/json" },
-    });
+    const route = match ? match[1] : { status: 500, body: problem(500, "unexpected_error", `No fake response for ${url.pathname}`) };
+    return answer(typeof route === "function" ? route(url) : route);
   });
 }

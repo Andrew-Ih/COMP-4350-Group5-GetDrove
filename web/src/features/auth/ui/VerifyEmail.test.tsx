@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mockFetch, problem, renderWithProviders } from "@/shared/testing/render";
+import { mockFetch, OFFLINE, problem, renderWithProviders } from "@/shared/testing/render";
 
 import { VerifyEmail } from "./VerifyEmail";
 
@@ -17,6 +17,20 @@ describe("VerifyEmail", () => {
     expect(screen.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(await (fetchSpy.mock.calls[0]?.[0] as Request).json()).toEqual({ token: "abc123" });
+  });
+
+  it("asks to check the connection when offline, and can try again", async () => {
+    const fetchSpy = mockFetch(OFFLINE, { status: 204 });
+    renderWithProviders(<VerifyEmail token="abc123" />);
+
+    expect(await screen.findByRole("heading", { name: "We couldn't verify your email" })).toBeInTheDocument();
+    expect(screen.getByText("We couldn't reach GetDrove.")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("Check your connection and try again.");
+
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+
+    expect(await screen.findByRole("heading", { name: "You're verified" })).toBeInTheDocument();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
   });
 
   it("offers a new link when the old one has expired", async () => {

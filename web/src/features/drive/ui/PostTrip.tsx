@@ -13,7 +13,7 @@ import {
   today,
   useCurrentPosition,
 } from "@/features/ride";
-import type { ApiError } from "@/shared/api";
+import { type ApiError, NETWORK_ERROR } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 import { CAMPUS, type LngLat, type MapMarker, type MapRoute, MapView, WINNIPEG_VIEW } from "@/shared/map";
 import { AppHeader, Button, buttonStyles, MapLayout, PrivacyNote, Spinner } from "@/shared/ui";
@@ -46,6 +46,7 @@ import {
   WEEKDAYS,
   winnipegDate as winnipegDay,
 } from "../model/postTrip";
+import { tripRequestsHref } from "../model/requests";
 
 const CAMPUS_NAME = "U of M Fort Garry Campus";
 
@@ -79,6 +80,9 @@ function postProblem(error: ApiError): FormProblem | { field: "session"; message
   }
   if (error.code === "unauthorized") {
     return { field: "session", message: "Your session has ended. Log in again to post your trip." };
+  }
+  if (error.code === NETWORK_ERROR) {
+    return { field: "place", message: "We couldn't reach GetDrove, so the trip wasn't posted. Check your connection and try again." };
   }
   return { field: "place", message: error.message };
 }
@@ -514,7 +518,10 @@ function Posted({ trip, place, onPostAnother }: { trip: Trip; place: string; onP
       <p className="mt-4 text-ink-soft">Riders whose area is along your route can now find this trip when they search.</p>
 
       <div className="mt-6 flex flex-col gap-3">
-        <Button fullWidth onClick={onPostAnother}>
+        <Link href={tripRequestsHref(trip.id)} className={buttonStyles({ fullWidth: true })}>
+          See requests
+        </Link>
+        <Button variant="secondary" fullWidth onClick={onPostAnother}>
           Post another trip
         </Button>
         <Link href="/ride" className={buttonStyles({ variant: "secondary", fullWidth: true })}>

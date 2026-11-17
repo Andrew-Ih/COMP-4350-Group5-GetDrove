@@ -7,6 +7,7 @@ Paths here are relative to the gateway prefix /api/trips. Fixed paths (/mine, /s
 a trip ID.
 """
 
+from datetime import UTC, datetime
 from typing import Annotated, Any, Literal, NoReturn
 from uuid import UUID
 
@@ -16,22 +17,33 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    CancelTripService,
+    DecideRequestService,
     PostRecurringTripService,
     PostTripService,
+    RequestSeatService,
+    RiderTripsService,
     SearchTripsService,
+    TripDetailService,
+    TripRequestsService,
     UpcomingTripsService,
 )
 from trips.adapters.api.schemas import (
     MAX_EXCLUDED_PICKUPS,
     AutoAcceptRules,
     Cost,
+    DriverPickup,
     DriverRequestView,
     Pickup,
+    PickupOption,
     PickupPointId,
     Place,
     PostTripRequest,
     PostTripSeriesRequest,
     Problem,
+    RequestPickup,
+    RequestStatus,
+    RiderSummary,
     RiderTrip,
     SearchResult,
     SeatRequest,
@@ -40,8 +52,15 @@ from trips.adapters.api.schemas import (
     TripDetail,
     TripSeriesResult,
 )
+from trips.application.decide_request import RequestActionCommand
+from trips.application.list_trip_requests import (
+    DriverRequest,
+    ListTripRequestsCommand,
+)
+from trips.application.request_seat import RequestSeatCommand
 from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
+from trips.domain.seat_request import SeatRequest as SeatRequestEntity
 from trips.domain.values import Direction, Location, Point
 
 router = APIRouter(tags=["trips"])
@@ -184,10 +203,7 @@ async def my_trips(
     ] = "driver",
     when: When = "upcoming",
 ) -> list[Trip]:
-    if when == "past":
-        _not_implemented()
-
-    trips = await service.execute(driver_id=user.id)
+    trips = await service.execute(driver_id=user.id, past=when == "past")
     return [_to_response(trip) for trip in trips]
 
 
@@ -199,8 +215,14 @@ async def my_trips(
     "Cancelled trips are included, not removed.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def my_requests(user: AuthenticatedUser, when: When = "upcoming") -> list[RiderTrip]:
-    _not_implemented()
+async def my_requests(
+    user: AuthenticatedUser, service: RiderTripsService, when: When = "upcoming"
+) -> list[RiderTrip]:
+    rows = await service.execute(rider_id=user.id, past=when == "past")
+    return [
+        RiderTrip(trip=_for_rider(trip), request=_seat_request_response(request))
+        for trip, request in rows
+    ]
 
 
 @router.get(
@@ -292,8 +314,10 @@ async def search_trips(
         **REQUEST_NOT_FOUND,
     },
 )
-async def get_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def get_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    return _seat_request_response(await service.get(request_id, user.id))
 
 
 @router.post(
@@ -312,8 +336,13 @@ async def get_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
         ),
     },
 )
-async def accept_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def accept_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.accept(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
 
 
 @router.post(
@@ -332,8 +361,13 @@ async def accept_request(request_id: UUID, user: AuthenticatedUser) -> SeatReque
         ),
     },
 )
-async def decline_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def decline_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.decline(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
 
 
 @router.post(
@@ -352,8 +386,13 @@ async def decline_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequ
         ),
     },
 )
-async def cancel_request(request_id: UUID, user: AuthenticatedUser) -> SeatRequest:
-    _not_implemented()
+async def cancel_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.cancel(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
 
 
 @router.post(
@@ -374,6 +413,52 @@ async def cancel_series(series_id: UUID, user: AuthenticatedUser) -> list[Trip]:
 
 def _place(location: Location) -> Place:
     return Place(label=location.label, lat=location.lat, lng=location.lng)
+
+
+def _seat_request_response(request: SeatRequestEntity) -> SeatRequest:
+    return SeatRequest(
+        id=request.id,
+        trip_id=request.trip_id,
+        rider_id=request.rider_id,
+        status=RequestStatus(request.status.value),
+        pickup=RequestPickup(
+            label=request.pickup.label,
+            lat=request.pickup.lat,
+            lng=request.pickup.lng,
+            walk_seconds=request.walk_seconds,
+        ),
+        cost=Cost(
+            amount_cents=request.cost.amount_cents,
+            explanation=request.cost.explanation,
+        ),
+        auto_accepted=request.auto_accepted,
+        created_at=request.created_at,
+        decided_at=request.decided_at,
+    )
+
+
+def _driver_request_response(item: DriverRequest) -> DriverRequestView:
+    request = item.request
+    return DriverRequestView(
+        id=request.id,
+        status=RequestStatus(request.status.value),
+        rider=RiderSummary(
+            id=item.rider.id,
+            first_name=item.rider.first_name,
+            rating=item.rider.rating,
+            rating_count=item.rider.rating_count,
+            no_show_count=item.rider.no_show_count,
+        ),
+        pickup=DriverPickup(
+            label=request.pickup.label, lat=request.pickup.lat, lng=request.pickup.lng
+        ),
+        pickup_order=item.pickup_order,
+        detour_seconds=request.detour_seconds,
+        cost=Cost(amount_cents=request.cost.amount_cents, explanation=request.cost.explanation),
+        auto_accepted=request.auto_accepted,
+        created_at=request.created_at,
+        decided_at=request.decided_at,
+    )
 
 
 def _for_rider(trip: TripEntity) -> Trip:
@@ -434,6 +519,7 @@ def _to_response(trip: TripEntity) -> Trip:
 async def get_trip(
     trip_id: UUID,
     user: AuthenticatedUser,
+    service: TripDetailService,
     lat: Annotated[float | None, Query(ge=-90, le=90, description="Rider's latitude.")] = None,
     lng: Annotated[float | None, Query(ge=-180, le=180, description="Rider's longitude.")] = None,
     exclude: Annotated[
@@ -451,7 +537,35 @@ async def get_trip(
             "Send lat and lng together.",
             errors=[InvalidField(field=missing, message="Send lat and lng together")],
         )
-    _not_implemented()
+    detail = await service.execute(
+        trip_id=trip_id,
+        viewer_id=user.id,
+        rider=Point(lat=lat, lng=lng) if lat is not None and lng is not None else None,
+        exclude=exclude or [],
+    )
+
+    return TripDetail(
+        # The driver sees their own end; everyone else, only the campus end.
+        trip=_to_response(detail.trip) if detail.viewer_is_driver else _for_rider(detail.trip),
+        # The driver's vehicle needs Accounts' /internal/users (#143).
+        vehicle=None,
+        pickups=[
+            PickupOption(
+                id=priced.offer.id,
+                label=priced.offer.pickup.label,
+                lat=priced.offer.pickup.lat,
+                lng=priced.offer.pickup.lng,
+                walk_seconds=priced.offer.walk_seconds,
+                cost=Cost(
+                    amount_cents=priced.cost.amount_cents, explanation=priced.cost.explanation
+                )
+                if priced.cost
+                else None,
+            )
+            for priced in detail.pickups
+        ],
+        my_request=_seat_request_response(detail.my_request) if detail.my_request else None,
+    )
 
 
 @router.post(
@@ -470,8 +584,9 @@ async def get_trip(
         ),
     },
 )
-async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
-    _not_implemented()
+async def cancel_trip(trip_id: UUID, user: AuthenticatedUser, service: CancelTripService) -> Trip:
+    trip = await service.execute(trip_id=trip_id, driver_id=user.id)
+    return _to_response(trip)
 
 
 @router.post(
@@ -505,9 +620,22 @@ async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
     },
 )
 async def request_seat(
-    trip_id: UUID, body: SeatRequestBody, user: AuthenticatedUser
+    trip_id: UUID,
+    body: SeatRequestBody,
+    user: AuthenticatedUser,
+    service: RequestSeatService,
 ) -> SeatRequest:
-    _not_implemented()
+    request = await service.execute(
+        RequestSeatCommand(
+            trip_id=trip_id,
+            rider_id=user.id,
+            rider=Point(lat=body.lat, lng=body.lng),
+            pickup_id=body.pickup_id,
+            now=datetime.now(UTC),
+            exclude=tuple(body.exclude),
+        )
+    )
+    return _seat_request_response(request)
 
 
 @router.get(
@@ -523,5 +651,8 @@ async def request_seat(
         503: _problem("The riders' details can't be loaded right now", "accounts_unavailable"),
     },
 )
-async def trip_requests(trip_id: UUID, user: AuthenticatedUser) -> list[DriverRequestView]:
-    _not_implemented()
+async def trip_requests(
+    trip_id: UUID, user: AuthenticatedUser, service: TripRequestsService
+) -> list[DriverRequestView]:
+    items = await service.execute(ListTripRequestsCommand(trip_id=trip_id, user_id=user.id))
+    return [_driver_request_response(item) for item in items]

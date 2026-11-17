@@ -20,6 +20,23 @@ You can also browse each service's contract in Swagger UI: `http://localhost/api
 4. Open a PR. **The consumers of the contract approve it** before anyone builds against it (for example, the frontend approves public endpoints; Trips approves Routing's internal endpoints).
 5. Changing a contract later works the same way: change the code, regenerate, and get the consumers' approval. Never rename or remove a field or error `code` without telling the team.
 
+## Keeping contracts and code in sync
+
+The files in `contracts/` are generated from the code, and CI checks they still match (#178):
+
+| Check | What it compares | Fix when it fails |
+|---|---|---|
+| Backend checks: **Contracts match the code** | Each service's OpenAPI spec (from FastAPI) and each event's JSON Schema (from `libs/events`) with `contracts/openapi/` and `contracts/events/`. A file whose endpoint or event was removed also fails it. | `uv run python scripts/export_openapi.py`, then commit the changed files |
+| Frontend checks: **API types match the contracts** | `web/src/shared/api/generated/` with `contracts/openapi/` | `cd web && npm run api:generate`, then commit |
+
+So when you change an API or an event:
+
+1. Change the code (schemas, routes, `responses={...}`, or the event in `libs/events`).
+2. Regenerate: `uv run python scripts/export_openapi.py`, then `cd web && npm run api:generate`.
+3. Commit the code and the regenerated files together. The contract diff is what reviewers check, and the consumers approve it as above.
+
+Both checks also run locally with `bash scripts/check.sh`.
+
 ## Conventions (all services)
 
 | Topic | Rule |
@@ -70,6 +87,7 @@ Endpoints return 501 until the task in brackets implements them.
 | `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
 | `DriverApproved`, `DriverRejected` | Accounts | Trips, Notifications | Written |
 | `PaymentHeld`, `PaymentFailed`, `PaymentReleased` | Payments | Trips, Notifications | Written |
+| Which way an accepted trip goes: optional `direction` on `RequestAccepted`, so `pickupLabel` can be told apart as the pickup (to campus) or the drop-off (from campus) (#352, for #146 and #149) | Trips | Notifications | Written |
 
 Changes to Sprint 1 contracts: `Trip` gains `seriesId`; `GET /api/trips/{tripId}` returns a
 `TripDetail` instead of a `Trip`; `GET /api/trips/mine` only takes `role=driver` (a rider's
