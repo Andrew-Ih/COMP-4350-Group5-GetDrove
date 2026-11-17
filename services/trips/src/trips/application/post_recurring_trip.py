@@ -53,7 +53,11 @@ class PostRecurringTrip:
             trip_id = uuid4()
             async with routing_slots:
                 route = await self.routing.compute_route(
-                    trip_id, origin, destination, series.driver_id, series.direction
+                    trip_id=trip_id,
+                    origin=origin,
+                    destination=destination,
+                    driver_id=series.driver_id,
+                    direction=series.direction,
                 )
             return Trip.create(
                 driver_id=series.driver_id,

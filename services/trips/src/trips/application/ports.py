@@ -35,9 +35,9 @@ class TripRepository(Protocol):
 
     async def list_by_driver(self, driver_id: UUID, now: datetime, *, past: bool) -> list[Trip]: ...
 
-    async def get_active_or_upcoming_by_driver(
-        self, driver_id: UUID, now: datetime
-    ) -> list[Trip]: ...
+    async def get_active_or_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
+        """The driver's scheduled and in-progress trips that haven't arrived yet (#17)."""
+        ...
 
 
 class RiderTripRepository(Protocol):
