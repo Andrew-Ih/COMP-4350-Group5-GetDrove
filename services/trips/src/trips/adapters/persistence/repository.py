@@ -14,18 +14,22 @@ from trips.domain.values import Direction, Location, SearchWindow, TripStatus
 def trip_from_row(row: RowMapping) -> Trip:
     return Trip(
         id=row[trips.c.id],
-        driver_id=row["driver_id"],
-        direction=Direction(row["direction"]),
-        origin=Location(row["origin_label"], row["origin_lat"], row["origin_lng"]),
-        destination=Location(
-            row["destination_label"], row["destination_lat"], row["destination_lng"]
+        driver_id=row[trips.c.driver_id],
+        direction=Direction(row[trips.c.direction]),
+        origin=Location(
+            row[trips.c.origin_label], row[trips.c.origin_lat], row[trips.c.origin_lng]
         ),
-        departure_at=row["departure_at"],
-        estimated_arrival_at=row["estimated_arrival_at"],
-        duration_seconds=row["duration_seconds"],
-        distance_meters=row["distance_meters"],
-        seats_total=row["seats_total"],
-        seats_available=row["seats_available"],
+        destination=Location(
+            row[trips.c.destination_label],
+            row[trips.c.destination_lat],
+            row[trips.c.destination_lng],
+        ),
+        departure_at=row[trips.c.departure_at],
+        estimated_arrival_at=row[trips.c.estimated_arrival_at],
+        duration_seconds=row[trips.c.duration_seconds],
+        distance_meters=row[trips.c.distance_meters],
+        seats_total=row[trips.c.seats_total],
+        seats_available=row[trips.c.seats_available],
         status=TripStatus(row[trips.c.status]),
     )
 

@@ -18,25 +18,30 @@ OPEN_TRIP = (TripStatus.SCHEDULED.value, TripStatus.IN_PROGRESS.value)
 
 
 def _request(row: RowMapping) -> SeatRequest:
+    # Column keys, not names: list_by_rider selects trips too, which also has id and status.
     return SeatRequest(
-        id=row["id"],
-        trip_id=row["trip_id"],
-        rider_id=row["rider_id"],
-        pickup=Location(row["pickup_label"], row["pickup_lat"], row["pickup_lng"]),
-        walk_seconds=row["walk_seconds"],
-        rider_distance_meters=row["rider_distance_meters"],
-        detour_seconds=row["detour_seconds"],
-        cost=Quote(
-            amount_cents=row["amount_cents"],
-            currency=row["currency"],
-            explanation=row["cost_explanation"],
+        id=row[seat_requests.c.id],
+        trip_id=row[seat_requests.c.trip_id],
+        rider_id=row[seat_requests.c.rider_id],
+        pickup=Location(
+            row[seat_requests.c.pickup_label],
+            row[seat_requests.c.pickup_lat],
+            row[seat_requests.c.pickup_lng],
         ),
-        status=RequestStatus(row["status"]),
-        auto_accepted=row["auto_accepted"],
-        created_at=row["created_at"],
-        decided_at=row["decided_at"],
-        detour_position=row["detour_position"],
-        pickup_order=row["pickup_order"],
+        walk_seconds=row[seat_requests.c.walk_seconds],
+        rider_distance_meters=row[seat_requests.c.rider_distance_meters],
+        detour_seconds=row[seat_requests.c.detour_seconds],
+        cost=Quote(
+            amount_cents=row[seat_requests.c.amount_cents],
+            currency=row[seat_requests.c.currency],
+            explanation=row[seat_requests.c.cost_explanation],
+        ),
+        status=RequestStatus(row[seat_requests.c.status]),
+        auto_accepted=row[seat_requests.c.auto_accepted],
+        created_at=row[seat_requests.c.created_at],
+        decided_at=row[seat_requests.c.decided_at],
+        detour_position=row[seat_requests.c.detour_position],
+        pickup_order=row[seat_requests.c.pickup_order],
     )
 
 
