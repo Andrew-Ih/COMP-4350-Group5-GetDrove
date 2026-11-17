@@ -1,0 +1,192 @@
+"""Seats can't be oversold: many accepts at the same moment, on real PostgreSQL (#50)."""
+
+import asyncio
+from collections.abc import AsyncIterator
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
+from uuid import UUID, uuid4
+
+import httpx
+import pytest
+from fastapi import FastAPI
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
+
+from common_security.testing import TestAuth
+from trips.adapters.persistence.repository import SQLAlchemyTripRepository
+from trips.adapters.persistence.seat_request_repository import (
+    SQLAlchemySeatRequestRepository,
+)
+from trips.adapters.persistence.tables import outbox, seat_requests, trips
+from trips.domain.entities import Trip
+from trips.domain.seat_request import RequestStatus, SeatRequest
+from trips.domain.values import Direction, Location, Quote
+from trips.infrastructure.main import create_app
+from trips.infrastructure.settings import get_settings
+
+pytestmark = pytest.mark.usefixtures("trips_database")
+
+type API = tuple[FastAPI, TestAuth, AsyncEngine]
+
+RIDERS = 20
+DEPARTURE = datetime.now(UTC) + timedelta(days=1)
+
+
+def last_place(request: httpx.Request) -> httpx.Response:
+    """Routing's /internal/detours: every new pickup goes last."""
+    import json
+
+    accepted = len(json.loads(request.content)["acceptedPickups"])
+    return httpx.Response(200, json={"addedSeconds": 60, "position": accepted, "totalSeconds": 900})
+
+
+@pytest.fixture
+async def api() -> AsyncIterator[API]:
+    auth = TestAuth()
+    app = create_app()
+    auth.install(app)
+    engine = create_async_engine(get_settings().database_url)
+    app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    app.state.routing_client = httpx.AsyncClient(
+        transport=httpx.MockTransport(last_place), base_url="http://routing:8000"
+    )
+    try:
+        yield app, auth, engine
+    finally:
+        await app.state.routing_client.aclose()
+        try:
+            async with engine.begin() as connection:
+                driven = await connection.execute(
+                    select(trips.c.id).where(trips.c.driver_id == auth.user_id)
+                )
+                trip_ids = list(driven.scalars().all())
+                await connection.execute(
+                    delete(outbox).where(
+                        outbox.c.envelope["correlationId"].astext == str(auth.user_id)
+                    )
+                )
+                await connection.execute(
+                    delete(seat_requests).where(seat_requests.c.trip_id.in_(trip_ids))
+                )
+                await connection.execute(delete(trips).where(trips.c.id.in_(trip_ids)))
+        finally:
+            await engine.dispose()
+
+
+async def seed_trip(api: API, *, seats: int) -> Trip:
+    trip = Trip.create(
+        driver_id=api[1].user_id,
+        direction=Direction.TO_CAMPUS,
+        place=Location("Pembina Highway", 49.82, -97.15),
+        departure_at=DEPARTURE,
+        duration_seconds=900,
+        distance_meters=6000,
+        seats_total=seats,
+    )
+    factory = async_sessionmaker(api[2], expire_on_commit=False)
+    async with factory() as session, session.begin():
+        await SQLAlchemyTripRepository(session).add(trip)
+    return trip
+
+
+async def add_pending(api: API, trip: Trip) -> SeatRequest:
+    request: SeatRequest = replace(
+        SeatRequest.create(
+            trip_id=trip.id,
+            rider_id=uuid4(),
+            pickup=Location("Pembina pickup", 49.82, -97.15),
+            walk_seconds=120,
+            rider_distance_meters=4000,
+            detour_seconds=180,
+            cost=Quote(200, "CAD", "4 km at $0.45/km ($2.00 minimum)"),
+            now=datetime.now(UTC) - timedelta(hours=1),
+        ),
+        status=RequestStatus.PENDING,
+    )
+    factory = async_sessionmaker(api[2], expire_on_commit=False)
+    async with factory() as session, session.begin():
+        await SQLAlchemySeatRequestRepository(session).add(request)
+    return request
+
+
+async def accept(api: API, request_id: UUID) -> httpx.Response:
+    app, auth, _ = api
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app, raise_app_exceptions=False),
+        base_url="http://test",
+        headers={**auth.headers(), "X-Request-ID": str(auth.user_id)},
+    ) as client:
+        return await client.post(f"/requests/{request_id}/accept")
+
+
+async def accept_all(api: API, requests: list[SeatRequest]) -> list[httpx.Response]:
+    return list(await asyncio.gather(*(accept(api, r.id) for r in requests)))
+
+
+async def seats_left(api: API, trip: Trip) -> int:
+    async with api[2].connect() as connection:
+        result = await connection.execute(
+            select(trips.c.seats_available).where(trips.c.id == trip.id)
+        )
+        return result.scalar_one()
+
+
+async def count_with_status(api: API, trip: Trip, status: RequestStatus) -> int:
+    async with api[2].connect() as connection:
+        result = await connection.execute(
+            select(func.count())
+            .select_from(seat_requests)
+            .where(seat_requests.c.trip_id == trip.id)
+            .where(seat_requests.c.status == status.value)
+        )
+        return result.scalar_one()
+
+
+async def pickup_orders(api: API, trip: Trip) -> list[int | None]:
+    async with api[2].connect() as connection:
+        result = await connection.execute(
+            select(seat_requests.c.pickup_order)
+            .where(seat_requests.c.trip_id == trip.id)
+            .where(seat_requests.c.status == RequestStatus.ACCEPTED.value)
+            .order_by(seat_requests.c.pickup_order)
+        )
+        return list(result.scalars().all())
+
+
+async def accepted_events(api: API) -> int:
+    async with api[2].connect() as connection:
+        result = await connection.execute(
+            select(func.count())
+            .select_from(outbox)
+            .where(outbox.c.envelope["correlationId"].astext == str(api[1].user_id))
+        )
+        return result.scalar_one()
+
+
+@pytest.mark.parametrize("attempt", range(3))  # repeated, to show it isn't flaky
+async def test_twenty_riders_one_seat_exactly_one_is_accepted(api: API, attempt: int) -> None:
+    trip = await seed_trip(api, seats=1)
+    requests = [await add_pending(api, trip) for _ in range(RIDERS)]
+
+    responses = await accept_all(api, requests)
+
+    codes = sorted(response.status_code for response in responses)
+    assert codes == [200] + [409] * (RIDERS - 1)
+    losers = [response for response in responses if response.status_code == 409]
+    assert {response.json()["code"] for response in losers} == {"seat_taken"}
+    assert await seats_left(api, trip) == 0
+    assert await count_with_status(api, trip, RequestStatus.ACCEPTED) == 1
+    assert await count_with_status(api, trip, RequestStatus.PENDING) == RIDERS - 1
+    assert await accepted_events(api) == 1
+
+
+async def test_twenty_riders_three_seats_exactly_three_are_accepted(api: API) -> None:
+    trip = await seed_trip(api, seats=3)
+    requests = [await add_pending(api, trip) for _ in range(RIDERS)]
+
+    responses = await accept_all(api, requests)
+
+    assert sorted(response.status_code for response in responses) == [200] * 3 + [409] * 17
+    assert await seats_left(api, trip) == 0
+    assert await count_with_status(api, trip, RequestStatus.ACCEPTED) == 3
+    assert await pickup_orders(api, trip) == [1, 2, 3]
