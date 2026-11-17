@@ -44,6 +44,7 @@ payment_holds = Table(
     Column("amount_cents", Integer, nullable=False),
     Column("currency", String(3), nullable=False),
     Column("departure_at", DateTime(timezone=True), nullable=False),
+    Column("authorize_at", DateTime(timezone=True), nullable=False),
     Column("status", String(20), nullable=False),
     Column("stripe_id", String(255), unique=True),
     Column("release_requested", Boolean, nullable=False, server_default="false"),

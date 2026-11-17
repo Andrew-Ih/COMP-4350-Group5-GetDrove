@@ -17,7 +17,7 @@ from events.catalog import (
 from events.consumer import StreamConsumer
 from events.outbox import OutboxPublisher
 from payments.adapters.persistence.holds import SQLAlchemyHolds
-from payments.domain.holds import FailureReason, PaymentHold
+from payments.domain.holds import FailureReason, PaymentHold, authorization_time
 
 
 class OutboxHoldEvents:
@@ -60,6 +60,7 @@ async def schedule_accepted(event: EventEnvelope, session: AsyncSession) -> None
     # A zero-cost share needs no authorization either; acknowledge it without a hold.
     if data.departure_at <= now or data.amount_cents == 0:
         return
+    authorize_at = authorization_time(event.occurred_at, data.departure_at)
     await SQLAlchemyHolds(session).schedule(
         PaymentHold(
             request_id=data.request_id,
@@ -69,7 +70,8 @@ async def schedule_accepted(event: EventEnvelope, session: AsyncSession) -> None
             amount_cents=data.amount_cents,
             currency=data.currency,
             departure_at=data.departure_at,
-            retry_at=now,
+            authorize_at=authorize_at,
+            retry_at=authorize_at,
             correlation_id=event.correlation_id,
         )
     )
