@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
 from trips.adapters.api.dependencies import (
+    get_post_recurring_trip,
     get_request_seat,
     get_rider_trips,
     get_trip_detail,
@@ -46,6 +47,8 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/requests/{ID}/cancel", {}),
 ]
 IMPLEMENTED = {
+    ("POST", "/series"),
+    ("POST", f"/series/{ID}/cancel"),
     ("GET", "/mine?when=past"),
     ("GET", "/requests/mine"),
     ("GET", "/requests/mine?when=past"),
@@ -65,6 +68,7 @@ async def client(fake_trip_detail: Any) -> AsyncClient:
     app = create_app()
     auth.install(app)
     app.dependency_overrides[get_upcoming_trips] = lambda: object()
+    app.dependency_overrides[get_post_recurring_trip] = object
     app.dependency_overrides[get_rider_trips] = lambda: AsyncMock(
         execute=AsyncMock(return_value=[])
     )

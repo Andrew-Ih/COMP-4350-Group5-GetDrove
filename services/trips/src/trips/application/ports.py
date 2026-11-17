@@ -6,7 +6,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
-from trips.domain.entities import Trip
+from trips.domain.entities import Trip, TripSeries
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import (
     Direction,
@@ -35,11 +35,19 @@ class TripRepository(Protocol):
 
     async def list_by_driver(self, driver_id: UUID, now: datetime, *, past: bool) -> list[Trip]: ...
 
+    async def get_active_or_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]:
+        """The driver's scheduled and in-progress trips that haven't arrived yet (#17)."""
+        ...
+
 
 class RiderTripRepository(Protocol):
     async def list_by_rider(
         self, rider_id: UUID, now: datetime, *, past: bool
     ) -> list[tuple[Trip, SeatRequest]]: ...
+
+
+class TripSeriesRepository(Protocol):
+    async def add(self, series: TripSeries) -> None: ...
 
 
 class TripCancellationRepository(Protocol):
@@ -48,6 +56,16 @@ class TripCancellationRepository(Protocol):
     async def save_cancellation(self, trip: Trip) -> list[UUID]:
         """Persist the cancellation and return the riders whose requests were closed."""
         ...
+
+
+class SeriesCancellationRepository(TripCancellationRepository, Protocol):
+    async def get_cancellable_for_series(self, series_id: UUID, now: datetime) -> list[Trip]:
+        """Lock scheduled future occurrences in a consistent order until transaction end."""
+        ...
+
+
+class TripSeriesLookup(Protocol):
+    async def get_by_id(self, series_id: UUID) -> TripSeries | None: ...
 
 
 class TripCancellationEvents(Protocol):

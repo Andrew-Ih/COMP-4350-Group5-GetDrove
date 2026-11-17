@@ -15,6 +15,14 @@ class NotTripDriverError(ForbiddenError):
     title = "Only the trip's driver can cancel it"
 
 
+class SeriesNotFoundError(NotFoundError):
+    code = "series_not_found"
+    title = "Series not found"
+
+    def __init__(self) -> None:
+        super().__init__("No series with this ID")
+
+
 class TripNotCancellableError(ConflictError):
     code = "trip_not_cancellable"
     title = "The trip has already started, finished or been cancelled"

@@ -69,6 +69,68 @@ describe("mock API: posting a trip", () => {
   });
 });
 
+describe("mock API: posting a repeating trip (#19)", () => {
+  // Monday, March 8, 2027, in the morning in Winnipeg; the series runs for two weeks.
+  const series = (changes: Partial<{ departureAt: string; weekdays: ("mon" | "tue" | "wed" | "thu" | "fri")[]; endDate: string }> = {}) =>
+    unwrap(
+      trips.POST("/series", {
+        body: {
+          direction: "to_campus",
+          place,
+          departureAt: "2027-03-08T13:45:00Z",
+          seatsTotal: 3,
+          weekdays: ["mon", "wed"],
+          endDate: "2027-03-17",
+          ...changes,
+        },
+      }),
+    );
+  const inWinnipeg = (iso: string, options: Intl.DateTimeFormatOptions) =>
+    new Date(iso).toLocaleString("en-CA", { timeZone: "America/Winnipeg", ...options });
+  const winnipegDay = (iso: string) => inWinnipeg(iso, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const winnipegTime = (iso: string) => inWinnipeg(iso, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+  it("makes one trip per chosen weekday, all at the same Winnipeg time", async () => {
+    const result = await series();
+
+    expect(result.trips.map((t) => winnipegDay(t.departureAt))).toEqual(["2027-03-08", "2027-03-10", "2027-03-15", "2027-03-17"]);
+    // The same clock time every day, whatever Winnipeg's UTC offset is on each date.
+    const firstTime = winnipegTime("2027-03-08T13:45:00Z");
+    expect(result.trips.map((t) => winnipegTime(t.departureAt))).toEqual([firstTime, firstTime, firstTime, firstTime]);
+    expect(result.trips.every((t) => t.seriesId === result.seriesId)).toBe(true);
+    expect(result.skippedDates).toEqual([]);
+  });
+
+  it("skips the days that clash with a trip already posted", async () => {
+    await postTrip("2027-03-10T13:45:00Z");
+    const result = await series();
+
+    expect(result.skippedDates).toEqual(["2027-03-10"]);
+    expect(result.trips).toHaveLength(3);
+  });
+
+  it("refuses a first departure that isn't on one of the weekdays (#315), and a last day too far away", async () => {
+    const notOnADay = await series({ weekdays: ["tue"] }).catch((e: unknown) => e);
+    expect((notOnADay as ApiError).problem.errors?.[0]?.field).toBe("weekdays");
+
+    const tooFar = await series({ endDate: "2027-07-01" }).catch((e: unknown) => e);
+    expect((tooFar as ApiError).problem.errors?.[0]?.field).toBe("endDate");
+  });
+
+  it("lists generated occurrences in My Trips and keeps a cancelled occurrence visible", async () => {
+    const result = await series();
+    const mine = () => unwrap(trips.GET("/mine", { params: { query: { when: "upcoming" } } }));
+    const occurrences = async () => (await mine()).filter((trip) => trip.seriesId === result.seriesId);
+    const first = result.trips[0]!;
+
+    expect((await occurrences()).map((trip) => trip.id)).toEqual(result.trips.map((trip) => trip.id));
+    await unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: first.id } } }));
+    expect((await occurrences()).map((trip) => trip.status)).toEqual([
+      "cancelled", "scheduled", "scheduled", "scheduled",
+    ]);
+  });
+});
+
 describe("mock API: My trips", () => {
   const mine = (when: "upcoming" | "past") => unwrap(trips.GET("/mine", { params: { query: { when } } }));
   const failure = (call: Promise<unknown>) => call.then(() => undefined).catch((e: unknown) => (e as ApiError).code);

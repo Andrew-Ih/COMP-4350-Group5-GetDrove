@@ -17,8 +17,10 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    CancelSeriesService,
     CancelTripService,
     DecideRequestService,
+    PostRecurringTripService,
     PostTripService,
     RequestSeatService,
     RiderTripsService,
@@ -57,6 +59,7 @@ from trips.application.list_trip_requests import (
     ListTripRequestsCommand,
 )
 from trips.application.request_seat import RequestSeatCommand
+from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.seat_request import SeatRequest as SeatRequestEntity
 from trips.domain.values import Direction, Location, Point
@@ -159,8 +162,31 @@ async def post_trip(
 async def post_trip_series(
     body: PostTripSeriesRequest,
     user: AuthenticatedUser,
+    service: PostRecurringTripService,
 ) -> TripSeriesResult:
-    _not_implemented()
+    series = TripSeries.create(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+        weekdays=list[str](body.weekdays),
+        end_date=body.end_date,
+    )
+
+    result = await service.execute(series=series)
+
+    return TripSeriesResult(
+        series_id=result.series.id,
+        trips=[_to_response(trip) for trip in result.created_trips],
+        skipped_dates=[
+            departure.astimezone(WINNIPEG_TZ).date() for departure in result.skipped_departures
+        ],
+    )
 
 
 @router.get(
@@ -382,8 +408,11 @@ async def cancel_request(
         404: _problem("No series with this ID", "series_not_found"),
     },
 )
-async def cancel_series(series_id: UUID, user: AuthenticatedUser) -> list[Trip]:
-    _not_implemented()
+async def cancel_series(
+    series_id: UUID, user: AuthenticatedUser, service: CancelSeriesService
+) -> list[Trip]:
+    cancelled = await service.execute(series_id=series_id, driver_id=user.id)
+    return [_to_response(trip) for trip in cancelled]
 
 
 def _place(location: Location) -> Place:
@@ -453,6 +482,7 @@ def _for_rider(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -470,6 +500,7 @@ def _to_response(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 

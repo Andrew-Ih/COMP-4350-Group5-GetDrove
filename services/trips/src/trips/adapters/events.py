@@ -29,7 +29,7 @@ class OutboxTripEvents:
             TripCancelled(
                 trip_id=trip.id,
                 driver_id=trip.driver_id,
-                series_id=None,
+                series_id=trip.series_id,
                 departure_at=trip.departure_at,
                 rider_ids=rider_ids,
             )
