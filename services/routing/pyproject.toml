@@ -51,4 +51,3 @@ source_modules = ["routing.domain", "routing.application"]
 # import-linter only accepts external packages this service actually imports somewhere.
 # Add stripe here when the service starts using it.
 forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "geoalchemy2", "redis"]
-forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "geoalchemy2", "redis"]
