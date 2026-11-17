@@ -137,7 +137,7 @@ async def request_seat(
     api: API,
     trip_id: UUID,
     routing_handler: Handler | None = None,
-    payments_handler: Handler | None = None,
+    payments_handler: Handler | Callable[[httpx.Request], Awaitable[httpx.Response]] | None = None,
     body: dict[str, Any] | None = None,
 ) -> httpx.Response:
     app, auth, _ = api
@@ -180,6 +180,44 @@ async def saved_events(api: API) -> list[RowMapping]:
 async def assert_nothing_saved(api: API) -> None:
     assert await saved_requests(api) == []
     assert await saved_events(api) == []
+
+
+async def test_trip_cancelled_during_quote_cannot_get_a_pending_request(api: API) -> None:
+    app, auth, _ = api
+    trip = await add_trip(api)
+    quoting = asyncio.Event()
+    cancellation_committed = asyncio.Event()
+    respond_to_payment = payments()
+
+    async def paused_payments(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/internal/quotes":
+            quoting.set()
+            await cancellation_committed.wait()
+        return respond_to_payment(request)
+
+    async with (
+        asyncio.timeout(10),
+        httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client,
+        asyncio.TaskGroup() as tasks,
+    ):
+        requesting = tasks.create_task(request_seat(api, trip.id, payments_handler=paused_payments))
+        await quoting.wait()
+        cancelled = await client.post(
+            f"/{trip.id}/cancel",
+            headers={
+                **auth.headers(user_id=trip.driver_id),
+                "X-Request-ID": str(auth.user_id),
+            },
+        )
+        assert cancelled.status_code == 200, cancelled.text
+        assert cancelled.json()["status"] == "cancelled"
+        cancellation_committed.set()
+
+    response = requesting.result()
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "trip_not_open"
+    assert await saved_requests(api) == []
+    assert [event["type"] for event in await saved_events(api)] == ["TripCancelled"]
 
 
 async def test_valid_request_returns_201_and_saves_pending_request(api: API) -> None:

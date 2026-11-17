@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getAccessToken, setAccessToken } from "@/shared/api";
-import { mockFetch, problem, renderWithProviders } from "@/shared/testing/render";
+import { mockFetch, OFFLINE, problem, renderWithProviders } from "@/shared/testing/render";
 
 import { AFTER_LOGIN } from "../model/login";
 import { LoginForm } from "./LoginForm";
@@ -44,6 +44,16 @@ describe("LoginForm", () => {
     await logIn();
 
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith(AFTER_LOGIN));
+  });
+
+  it("asks to check the connection when offline, without crashing", async () => {
+    mockFetch(OFFLINE);
+    renderWithProviders(<LoginForm />);
+
+    await logIn();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Check your connection and try again.");
+    expect(push).not.toHaveBeenCalled();
   });
 
   it("shows one message for a wrong email or password", async () => {
