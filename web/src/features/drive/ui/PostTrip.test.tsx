@@ -188,6 +188,21 @@ describe("PostTrip", () => {
     expect(screen.getByRole("button", { name: "Post trip" })).toBeEnabled(); // they can try again
   });
 
+  it("sends an unapproved driver to apply when the API refuses the trip", async () => {
+    mockFetch(
+      { status: 200, body: maya },
+      NO_TRIPS,
+      { status: 403, body: problem(403, "driver_not_approved", "Only approved drivers can post trips") },
+    );
+    renderWithProviders(<PostTrip />);
+
+    await userEvent.click(screen.getByRole("button", { name: "tap the map" }));
+    await userEvent.click(screen.getByRole("button", { name: "Post trip" }));
+
+    expect(await screen.findByText(/Only approved drivers can post trips/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Apply to drive" })).toHaveAttribute("href", "/account/driver");
+  });
+
   it("says nothing was posted when offline, and lets them try again", async () => {
     mockFetch({ status: 200, body: maya }, NO_TRIPS, OFFLINE);
     renderWithProviders(<PostTrip />);

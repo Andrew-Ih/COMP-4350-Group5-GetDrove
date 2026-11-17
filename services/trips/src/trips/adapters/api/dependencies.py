@@ -14,6 +14,7 @@ from events.outbox import OutboxPublisher
 from trips.adapters.accounts import HTTPRiderProfileService
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService, HTTPRiderCardService
+from trips.adapters.persistence.approved_drivers import SQLAlchemyApprovedDrivers
 from trips.adapters.persistence.repository import (
     SQLAlchemyTripRepository,
     SQLAlchemyTripSeriesRepository,
@@ -89,7 +90,9 @@ class PostTripCommand:
                 )
             )
 
-            use_case = PostTrip(repository, self.routing, events)
+            use_case = PostTrip(
+                repository, self.routing, events, SQLAlchemyApprovedDrivers(session)
+            )
 
             async with session.begin():
                 return await use_case.execute(
@@ -127,7 +130,9 @@ class PostRecurringTripCommand:
         *,
         series: TripSeries,
     ) -> PostRecurringTripResult:
-        async with self.session_factory() as session:
+        # The approval check runs in prepare(), before the write transaction, so it gets its
+        # own session: reading on `session` would start a transaction there early.
+        async with self.session_factory() as session, self.session_factory() as lookup:
             trip_repository = SQLAlchemyTripRepository(session)
             series_repository = SQLAlchemyTripSeriesRepository(session)
 
@@ -145,6 +150,7 @@ class PostRecurringTripCommand:
                 series_repository=series_repository,
                 routing=self.routing,
                 events=events,
+                approved_drivers=SQLAlchemyApprovedDrivers(lookup),
             )
 
             candidates = await use_case.prepare(series)

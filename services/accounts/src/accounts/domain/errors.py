@@ -6,6 +6,7 @@ from common_web import (
     DomainError,
     ForbiddenError,
     InvalidInputError,
+    NotFoundError,
     UnauthorizedError,
 )
 
@@ -54,3 +55,62 @@ class InvalidRefreshTokenError(UnauthorizedError):
 
     code = "invalid_refresh_token"
     title = "Session expired"
+
+
+# ---------------------------------------------------------------- drivers (#8)
+
+
+class DriverAlreadyApprovedError(ConflictError):
+    """An approved driver can't replace their documents (409)."""
+
+    code = "driver_already_approved"
+    title = "Already approved"
+
+
+class DriverNotPendingError(ConflictError):
+    """Only an application waiting for a decision can be approved or rejected (409)."""
+
+    code = "driver_not_pending"
+    title = "Application not pending"
+
+
+class VehicleMissingError(ConflictError):
+    """Approving needs a saved vehicle: riders need it to find their driver (409)."""
+
+    code = "vehicle_missing"
+    title = "No vehicle saved"
+
+
+class DriverNotFoundError(NotFoundError):
+    """This user has never applied to drive (404)."""
+
+    code = "driver_not_found"
+    title = "No driver application"
+
+
+class UnsupportedFileTypeError(InvalidInputError):
+    """Not a PDF, JPEG or PNG (422)."""
+
+    code = "unsupported_file_type"
+    title = "Unsupported file type"
+
+
+class FileTooLargeError(InvalidInputError):
+    """Over 5 MB, or empty (422)."""
+
+    code = "file_too_large"
+    title = "File too large"
+
+
+class DocumentNotFoundError(NotFoundError):
+    """No document of this kind has been uploaded (404)."""
+
+    code = "document_not_found"
+    title = "No document"
+
+
+class UserNotFoundError(NotFoundError):
+    """No account with this ID or email (404)."""
+
+    code = "user_not_found"
+    title = "No such user"

@@ -82,6 +82,14 @@ class RiderRequestLookup(Protocol):
         ...
 
 
+class ApprovedDrivers(Protocol):
+    """Trips' copy of which students are approved to drive (#11), kept up to date from
+    Accounts' DriverApproved and DriverRejected events. Read locally, so posting doesn't
+    call Accounts, and an approval counts straight away, without logging in again."""
+
+    async def is_approved(self, driver_id: UUID) -> bool: ...
+
+
 class TripEvents(Protocol):
     async def trip_posted(self, trip_id: UUID) -> None:
         """Record TripPosted in the same transaction as the Trip."""

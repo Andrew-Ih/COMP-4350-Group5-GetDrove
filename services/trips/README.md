@@ -73,6 +73,26 @@ their pickup order. The trip, requests, and outbox records commit together.
   also records the cancellation time when the driver cancels less than one hour before
   departure.
 
+Trips also consumes Accounts' events from `events.accounts` (consumer group `trips`), so
+it needs Redis to run:
+
+| Event | What Trips does |
+|---|---|
+| `DriverApproved` | Adds the driver to `approved_drivers`, so they can post trips (#11, [ADR 0023](../../docs/architecture/adr/0023-approved-drivers-read-model.md)) |
+| `DriverRejected` | Removes them from it |
+
+Each event is handled once (`processed_events`); one that keeps failing is parked in
+`failed_events` after 5 tries ([libs/events](../../libs/events/README.md)).
+
+## Who can post (#11)
+
+Only approved drivers: `POST /api/trips` answers `403 driver_not_approved` for anyone not
+in `approved_drivers`. Approval is decided in Accounts (an admin approves the driver's
+documents) and reaches Trips through the `DriverApproved` event, usually within a second.
+Locally, to let a test account post, approve it through Accounts: upload documents and a
+vehicle on the driver page, then approve it as an admin (`make_admin`, see the Accounts
+README).
+
 ## Posting one-off trips (#94)
 
 `POST /` (gateway: `POST /api/trips/`) requires authentication and keeps the

@@ -143,6 +143,10 @@ services:
     environment:
       ACCOUNTS_DATABASE_URL: postgresql+asyncpg://accounts:${ACCOUNTS_DB_PASSWORD:-accounts}@postgres:5432/getdrove
       ACCOUNTS_REDIS_URL: redis://redis:6379/0
+      ACCOUNTS_DOCUMENTS_DIR: /data/driver-documents
+    # Driver documents (#9, ADR 0011): only Accounts mounts this volume.
+    volumes:
+      - driver-documents:/data/driver-documents
     labels:
       - traefik.enable=true
       - traefik.http.routers.accounts.rule=PathPrefix(`/api/accounts`) && !PathPrefix(`/api/accounts/internal`)
@@ -268,4 +272,5 @@ services:
 
 volumes:
   postgres-data:
+  driver-documents:
   redis-data:

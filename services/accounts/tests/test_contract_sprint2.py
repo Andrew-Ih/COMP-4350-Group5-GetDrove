@@ -32,6 +32,16 @@ ADMIN_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/admin/drivers/{ID}/approve", {}),
     ("POST", f"/admin/drivers/{ID}/reject", {"json": {"reason": "Expired insurance."}}),
 ]
+# Implemented endpoints need the database, so they're tested in tests/integration/
+# (status #10, documents #9, vehicle #125, and every admin endpoint, #127). The rest still
+# return 501.
+IMPLEMENTED = {
+    "/me/driver",
+    "/me/driver/documents",
+    "/me/driver/documents/licence",
+    "/me/driver/vehicle",
+}
+NOT_YET_DRIVER = [endpoint for endpoint in DRIVER_ENDPOINTS if endpoint[1] not in IMPLEMENTED]
 
 
 @pytest.fixture
@@ -70,7 +80,7 @@ def test_examples_are_valid() -> None:
     assert RejectDriverRequest.model_validate({"reason": "Blurry photo."}).reason
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs"), DRIVER_ENDPOINTS)
+@pytest.mark.parametrize(("method", "path", "kwargs"), NOT_YET_DRIVER)
 async def test_driver_endpoints_reach_the_not_yet_implemented_handler(
     auth: TestAuth, method: str, path: str, kwargs: dict[str, Any]
 ) -> None:
@@ -96,12 +106,9 @@ async def test_admin_endpoints_need_the_admin_role(
 ) -> None:
     async with _client(auth, roles=["user"]) as student:
         refused = await student.request(method, path, **kwargs)
-    async with _client(auth, roles=["user", "admin"]) as admin:
-        allowed = await admin.request(method, path, **kwargs)
 
     assert refused.status_code == 403
     assert refused.json()["code"] == "forbidden"
-    assert allowed.status_code == 501, allowed.text
 
 
 @pytest.mark.parametrize(
