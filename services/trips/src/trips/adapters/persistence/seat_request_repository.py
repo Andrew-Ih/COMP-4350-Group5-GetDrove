@@ -6,7 +6,9 @@ from uuid import UUID
 from sqlalchemy import RowMapping, case, func, insert, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trips.adapters.persistence.repository import trip_from_row, trip_list_filter
 from trips.adapters.persistence.tables import seat_requests, trips
+from trips.domain.entities import Trip
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Location, Quote, TripStatus
 
@@ -16,31 +18,48 @@ OPEN_TRIP = (TripStatus.SCHEDULED.value, TripStatus.IN_PROGRESS.value)
 
 
 def _request(row: RowMapping) -> SeatRequest:
+    # Column keys, not names: list_by_rider selects trips too, which also has id and status.
     return SeatRequest(
-        id=row["id"],
-        trip_id=row["trip_id"],
-        rider_id=row["rider_id"],
-        pickup=Location(row["pickup_label"], row["pickup_lat"], row["pickup_lng"]),
-        walk_seconds=row["walk_seconds"],
-        rider_distance_meters=row["rider_distance_meters"],
-        detour_seconds=row["detour_seconds"],
-        cost=Quote(
-            amount_cents=row["amount_cents"],
-            currency=row["currency"],
-            explanation=row["cost_explanation"],
+        id=row[seat_requests.c.id],
+        trip_id=row[seat_requests.c.trip_id],
+        rider_id=row[seat_requests.c.rider_id],
+        pickup=Location(
+            row[seat_requests.c.pickup_label],
+            row[seat_requests.c.pickup_lat],
+            row[seat_requests.c.pickup_lng],
         ),
-        status=RequestStatus(row["status"]),
-        auto_accepted=row["auto_accepted"],
-        created_at=row["created_at"],
-        decided_at=row["decided_at"],
-        detour_position=row["detour_position"],
-        pickup_order=row["pickup_order"],
+        walk_seconds=row[seat_requests.c.walk_seconds],
+        rider_distance_meters=row[seat_requests.c.rider_distance_meters],
+        detour_seconds=row[seat_requests.c.detour_seconds],
+        cost=Quote(
+            amount_cents=row[seat_requests.c.amount_cents],
+            currency=row[seat_requests.c.currency],
+            explanation=row[seat_requests.c.cost_explanation],
+        ),
+        status=RequestStatus(row[seat_requests.c.status]),
+        auto_accepted=row[seat_requests.c.auto_accepted],
+        created_at=row[seat_requests.c.created_at],
+        decided_at=row[seat_requests.c.decided_at],
+        detour_position=row[seat_requests.c.detour_position],
+        pickup_order=row[seat_requests.c.pickup_order],
     )
 
 
 class SQLAlchemySeatRequestRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+
+    async def list_by_rider(
+        self, rider_id: UUID, now: datetime, *, past: bool
+    ) -> list[tuple[Trip, SeatRequest]]:
+        departure = trips.c.departure_at
+        result = await self.session.execute(
+            select(seat_requests, trips)
+            .join(trips, trips.c.id == seat_requests.c.trip_id)
+            .where(seat_requests.c.rider_id == rider_id, trip_list_filter(now, past=past))
+            .order_by(departure.desc() if past else departure.asc(), trips.c.id, seat_requests.c.id)
+        )
+        return [(trip_from_row(row), _request(row)) for row in result.mappings()]
 
     async def add(self, request: SeatRequest) -> None:
         await self.session.execute(

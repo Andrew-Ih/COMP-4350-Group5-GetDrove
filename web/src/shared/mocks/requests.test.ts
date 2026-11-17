@@ -72,7 +72,10 @@ describe("mock API: a driver's requests", () => {
   });
 
   it("gives a trip posted in this session two requests along its route", async () => {
-    const departureAt = new Date(Date.now() + 7 * 24 * 3600_000).toISOString();
+    // A fixed minute: the mock answers a departure ending in :55 with routing_unavailable.
+    const departure = new Date(Date.now() + 7 * 24 * 3600_000);
+    departure.setUTCMinutes(0, 0, 0);
+    const departureAt = departure.toISOString();
     const place = { label: "Wolseley area", lat: 49.8794, lng: -97.1663 };
     const posted = await unwrap(trips.POST("/", { body: { direction: "to_campus", place, departureAt, seatsTotal: 3 } }));
     const requests = await list(posted.id);

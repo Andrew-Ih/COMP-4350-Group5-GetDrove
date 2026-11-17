@@ -35,6 +35,7 @@ vi.mock("@/shared/map", async (importOriginal) => {
 });
 
 const TRIP_ID = "66666666-6666-4666-8666-666666666666";
+const SERIES_ID = "77777777-7777-4777-8777-777777777777";
 const maya = { id: "1", email: "maya@myumanitoba.ca", firstName: "Maya", lastName: "Singh", emailVerified: true, roles: ["user"] };
 
 function tomorrowAt(time: string): string {
@@ -111,16 +112,22 @@ function api({
   requests = [{ status: 200, body: REQUESTS }],
   accept = { status: 200, body: {} },
   decline = { status: 200, body: {} },
-}: { detail?: Answer[]; requests?: Answer[]; accept?: Answer; decline?: Answer } = {}) {
+  cancel = { status: 200, body: trip({ status: "cancelled" }) },
+  cancelSeries = { status: 200, body: [trip({ status: "cancelled", seriesId: SERIES_ID })] },
+}: { detail?: Answer[]; requests?: Answer[]; accept?: Answer; decline?: Answer; cancel?: Answer; cancelSeries?: Answer } = {}) {
   return mockApi({
     "/accounts/me": { status: 200, body: maya },
     [`/trips/${TRIP_ID}`]: inTurn(...detail),
     [`/trips/${TRIP_ID}/requests`]: inTurn(...requests),
+    [`/trips/${TRIP_ID}/cancel`]: cancel,
+    [`/trips/series/${SERIES_ID}/cancel`]: cancelSeries,
     "/accept": accept,
     "/decline": decline,
     "/geometry": ROUTE,
   });
 }
+
+const detailOf = (t: Trip) => ({ status: 200, body: { trip: t, vehicle: null, pickups: [], myRequest: null } });
 
 const callsTo = (fetchSpy: ReturnType<typeof api>, path: string) =>
   fetchSpy.mock.calls.filter(([input]) => new URL(input instanceof Request ? input.url : String(input)).pathname.endsWith(path));
@@ -292,6 +299,73 @@ describe("TripRequests", () => {
 
     expect(await screen.findByText("This trip has already left, so requests can't be changed.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Accept/ })).not.toBeInTheDocument();
+  });
+
+  it("cancels the trip after asking: it shows as cancelled, with no Accept or Decline", async () => {
+    const fetchSpy = api({
+      detail: [detailOf(trip()), detailOf(trip({ status: "cancelled" }))],
+      requests: [{ status: 200, body: REQUESTS }, { status: 200, body: [] }],
+    });
+    renderWithProviders(<TripRequests tripId={TRIP_ID} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
+    const confirm = screen.getByRole("group", { name: "Cancel this trip?" });
+    expect(confirm).toHaveTextContent("Riders on it will be told.");
+    await userEvent.click(within(confirm).getByRole("button", { name: "Cancel trip" }));
+
+    expect(await screen.findByText("This trip was cancelled.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Accept/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Decline/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel trip" })).not.toBeInTheDocument();
+    expect(callsTo(fetchSpy, `/trips/${TRIP_ID}/cancel`)).toHaveLength(1);
+  });
+
+  it("keeps the trip when the driver changes their mind", async () => {
+    const fetchSpy = api();
+    renderWithProviders(<TripRequests tripId={TRIP_ID} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
+    await userEvent.click(screen.getByRole("button", { name: "Keep trip" }));
+
+    expect(screen.queryByRole("group", { name: "Cancel this trip?" })).not.toBeInTheDocument();
+    expect(callsTo(fetchSpy, "/cancel")).toHaveLength(0);
+    expect(screen.getAllByRole("button", { name: /^Accept/ }).length).toBeGreaterThan(0);
+  });
+
+  it("cancels the whole series of a recurring trip", async () => {
+    const recurring = trip({ seriesId: SERIES_ID });
+    const fetchSpy = api({ detail: [detailOf(recurring), detailOf({ ...recurring, status: "cancelled" })] });
+    renderWithProviders(<TripRequests tripId={TRIP_ID} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
+    await userEvent.click(screen.getByRole("radio", { name: /The whole series/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Cancel series" }));
+
+    expect(await screen.findByText("This trip was cancelled.")).toBeInTheDocument();
+    expect(callsTo(fetchSpy, `/trips/series/${SERIES_ID}/cancel`)).toHaveLength(1);
+    expect(callsTo(fetchSpy, `/trips/${TRIP_ID}/cancel`)).toHaveLength(0);
+  });
+
+  it("explains when the trip already started, and loads it again", async () => {
+    const fetchSpy = api({
+      detail: [detailOf(trip()), detailOf(trip({ status: "in_progress" }))],
+      cancel: { status: 409, body: problem(409, "trip_not_cancellable", "Already started") },
+    });
+    renderWithProviders(<TripRequests tripId={TRIP_ID} />);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
+    await userEvent.click(within(screen.getByRole("group", { name: "Cancel this trip?" })).getByRole("button", { name: "Cancel trip" }));
+
+    expect(await screen.findByText("This trip has already left, so requests can't be changed.")).toBeInTheDocument();
+    expect(callsTo(fetchSpy, `/trips/${TRIP_ID}`).length).toBeGreaterThan(1);
+  });
+
+  it("doesn't offer to cancel a trip that has left or was cancelled", async () => {
+    api({ detail: [detailOf(trip({ status: "in_progress" }))] });
+    renderWithProviders(<TripRequests tripId={TRIP_ID} />);
+
+    expect(await screen.findByText("This trip has already left, so requests can't be changed.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel trip" })).not.toBeInTheDocument();
   });
 
   it("says when the trip was cancelled", async () => {
