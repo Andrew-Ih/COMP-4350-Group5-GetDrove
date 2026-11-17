@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
@@ -524,3 +524,42 @@ async def test_a_request_over_the_drivers_detour_limit_stays_pending(api: API) -
 
     assert (response.json()["status"], response.json()["autoAccepted"]) == ("pending", False)
     assert [event["type"] for event in await saved_events(api)] == ["SeatRequested"]
+
+
+@pytest.mark.parametrize("seats", [1, 2])
+async def test_auto_accept_never_goes_over_the_seat_count(api: API, seats: int) -> None:
+    """#44: five riders ask at the same moment for a trip that auto-accepts. Exactly as many
+    are accepted as there are seats, and the seat count never goes below zero. The others
+    are either left pending (saved before the seats went) or refused as full (they got
+    there after), never accepted."""
+    trip = await add_trip(api, seats_available=seats)
+    await set_rules(api, max_detour_minutes=5)
+    riders = [api[1].user_id, *(uuid4() for _ in range(4))]
+
+    try:
+        responses = await request_together(
+            api, [(trip.id, rider) for rider in riders], slow_routing()
+        )
+
+        outcomes = sorted(
+            r.json()["status"] if r.status_code == 201 else r.json()["code"] for r in responses
+        )
+        assert outcomes.count("accepted") == seats, outcomes
+        assert set(outcomes) <= {"accepted", "pending", "trip_full"}, outcomes
+
+        async with api[2].connect() as connection:
+            left = await connection.execute(
+                select(trips.c.seats_available).where(trips.c.id == trip.id)
+            )
+            assert left.scalar_one() == 0
+            accepted = await connection.execute(
+                select(func.count())
+                .select_from(seat_requests)
+                .where(seat_requests.c.trip_id == trip.id, seat_requests.c.status == "accepted")
+            )
+            assert accepted.scalar_one() == seats
+    finally:
+        async with api[2].begin() as connection:
+            await connection.execute(
+                delete(seat_requests).where(seat_requests.c.rider_id.in_(riders[1:]))
+            )
