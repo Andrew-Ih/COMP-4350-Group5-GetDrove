@@ -22,6 +22,7 @@ async def client() -> AsyncClient:
     app = create_app()
     app.state.session_factory = None
     app.state.osrm_car_client = None
+    app.state.detour_timeout_seconds = 0.8
     return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 

@@ -23,6 +23,7 @@ pytestmark = pytest.mark.usefixtures("routing_database")
 type Handler = Callable[[httpx.Request], httpx.Response]
 
 DRIVING_SPEED = 10.0  # m/s
+DETOUR_TIMEOUT = 0.8
 
 WEST, EAST = LatLng(lat=49.85, lng=-97.20), LatLng(lat=49.85, lng=-97.158)
 FIRST, SECOND = {"lat": 49.85, "lng": -97.19}, {"lat": 49.85, "lng": -97.17}
@@ -51,6 +52,7 @@ async def api() -> AsyncIterator[API]:
     app = create_app()
     engine = create_async_engine(get_settings().database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    app.state.detour_timeout_seconds = DETOUR_TIMEOUT
     route = east_west()
     try:
         async with app.state.session_factory() as session, session.begin():
@@ -129,6 +131,13 @@ async def test_asks_osrm_once_for_the_route_ends_and_every_pickup(api: API) -> N
         LatLng(**BETWEEN),
         EAST,
     ]
+
+
+async def test_waits_for_osrm_only_as_long_as_the_detour_timeout(api: API) -> None:
+    await call(api, detour_request(api), driving)
+
+    [request] = api.osrm_requests
+    assert request.extensions["timeout"]["read"] == DETOUR_TIMEOUT
 
 
 async def test_the_first_rider_has_nothing_to_go_around(api: API) -> None:

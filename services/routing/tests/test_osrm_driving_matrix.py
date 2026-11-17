@@ -12,6 +12,9 @@ from routing.domain.values import LatLng
 
 type Handler = Callable[[httpx.Request], httpx.Response]
 
+CLIENT_TIMEOUT = 2.5
+DETOUR_TIMEOUT = 0.8
+
 
 def points(count: int) -> list[LatLng]:
     return [LatLng(lat=49.8 + i / 10_000, lng=-97.1) for i in range(count)]
@@ -24,11 +27,16 @@ def table(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"code": "Ok", "durations": rows})
 
 
-async def durations(handler: Handler, stops: list[LatLng]) -> list[list[float]]:
+async def durations(
+    handler: Handler, stops: list[LatLng], timeout: float | None = DETOUR_TIMEOUT
+) -> list[list[float]]:
     async with httpx.AsyncClient(
-        transport=httpx.MockTransport(handler), base_url="http://osrm-car:5000"
+        transport=httpx.MockTransport(handler),
+        base_url="http://osrm-car:5000",
+        timeout=CLIENT_TIMEOUT,
     ) as client:
-        return await OSRMRoutingEngine(client).durations(stops)
+        engine = OSRMRoutingEngine(client, detour_timeout_seconds=timeout)
+        return await engine.durations(stops)
 
 
 async def test_durations_asks_for_every_pair_in_the_points_order() -> None:
@@ -49,6 +57,39 @@ async def test_durations_asks_for_every_pair_in_the_points_order() -> None:
     assert "sources" not in request.url.params
     # Not rounded: the detour is rounded once, at the end.
     assert result == [[0.0, 100.5, 201.0], [100.5, 0.0, 100.5], [201.0, 100.5, 0.0]]
+
+
+async def test_durations_uses_the_detour_timeout_not_the_clients() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return table(request)
+
+    await durations(handler, points(3))
+
+    [request] = requests
+    timeout = request.extensions["timeout"]
+    assert timeout == {
+        "connect": DETOUR_TIMEOUT,
+        "read": DETOUR_TIMEOUT,
+        "write": DETOUR_TIMEOUT,
+        "pool": DETOUR_TIMEOUT,
+    }
+    assert DETOUR_TIMEOUT < CLIENT_TIMEOUT
+
+
+async def test_durations_without_a_detour_timeout_uses_the_clients() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return table(request)
+
+    await durations(handler, points(3), timeout=None)
+
+    [request] = requests
+    assert request.extensions["timeout"]["read"] == CLIENT_TIMEOUT
 
 
 async def test_durations_are_not_symmetric_when_one_way_streets_say_so() -> None:

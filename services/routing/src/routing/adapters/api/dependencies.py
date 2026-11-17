@@ -188,7 +188,9 @@ def get_detour(request: Request) -> DetourQuery:
     state = request.app.state
     return DetourQuery(
         session_factory=state.session_factory,
-        driving=OSRMRoutingEngine(state.osrm_car_client),
+        driving=OSRMRoutingEngine(
+            state.osrm_car_client, detour_timeout_seconds=state.detour_timeout_seconds
+        ),
     )
 
 

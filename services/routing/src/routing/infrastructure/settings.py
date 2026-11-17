@@ -13,6 +13,9 @@ class Settings(BaseSettings):
     osrm_foot_url: str = "http://localhost:5051"
     # Computing a route must take under 3 seconds (contract), and Trips gives up after 5.
     osrm_timeout_seconds: float = 2.5
+    # Trips waits for a detour while the rider's request is open, and the contract says to fail
+    # fast with 503 when OSRM is slow (#36): under 1 second.
+    detour_timeout_seconds: float = 0.8
     # Riders within this straight-line distance of a route are checked by walking time (#25,
     # #26). Generous on purpose: the walking check is what rules riders out.
     corridor_meters: int = 800
