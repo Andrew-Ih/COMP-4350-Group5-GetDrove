@@ -1,22 +1,22 @@
 """Trips API: post a trip, my trips and search (Sprint 1), and the Sprint 2 contract (#262):
 recurring trips, cancelling, trip detail with pickup points, seat requests, and auto-accept.
 
-Endpoints that return 501 are contracts: their task implements them.
 Paths here are relative to the gateway prefix /api/trips. Fixed paths (/mine, /search,
 /series, /requests/..., /auto-accept) are declared before /{trip_id}, so they aren't read as
 a trip ID.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    AutoAcceptRulesService,
     CancelSeriesService,
     CancelTripService,
     DecideRequestService,
@@ -59,6 +59,7 @@ from trips.application.list_trip_requests import (
     ListTripRequestsCommand,
 )
 from trips.application.request_seat import RequestSeatCommand
+from trips.domain import auto_accept
 from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.seat_request import SeatRequest as SeatRequestEntity
@@ -90,13 +91,6 @@ When = Annotated[
     Literal["upcoming", "past"],
     Query(description="Upcoming (soonest first) or past (most recent first)."),
 ]
-
-
-def _not_implemented() -> NoReturn:
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet: this is a contract (#108).",
-    )
 
 
 @router.post(
@@ -232,8 +226,10 @@ async def my_requests(
     description="The driver's rules. If they've never set any: off, 5 minutes, no minimum rating.",
     responses=UNAUTHORIZED,
 )
-async def get_auto_accept(user: AuthenticatedUser) -> AutoAcceptRules:
-    _not_implemented()
+async def get_auto_accept(
+    user: AuthenticatedUser, service: AutoAcceptRulesService
+) -> AutoAcceptRules:
+    return _auto_accept_out(await service.get(driver_id=user.id))
 
 
 @router.put(
@@ -246,8 +242,23 @@ async def get_auto_accept(user: AuthenticatedUser) -> AutoAcceptRules:
     "to new requests only.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def put_auto_accept(body: AutoAcceptRules, user: AuthenticatedUser) -> AutoAcceptRules:
-    _not_implemented()
+async def put_auto_accept(
+    body: AutoAcceptRules, user: AuthenticatedUser, service: AutoAcceptRulesService
+) -> AutoAcceptRules:
+    rules = auto_accept.AutoAcceptRules(
+        enabled=body.enabled,
+        max_detour_minutes=body.max_detour_minutes,
+        min_rating=body.min_rating,
+    )
+    return _auto_accept_out(await service.set(driver_id=user.id, rules=rules))
+
+
+def _auto_accept_out(rules: auto_accept.AutoAcceptRules) -> AutoAcceptRules:
+    return AutoAcceptRules(
+        enabled=rules.enabled,
+        max_detour_minutes=rules.max_detour_minutes,
+        min_rating=rules.min_rating,
+    )
 
 
 @router.get(

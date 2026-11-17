@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from trips.domain.auto_accept import AutoAcceptRules
 from trips.domain.entities import Trip, TripSeries
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import (
@@ -220,3 +221,15 @@ class SeatRequestEvents(Protocol):
     async def request_cancelled(
         self, request: SeatRequest, trip: Trip, *, was_accepted: bool
     ) -> None: ...
+
+
+class AutoAcceptRulesRepository(Protocol):
+    """Each driver's auto-accept rules (#42)."""
+
+    async def get(self, driver_id: UUID) -> AutoAcceptRules | None:
+        """The driver's saved rules, or None if they've never set any."""
+        ...
+
+    async def save(self, driver_id: UUID, rules: AutoAcceptRules) -> None:
+        """Saves the rules, replacing any the driver had."""
+        ...
