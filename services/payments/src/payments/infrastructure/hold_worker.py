@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -20,16 +21,23 @@ from payments.domain.holds import HoldStatus, PaymentHold
 logger = logging.getLogger(__name__)
 
 
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
 class HoldWorker:
     def __init__(
         self,
         sessions: async_sessionmaker[AsyncSession],
         cards: SavedCardLookup,
         gateway: PaymentGatewayPort,
+        *,
+        clock: Callable[[], datetime] = utc_now,
     ) -> None:
         self.sessions = sessions
         self.cards = cards
         self.gateway = gateway
+        self.clock = clock
 
     def use_case(self, session: AsyncSession, correlation_id: str | None) -> HoldPayments:
         return HoldPayments(
@@ -42,16 +50,19 @@ class HoldWorker:
         )
 
     async def process(self, request_id: UUID, now: datetime | None = None) -> None:
-        now = now or datetime.now(UTC)
+        now = now or self.clock()
         async with self.sessions() as session, session.begin():
             hold = await SQLAlchemyHolds(session).lock(request_id)
             if hold is None:
                 return
             if not hold.release_requested:
                 await self.use_case(session, hold.correlation_id).prepare(request_id, now)
+        await self._finish(request_id, now)
+
+    async def _finish(self, request_id: UUID, now: datetime) -> None:
         # Credentials and first-attempt time are committed before any authorization call.
         async with self.sessions() as session, session.begin():
-            hold = await SQLAlchemyHolds(session).lock(request_id)
+            hold = await SQLAlchemyHolds(session).lock(request_id, skip_locked=True)
             if hold is None:
                 return
             # Keep this row locked across the bounded Stripe call so parallel workers
@@ -89,23 +100,44 @@ class HoldWorker:
                 and hold.retry_at is not None
                 and (hold.status is HoldStatus.SCHEDULED or hold.release_requested)
             ):
-                await repository.save(
-                    replace(hold, retry_at=datetime.now(UTC) + timedelta(seconds=30))
+                await repository.save(replace(hold, retry_at=self.clock() + timedelta(seconds=30)))
+
+    async def run_once(self, limit: int = 20) -> int:
+        """Claim due work without waiting for rows another worker is processing.
+
+        Prepare under the claim lock, commit the card snapshot, then authorize in a
+        second transaction. Another worker can finish a prepared hold after a crash.
+        """
+        attempted: set[UUID] = set()
+        while len(attempted) < limit:
+            request_id = None
+            try:
+                async with self.sessions() as session, session.begin():
+                    repository = SQLAlchemyHolds(session)
+                    due = await repository.due(self.clock(), limit=1, skip=attempted)
+                    if not due:
+                        break
+                    request_id = due[0]
+                    attempted.add(request_id)
+                    hold = await repository.lock(request_id)
+                    if hold is not None and not hold.release_requested:
+                        await self.use_case(session, hold.correlation_id).prepare(
+                            request_id, self.clock()
+                        )
+                await self._finish(request_id, self.clock())
+            except Exception:
+                if request_id is None:
+                    raise
+                logger.exception(
+                    "Hold processing failed", extra={"seat_request_id": str(request_id)}
                 )
+                await self.defer(request_id)
+        return len(attempted)
 
     async def run(self, stop: asyncio.Event) -> None:
         while not stop.is_set():
             try:
-                async with self.sessions() as session:
-                    due = await SQLAlchemyHolds(session).due(datetime.now(UTC))
-                for request_id in due:
-                    try:
-                        await self.process(request_id)
-                    except Exception:
-                        logger.exception(
-                            "Hold processing failed", extra={"seat_request_id": str(request_id)}
-                        )
-                        await self.defer(request_id)
+                await self.run_once()
             except Exception:
                 logger.exception("Could not poll scheduled holds")
             with contextlib.suppress(TimeoutError):

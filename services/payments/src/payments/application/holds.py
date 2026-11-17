@@ -46,6 +46,8 @@ class HoldPayments:
             return
         if hold.release_requested:
             return
+        if hold.retry_at is None or now < hold.authorize_at or now < hold.retry_at:
+            return
         if hold.card is not None:
             return
         if now >= hold.departure_at:
@@ -67,7 +69,7 @@ class HoldPayments:
             return
         if hold.card is None or hold.first_attempt_at is None:
             return
-        if now < hold.retry_at:
+        if now < hold.authorize_at or now < hold.retry_at:
             return
         # Stripe may prune idempotency keys after 24h. Never blindly retry beyond that window.
         if now >= hold.departure_at or now - hold.first_attempt_at >= timedelta(hours=23):

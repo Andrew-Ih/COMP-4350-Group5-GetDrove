@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 from redis.asyncio import Redis
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from events import EventEnvelope, stream_name
@@ -612,3 +612,82 @@ async def test_delayed_or_republished_acceptance_keeps_original_authorization_sc
         hold = await SQLAlchemyHolds(session).lock(data.request_id)
         assert hold.authorize_at == departure - timedelta(hours=24)
         assert hold.retry_at == hold.authorize_at
+
+
+@pytest.fixture
+async def scheduler_setup(setup):
+    # Scheduler passes inspect all holds, so isolate them from other scenarios' pending work.
+    sessions, *_ = setup
+    async with sessions() as session, session.begin():
+        await session.execute(delete(payment_holds))
+    return setup
+
+
+async def test_worker_authorizes_far_ahead_booking_only_when_fake_clock_reaches_due(
+    scheduler_setup,
+):
+    sessions, provider, cards, worker = scheduler_setup
+    event = accepted()
+    now = datetime.now(UTC)
+    payload = dict(event.payload)
+    payload["departureAt"] = (now + timedelta(days=14)).isoformat()
+    event = event.model_copy(update={"payload": payload, "occurred_at": now})
+    request_id = event.payload_as(RequestAccepted).request_id
+    await schedule(sessions, event)
+    clock = [now]
+    worker.clock = lambda: clock[0]
+    assert await worker.run_once() == 0
+    await worker.process(request_id)  # Even a direct call cannot prepare early.
+    cards.for_rider.assert_not_awaited()
+    provider.gateway.authorize.assert_not_awaited()
+    due = now + timedelta(days=13)
+    clock[0] = due - timedelta(microseconds=1)
+    assert await worker.run_once() == 0
+    clock[0] = due
+    assert await worker.run_once() == 1
+    assert await worker.run_once() == 0
+    provider.gateway.authorize.assert_awaited_once()
+    [held] = await outcomes(sessions, request_id)
+    assert held["type"] == "PaymentHeld"
+    async with sessions() as session:
+        hold = await SQLAlchemyHolds(session).lock(request_id)
+        assert hold.status is HoldStatus.AUTHORIZED
+        assert hold.first_attempt_at == due
+        assert hold.amount_cents == 625
+
+
+async def test_scheduler_skips_locked_hold_and_processes_other_due_work(scheduler_setup):
+    sessions, provider, _cards, worker = scheduler_setup
+    first, second = accepted(), accepted()
+    a = first.payload_as(RequestAccepted).request_id
+    b = second.payload_as(RequestAccepted).request_id
+    await schedule(sessions, first)
+    await schedule(sessions, second)
+    async with sessions() as session, session.begin():
+        await SQLAlchemyHolds(session).lock(a)
+        async with asyncio.timeout(5):
+            assert await worker.run_once() == 1
+        assert await outcomes(sessions, a) == []
+        assert (await outcomes(sessions, b))[0]["type"] == "PaymentHeld"
+    assert await worker.run_once() == 1
+    assert len(provider.intents) == 2
+
+
+async def test_scheduler_retires_cancelled_far_ahead_hold_without_stripe(scheduler_setup):
+    sessions, provider, cards, worker = scheduler_setup
+    event = accepted()
+    now = datetime.now(UTC)
+    payload = dict(event.payload)
+    payload["departureAt"] = (now + timedelta(days=14)).isoformat()
+    event = event.model_copy(update={"payload": payload, "occurred_at": now})
+    request_id = event.payload_as(RequestAccepted).request_id
+    await schedule(sessions, event)
+    await deliver_release(sessions, cancellation(event, "cancel"))
+    assert await worker.run_once() == 1
+    worker.clock = lambda: now + timedelta(days=13)
+    assert await worker.run_once() == 0
+    cards.for_rider.assert_not_awaited()
+    provider.gateway.authorize.assert_not_awaited()
+    provider.gateway.cancel.assert_not_awaited()
+    [released] = await outcomes(sessions, request_id)
+    assert released["type"] == "PaymentReleased"

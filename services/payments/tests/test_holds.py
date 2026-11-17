@@ -349,3 +349,70 @@ async def test_expired_uncertain_authorization_stops_for_reconciliation() -> Non
     assert s.stored.retry_at is None
     s.gateway.authorize.assert_not_awaited()
     s.events.released.assert_not_awaited()
+
+
+async def test_far_ahead_hold_waits_to_snapshot_card_until_authorization_time() -> None:
+    s = Setup()
+    due = NOW + timedelta(days=13)
+    s.holds.items[s.hold.request_id] = replace(
+        s.hold, departure_at=NOW + timedelta(days=14), authorize_at=due, retry_at=due
+    )
+    await s.authorize()
+    await s.use_case.prepare(s.hold.request_id, due - timedelta(microseconds=1))
+    await s.use_case.authorize(s.hold.request_id, due - timedelta(microseconds=1))
+    assert s.stored.first_attempt_at is None
+    s.cards.for_rider.assert_not_awaited()
+    s.gateway.authorize.assert_not_awaited()
+    s.events.failed.assert_not_awaited()
+    # The rider's card is resolved at authorization time, not weeks before it.
+    s.cards.for_rider.return_value = SavedPaymentCard("cus_current", "pm_current")
+    await s.use_case.prepare(s.hold.request_id, due)
+    await s.use_case.authorize(s.hold.request_id, due)
+    assert s.stored.status is HoldStatus.AUTHORIZED
+    assert s.stored.first_attempt_at == due
+    assert s.gateway.authorize.await_args.kwargs["payment_method_id"] == "pm_current"
+    assert s.gateway.authorize.await_args.kwargs["amount_cents"] == s.hold.amount_cents
+    await s.use_case.authorize(s.hold.request_id, due + timedelta(seconds=1))
+    s.gateway.authorize.assert_awaited_once()
+
+
+@pytest.mark.parametrize("reason", ["no_card", "card_declined", "authentication_required"])
+async def test_delayed_authorization_uses_existing_payment_failure_flow(reason) -> None:
+    s = Setup()
+    due = NOW + timedelta(days=13)
+    s.holds.items[s.hold.request_id] = replace(
+        s.hold, departure_at=NOW + timedelta(days=14), authorize_at=due, retry_at=due
+    )
+    if reason == "no_card":
+        s.cards.for_rider.return_value = None
+    else:
+        s.gateway.authorize.side_effect = (
+            PaymentDeclinedError() if reason == "card_declined" else AuthenticationRequiredError()
+        )
+    await s.authorize()
+    s.events.failed.assert_not_awaited()
+    await s.use_case.prepare(s.hold.request_id, due)
+    await s.use_case.authorize(s.hold.request_id, due)
+    assert s.stored.status is HoldStatus.FAILED
+    s.events.failed.assert_awaited_once_with(s.stored, reason)
+
+
+async def test_cancelling_far_ahead_schedule_does_not_wait_or_contact_stripe() -> None:
+    s = Setup()
+    due = NOW + timedelta(days=13)
+    s.holds.items[s.hold.request_id] = replace(
+        s.hold,
+        departure_at=NOW + timedelta(days=14),
+        authorize_at=due,
+        release_requested=True,
+        retry_at=NOW,
+    )
+    await s.use_case.release(s.hold.request_id, NOW)
+    await s.use_case.prepare(s.hold.request_id, due)
+    await s.use_case.authorize(s.hold.request_id, due)
+    assert s.stored.status is HoldStatus.RELEASED
+    s.cards.for_rider.assert_not_awaited()
+    s.gateway.authorize.assert_not_awaited()
+    s.gateway.cancel.assert_not_awaited()
+    s.gateway.retrieve_payment_intent.assert_not_awaited()
+    s.events.released.assert_awaited_once()

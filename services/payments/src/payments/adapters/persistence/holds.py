@@ -1,5 +1,6 @@
 """Request uniqueness and row locks protect holds across events and workers."""
 
+from collections.abc import Collection
 from datetime import datetime
 from uuid import UUID
 
@@ -106,9 +107,11 @@ class SQLAlchemyHolds:
         if any(getattr(existing, field) != getattr(hold, field) for field in fields):
             raise HoldConflictError("RequestAccepted conflicts with its saved payment hold")
 
-    async def lock(self, request_id: UUID) -> PaymentHold | None:
+    async def lock(self, request_id: UUID, *, skip_locked: bool = False) -> PaymentHold | None:
         result = await self.session.execute(
-            select(payment_holds).where(payment_holds.c.request_id == request_id).with_for_update()
+            select(payment_holds)
+            .where(payment_holds.c.request_id == request_id)
+            .with_for_update(skip_locked=skip_locked)
         )
         row = result.mappings().first()
         return from_row(row) if row is not None else None
@@ -128,7 +131,9 @@ class SQLAlchemyHolds:
             )
         )
 
-    async def due(self, now: datetime, limit: int = 20) -> list[UUID]:
+    async def due(
+        self, now: datetime, limit: int = 20, *, skip: Collection[UUID] = ()
+    ) -> list[UUID]:
         result = await self.session.execute(
             select(payment_holds.c.request_id)
             .where(
@@ -139,9 +144,14 @@ class SQLAlchemyHolds:
                 payment_holds.c.status != HoldStatus.RELEASED.value,
                 payment_holds.c.status != HoldStatus.FAILED.value,
                 payment_holds.c.retry_at <= now,
+                or_(
+                    payment_holds.c.release_requested.is_(True), payment_holds.c.authorize_at <= now
+                ),
+                payment_holds.c.request_id.not_in(skip),
             )
             .order_by(payment_holds.c.retry_at)
             .limit(limit)
+            .with_for_update(skip_locked=True)
         )
         return list(result.scalars())
 
