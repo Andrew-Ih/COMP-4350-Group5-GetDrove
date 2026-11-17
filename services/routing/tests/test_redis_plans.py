@@ -18,8 +18,10 @@ class FakeRedis:
         self.values: dict[str, bytes] = {}
         self.sets: dict[str, set[bytes]] = {}
         self.down = False
+        self.calls = 0
 
     def _check(self) -> None:
+        self.calls += 1
         if self.down:
             raise RedisError("Redis is down")
 
@@ -99,3 +101,22 @@ async def test_something_that_is_not_a_plan_is_a_miss(stored: bytes) -> None:
     redis.values[f"routing:detour:{TRIP}:k1"] = stored
 
     assert await cache(redis).get(TRIP, "k1") is None
+
+
+async def test_after_a_failure_redis_is_left_alone_for_a_few_seconds() -> None:
+    now = [100.0]
+    redis = FakeRedis()
+    plans = RedisDetourPlans(redis, ttl_seconds=60, clock=lambda: now[0])  # type: ignore[arg-type]
+    redis.down = True
+
+    assert await plans.get(TRIP, "k1") is None
+    asked = redis.calls
+
+    await plans.put(TRIP, "k1", PLAN)  # skipped
+    assert await plans.get(TRIP, "k1") is None  # skipped
+    assert redis.calls == asked
+
+    redis.down = False
+    now[0] += 6  # past the back-off
+    await plans.put(TRIP, "k1", PLAN)
+    assert await plans.get(TRIP, "k1") == PLAN
