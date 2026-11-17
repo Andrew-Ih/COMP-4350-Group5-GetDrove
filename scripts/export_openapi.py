@@ -67,13 +67,15 @@ def main() -> int:
     expected = {**openapi_files(), **event_files()}
     stale = []
     for path, content in expected.items():
-        if path.exists() and path.read_text() == content:
+        if path.exists() and path.read_text(encoding="utf-8") == content:
             continue
         if args.check:
             stale.append(str(path.relative_to(CONTRACTS.parent)))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
+            # UTF-8 and \n on every OS: on Windows the defaults are cp1252 and \r\n, which
+            # would mangle the non-ASCII examples and make --check fail there.
+            path.write_text(content, encoding="utf-8", newline="\n")
             print(f"wrote {path.relative_to(CONTRACTS.parent)}")
 
     for path in leftover_files(expected):
