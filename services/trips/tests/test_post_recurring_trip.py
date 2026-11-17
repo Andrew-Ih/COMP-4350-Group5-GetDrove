@@ -61,11 +61,18 @@ class FakeEvents:
 class FakeRouting:
     def __init__(self) -> None:
         self.trip_ids: list[UUID] = []
+        self.owners: list[tuple[UUID, Direction]] = []
 
     async def compute_route(
-        self, trip_id: UUID, origin: Location, destination: Location
+        self,
+        trip_id: UUID,
+        origin: Location,
+        destination: Location,
+        driver_id: UUID,
+        direction: Direction,
     ) -> RouteEstimate:
         self.trip_ids.append(trip_id)
+        self.owners.append((driver_id, direction))
         return RouteEstimate(
             distance_meters=6000,
             duration_seconds=1800,
@@ -119,6 +126,9 @@ async def test_creates_recurring_trips() -> None:
     assert trips.saved == result.created_trips
 
     assert routing.trip_ids == [trip.id for trip in result.created_trips]
+    # Routing stores each route with its driver and direction, so only the driver sees
+    # their own end of it (#135).
+    assert routing.owners == [(series.driver_id, series.direction)] * 6
 
     assert all(trip.series_id == series.id for trip in result.created_trips)
 
@@ -134,7 +144,7 @@ async def test_routes_at_most_eight_occurrences_and_keeps_departure_order() -> N
     later_finished = asyncio.Event()
     peak = 0
 
-    async def compute(trip_id: UUID, *_: Location) -> RouteEstimate:
+    async def compute(trip_id: UUID, **_: object) -> RouteEstimate:
         nonlocal peak
         started.append(trip_id)
         peak = max(peak, len(started) - len(finished))

@@ -1,6 +1,23 @@
-"""Errors raised when posting or searching for trips."""
+"""Errors raised when managing trips."""
 
-from common_web.errors import DomainError, InvalidField, InvalidInputError
+from common_web.errors import (
+    ConflictError,
+    DomainError,
+    ForbiddenError,
+    InvalidField,
+    InvalidInputError,
+    NotFoundError,
+)
+
+
+class NotTripDriverError(ForbiddenError):
+    code = "not_trip_driver"
+    title = "Only the trip's driver can cancel it"
+
+
+class TripNotCancellableError(ConflictError):
+    code = "trip_not_cancellable"
+    title = "The trip has already started, finished or been cancelled"
 
 
 class DepartureInPastError(InvalidInputError):
@@ -37,3 +54,11 @@ class RoutingUnavailableError(DomainError):
 class PricingUnavailableError(Exception):
     """Payments couldn't price a rider's share. Search still shows the trip, without a cost,
     so this never becomes an HTTP error."""
+
+
+class TripNotFoundError(NotFoundError):
+    code = "trip_not_found"
+    title = "Trip not found"
+
+    def __init__(self) -> None:
+        super().__init__("No trip with this ID")

@@ -136,7 +136,7 @@ Our Sprint 1 retro: **[docs/retros/sprint1.md](docs/retros/sprint1.md)**. In sho
 
 - Trip detail (`GET /api/trips/{id}`) and the rider's view of "my trips" (`role=rider`) still return 501, as their contracts say.
 - Driver approval (licence, insurance, vehicle) is Sprint 2, so any verified student can post a trip for now.
-- The map route (`/api/routing/trips/{id}/geometry`) is the full route, including where the driver starts; the contract trims it to start at the rider's pickup in Sprint 2. Pickup points already avoid the driver's end.
+- The map route (`/api/routing/trips/{id}/geometry`) is the full route, including where the driver starts; the contract trims it to start at the rider's pickup in Sprint 2. Pickup points already avoid the driver's end. **Fixed in Sprint 2 (#135):** only the driver sees the whole route; everyone else gets it with the driver's end cut off.
 - No end-to-end browser tests yet (Playwright, Sprint 2), so the pages and the map are only covered by component tests and manual testing.
 
 **Limitations:**
