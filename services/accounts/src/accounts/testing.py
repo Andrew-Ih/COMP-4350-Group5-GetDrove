@@ -14,6 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
+from accounts.domain.driver import DriverProfile, DriverStatus
 from accounts.domain.email import Email
 from accounts.domain.errors import EmailTakenError
 from accounts.domain.refresh_token import RefreshToken
@@ -127,6 +128,41 @@ class FakeRefreshTokens:
                 token.revoked_at = now
 
 
+class FakeDriverProfiles:
+    def __init__(self) -> None:
+        self.rows: dict[UUID, DriverProfile] = {}
+
+    async def get(self, user_id: UUID, *, for_update: bool = False) -> DriverProfile | None:
+        profile = self.rows.get(user_id)
+        return replace(profile) if profile else None
+
+    async def save(self, profile: DriverProfile) -> None:
+        self.rows[profile.user_id] = replace(profile)
+
+    async def list_by_status(self, status: DriverStatus) -> list[DriverProfile]:
+        found = [replace(p) for p in self.rows.values() if p.status is status]
+        return sorted(found, key=lambda p: (p.submitted_at is None, p.submitted_at, p.user_id))
+
+
+class FakeDocumentStorage:
+    """Files in a dict. ``fail_on_save`` makes the next save raise, for testing cleanup."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, bytes] = {}
+        self.fail_on_save = False
+
+    async def save(self, key: str, content: bytes) -> None:
+        if self.fail_on_save:
+            raise OSError("disk full")
+        self.files[key] = content
+
+    async def read(self, key: str) -> bytes | None:
+        return self.files.get(key)
+
+    async def delete(self, key: str) -> None:
+        self.files.pop(key, None)
+
+
 class FakeEvents:
     def __init__(self) -> None:
         self.published: list[EventPayload] = []
@@ -143,6 +179,7 @@ class FakeUnitOfWork:
         self.users = FakeUsers()
         self.verification_tokens = FakeVerificationTokens()
         self.refresh_tokens = FakeRefreshTokens()
+        self.drivers = FakeDriverProfiles()
         self.events = FakeEvents()
         self.committed = False
 

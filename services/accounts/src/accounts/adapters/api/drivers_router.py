@@ -1,9 +1,9 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Every endpoint returns 501 until its task implements it: documents (#9), status (#10),
-vehicle (#125), admin approval (#127), profiles and /internal/users (#143). The contacts
-lookup Notifications needs for emails is implemented (#146).
+Implemented: status (#10), documents (#9), vehicle (#125), admin approval (#127), and
+the contacts lookup Notifications needs for emails (#146). Profiles and /internal/users
+(#143) return 501 until their task implements them.
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
 """
@@ -13,11 +13,13 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 
-from accounts.adapters.api.dependencies import Uow
+from accounts.adapters.api.dependencies import AppClock, Documents, Uow
 from accounts.adapters.api.schemas import (
     AdminDriver,
     DocumentKind,
+    DocumentsUploaded,
     DriverProfile,
+    DriverStatus,
     InternalContact,
     InternalContacts,
     InternalUsers,
@@ -26,7 +28,22 @@ from accounts.adapters.api.schemas import (
     RejectDriverRequest,
     Vehicle,
 )
+from accounts.application.admin import (
+    Application,
+    ApproveDriver,
+    ListDriverApplications,
+    RejectDriver,
+)
 from accounts.application.contacts import ListContacts
+from accounts.application.documents import (
+    OpenDriverDocument,
+    StoredDocument,
+    UploadDriverDocuments,
+)
+from accounts.application.drivers import GetMyDriverProfile, SaveVehicle
+from accounts.domain import driver as domain
+from accounts.domain.documents import MAX_DOCUMENT_BYTES
+from accounts.domain.documents import DocumentKind as DomainDocumentKind
 from common_security.dependencies import AuthenticatedUser, require_role
 from common_security.user import CurrentUser
 
@@ -48,6 +65,59 @@ UserIds = Annotated[
 
 def _problem(description: str, code: str) -> dict[str, Any]:
     return {"model": Problem, "description": f"{description} (code `{code}`)"}
+
+
+def driver_profile_out(profile: domain.DriverProfile) -> DriverProfile:
+    vehicle = profile.vehicle
+    return DriverProfile(
+        status=DriverStatus(profile.status.value),
+        rejection_reason=profile.rejection_reason,
+        documents=DocumentsUploaded(
+            licence=profile.licence_key is not None, insurance=profile.insurance_key is not None
+        ),
+        vehicle=Vehicle(
+            make=vehicle.make, model=vehicle.model, colour=vehicle.colour, plate=vehicle.plate
+        )
+        if vehicle
+        else None,
+        submitted_at=profile.submitted_at,
+        reviewed_at=profile.reviewed_at,
+    )
+
+
+async def _read(upload: UploadFile) -> bytes:
+    # One byte over the limit is enough to know it's too big, without reading the rest.
+    return await upload.read(MAX_DOCUMENT_BYTES + 1)
+
+
+def _file_response(document: StoredDocument) -> Response:
+    return Response(
+        content=document.content,
+        media_type=document.content_type,
+        headers={
+            "Content-Disposition": "inline",
+            # Private documents: never kept by the browser or anything in between.
+            "Cache-Control": "private, no-store",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def admin_driver_out(application: Application) -> AdminDriver:
+    profile = driver_profile_out(application.profile)
+    user = application.user
+    return AdminDriver(
+        user_id=user.id,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        email=user.email.value,
+        status=profile.status,
+        vehicle=profile.vehicle,
+        documents=profile.documents,
+        submitted_at=profile.submitted_at,
+        reviewed_at=profile.reviewed_at,
+        rejection_reason=profile.rejection_reason,
+    )
 
 
 def _not_implemented() -> NoReturn:
@@ -79,8 +149,8 @@ DOCUMENT_FILE: Responses = {
     "`none`, `pending`, `approved` or `rejected` (with the reason).",
     responses=UNAUTHORIZED,
 )
-async def my_driver_profile(user: AuthenticatedUser) -> DriverProfile:
-    _not_implemented()
+async def my_driver_profile(user: AuthenticatedUser, uow: Uow) -> DriverProfile:
+    return driver_profile_out(await GetMyDriverProfile(uow)(user.id))
 
 
 @driver_router.put(
@@ -101,8 +171,14 @@ async def upload_documents(
     user: AuthenticatedUser,
     licence: Annotated[UploadFile, File(description="Driver's licence.")],
     insurance: Annotated[UploadFile, File(description="Proof of insurance.")],
+    uow: Uow,
+    storage: Documents,
+    clock: AppClock,
 ) -> DriverProfile:
-    _not_implemented()
+    profile = await UploadDriverDocuments(uow, storage, clock)(
+        user.id, await _read(licence), await _read(insurance)
+    )
+    return driver_profile_out(profile)
 
 
 @driver_router.get(
@@ -111,8 +187,11 @@ async def upload_documents(
     response_class=Response,
     responses={**UNAUTHORIZED, **INVALID, **DOCUMENT_FILE},
 )
-async def my_document(kind: DocumentKind, user: AuthenticatedUser) -> Response:
-    _not_implemented()
+async def my_document(
+    kind: DocumentKind, user: AuthenticatedUser, uow: Uow, storage: Documents
+) -> Response:
+    document = await OpenDriverDocument(uow, storage)(user.id, DomainDocumentKind(kind.value))
+    return _file_response(document)
 
 
 @driver_router.put(
@@ -121,8 +200,9 @@ async def my_document(kind: DocumentKind, user: AuthenticatedUser) -> Response:
     description="Make, model, colour and plate. The plate is stored in uppercase.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def save_vehicle(body: Vehicle, user: AuthenticatedUser) -> DriverProfile:
-    _not_implemented()
+async def save_vehicle(body: Vehicle, user: AuthenticatedUser, uow: Uow) -> DriverProfile:
+    profile = await SaveVehicle(uow)(user.id, body.make, body.model, body.colour, body.plate)
+    return driver_profile_out(profile)
 
 
 # ---------------------------------------------------------------- admin approval
@@ -137,9 +217,11 @@ async def save_vehicle(body: Vehicle, user: AuthenticatedUser) -> DriverProfile:
 )
 async def list_drivers(
     admin: Admin,
+    uow: Uow,
     status: Annotated[Literal["pending", "approved", "rejected"], Query()] = "pending",
 ) -> list[AdminDriver]:
-    _not_implemented()
+    applications = await ListDriverApplications(uow)(domain.DriverStatus(status))
+    return [admin_driver_out(application) for application in applications]
 
 
 @admin_router.get(
@@ -148,8 +230,11 @@ async def list_drivers(
     response_class=Response,
     responses={**NOT_ADMIN, **INVALID, **DOCUMENT_FILE},
 )
-async def driver_document(user_id: UUID, kind: DocumentKind, admin: Admin) -> Response:
-    _not_implemented()
+async def driver_document(
+    user_id: UUID, kind: DocumentKind, admin: Admin, uow: Uow, storage: Documents
+) -> Response:
+    document = await OpenDriverDocument(uow, storage)(user_id, DomainDocumentKind(kind.value))
+    return _file_response(document)
 
 
 DECISION_ERRORS: Responses = {
@@ -174,8 +259,8 @@ DECISION_ERRORS: Responses = {
         ),
     },
 )
-async def approve_driver(user_id: UUID, admin: Admin) -> AdminDriver:
-    _not_implemented()
+async def approve_driver(user_id: UUID, admin: Admin, uow: Uow, clock: AppClock) -> AdminDriver:
+    return admin_driver_out(await ApproveDriver(uow, clock)(admin.id, user_id))
 
 
 @admin_router.post(
@@ -185,8 +270,10 @@ async def approve_driver(user_id: UUID, admin: Admin) -> AdminDriver:
     "`DriverRejected`.",
     responses=DECISION_ERRORS,
 )
-async def reject_driver(user_id: UUID, body: RejectDriverRequest, admin: Admin) -> AdminDriver:
-    _not_implemented()
+async def reject_driver(
+    user_id: UUID, body: RejectDriverRequest, admin: Admin, uow: Uow, clock: AppClock
+) -> AdminDriver:
+    return admin_driver_out(await RejectDriver(uow, clock)(admin.id, user_id, body.reason))
 
 
 # ---------------------------------------------------------------- public profiles

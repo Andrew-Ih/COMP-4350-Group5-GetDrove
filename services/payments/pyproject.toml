@@ -14,6 +14,8 @@ dependencies = [
     "common-web",
     "common-security",
     "events",
+    "redis>=6.0",
+    "stripe[async]>=14,<15",
 ]
 
 [build-system]
@@ -46,5 +48,5 @@ name = "Domain and use cases stay framework-free"
 type = "forbidden"
 source_modules = ["payments.domain", "payments.application"]
 # import-linter only accepts external packages this service actually imports somewhere.
-# Add httpx, redis and stripe here when the service starts using them.
-forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings"]
+# Add other SDKs here when the service starts using them.
+forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "stripe"]

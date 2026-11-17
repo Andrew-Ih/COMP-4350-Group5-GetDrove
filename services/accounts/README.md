@@ -36,6 +36,7 @@ Tables live in the `accounts` Postgres schema:
 | `users` | One row per student. Email stored lowercase and unique; password as an Argon2id hash ([ADR 0020](../../docs/architecture/adr/0020-password-hashing.md)). |
 | `verification_tokens` | Email verification links (SHA-256 hashes only). Used ones are kept so a used link (400) can be told apart from an expired one (410). |
 | `refresh_tokens` | "Stay logged in" tokens (SHA-256 hashes only), with `replaced_by_id` to detect a stolen token being reused. |
+| `driver_profiles` | One row per student who has applied to drive or saved a vehicle (#8): status (`pending`, `approved`, `rejected`), vehicle, who decided and why. No row means status `none`. The documents themselves are in document storage; only their keys are here. |
 | `outbox` | Events waiting to be sent to Redis ([libs/events](../../libs/events/README.md)). |
 
 After changing `adapters/persistence/tables.py`, with the database running and `ACCOUNTS_DATABASE_URL` set:
@@ -50,6 +51,21 @@ uv run alembic upgrade head
 - **Never edit a migration once it's merged**: it may already have run on teammates' machines and the live server. Add a new one instead.
 - A new column on a table that has data needs to allow blanks or have a default, or the migration fails on existing rows.
 - `test_tables_py_and_the_migrations_agree` fails if `tables.py` changes without a migration.
+
+## Making an admin
+
+Admins approve or reject drivers (#127). There's no endpoint for it: someone who can run
+commands where Accounts runs gives an existing account the role. Locally, with the stack
+running:
+
+```bash
+docker compose exec accounts python -m accounts.infrastructure.make_admin ada@myumanitoba.ca
+```
+
+On the live server, the same command from `/opt/getdrove` with
+`docker compose -f docker-compose.prod.yml exec ...`. The student must have an account
+already, and gets the admin role at their next login (or within 15 minutes, when their
+access token is refreshed).
 
 ## Layout
 
