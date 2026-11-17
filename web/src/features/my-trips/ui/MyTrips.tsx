@@ -211,7 +211,7 @@ function CancelConfirm({ trip, onClose }: { trip: Trip; onClose: () => void }) {
   return (
     <div role="group" aria-label="Cancel this trip?" className="space-y-3">
       <p className="font-bold">Cancel this trip?</p>
-      <p className="text-ink-soft">Riders on it will be told, and any payment holds on their cards are released.</p>
+      <p className="text-ink-soft">Riders on it will be told.</p>
 
       {trip.seriesId && (
         <fieldset className="space-y-2">
