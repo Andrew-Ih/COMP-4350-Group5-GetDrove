@@ -8,5 +8,6 @@ import { ApiError } from "./problem";
  */
 export function retryServerErrors(failureCount: number, error: unknown): boolean {
   if (failureCount >= 1) return false;
-  return !(error instanceof ApiError) || error.status >= 500;
+  if (!(error instanceof ApiError)) return true;
+  return error.status === 0 || error.status >= 500; // 0: the request didn't get through
 }

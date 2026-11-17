@@ -17,6 +17,7 @@ from fastapi import APIRouter, HTTPException
 from common_security.dependencies import AuthenticatedUser
 from routing.adapters.api.dependencies import (
     ComputeRouteService,
+    DetourService,
     GetRouteService,
     MatchRiderService,
     SuggestPickupsService,
@@ -158,8 +159,18 @@ async def pickup_points(
     "than returning a wrong number.",
     responses={**INVALID, **ROUTE_NOT_FOUND, **ENGINE_DOWN},
 )
-async def detour(body: DetourRequest) -> DetourResponse:
-    _not_implemented()
+async def detour(body: DetourRequest, service: DetourService) -> DetourResponse:
+    result = await service.execute(
+        trip_id=body.trip_id,
+        accepted_pickups=[LatLng(lat=p.lat, lng=p.lng) for p in body.accepted_pickups],
+        new_pickup=LatLng(lat=body.new_pickup.lat, lng=body.new_pickup.lng),
+    )
+
+    return DetourResponse(
+        added_seconds=result.added_seconds,
+        position=result.position,
+        total_seconds=result.total_seconds,
+    )
 
 
 @public_router.get(

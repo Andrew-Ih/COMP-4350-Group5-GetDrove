@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { toSearchTime } from "@/features/ride";
 import type { LngLat, MapMarker, MapRoute } from "@/shared/map";
-import { mockFetch, problem, renderWithProviders } from "@/shared/testing/render";
+import { mockFetch, OFFLINE, problem, renderWithProviders } from "@/shared/testing/render";
 
 import { addDays, defaultDeparture, formatDate } from "../model/postTrip";
 import { PostTrip } from "./PostTrip";
@@ -186,6 +186,17 @@ describe("PostTrip", () => {
 
     expect(await screen.findByText(/couldn't work out your route right now, so the trip wasn't posted/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Post trip" })).toBeEnabled(); // they can try again
+  });
+
+  it("says nothing was posted when offline, and lets them try again", async () => {
+    mockFetch({ status: 200, body: maya }, NO_TRIPS, OFFLINE);
+    renderWithProviders(<PostTrip />);
+
+    await userEvent.click(screen.getByRole("button", { name: "tap the map" }));
+    await userEvent.click(screen.getByRole("button", { name: "Post trip" }));
+
+    expect(await screen.findByText(/couldn't reach GetDrove, so the trip wasn't posted/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Post trip" })).toBeEnabled();
   });
 
   it("explains the API's departure_in_past error", async () => {

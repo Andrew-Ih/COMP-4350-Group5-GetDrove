@@ -33,11 +33,17 @@ class TripRepository(Protocol):
         left yet, except the given driver's own."""
         ...
 
-    async def get_upcoming_by_driver(self, driver_id: UUID, now: datetime) -> list[Trip]: ...
+    async def list_by_driver(self, driver_id: UUID, now: datetime, *, past: bool) -> list[Trip]: ...
 
     async def get_active_or_upcoming_by_driver(
         self, driver_id: UUID, now: datetime
     ) -> list[Trip]: ...
+
+
+class RiderTripRepository(Protocol):
+    async def list_by_rider(
+        self, rider_id: UUID, now: datetime, *, past: bool
+    ) -> list[tuple[Trip, SeatRequest]]: ...
 
 
 class TripSeriesRepository(Protocol):

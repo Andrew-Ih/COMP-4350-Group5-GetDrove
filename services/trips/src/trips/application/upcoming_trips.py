@@ -1,4 +1,4 @@
-"""Application use case for listing a driver's upcoming trips."""
+"""Application use case for listing a driver's trips."""
 
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -17,8 +17,9 @@ class ListUpcomingTrips:
         self.repository = repository
         self.clock = clock
 
-    async def execute(self, driver_id: UUID) -> list[Trip]:
-        return await self.repository.get_upcoming_by_driver(
+    async def execute(self, driver_id: UUID, *, past: bool = False) -> list[Trip]:
+        return await self.repository.list_by_driver(
             driver_id=driver_id,
             now=self.clock(),
+            past=past,
         )

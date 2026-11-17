@@ -151,3 +151,20 @@ class SQLAlchemyRouteRepository:
             )
             for row in result.mappings()
         ]
+
+    async def route_ends(self, trip_id: UUID) -> tuple[LatLng, LatLng] | None:
+        result = await self.session.execute(
+            select(
+                func.ST_Y(func.ST_StartPoint(routes.c.path)).label("start_lat"),
+                func.ST_X(func.ST_StartPoint(routes.c.path)).label("start_lng"),
+                func.ST_Y(func.ST_EndPoint(routes.c.path)).label("end_lat"),
+                func.ST_X(func.ST_EndPoint(routes.c.path)).label("end_lng"),
+            ).where(routes.c.trip_id == trip_id)
+        )
+        row = result.mappings().one_or_none()
+        if row is None:
+            return None
+        return (
+            LatLng(lat=row["start_lat"], lng=row["start_lng"]),
+            LatLng(lat=row["end_lat"], lng=row["end_lng"]),
+        )
