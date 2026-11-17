@@ -58,6 +58,16 @@ class TripCancellationRepository(Protocol):
         ...
 
 
+class SeriesCancellationRepository(TripCancellationRepository, Protocol):
+    async def get_cancellable_for_series(self, series_id: UUID, now: datetime) -> list[Trip]:
+        """Lock scheduled future occurrences in a consistent order until transaction end."""
+        ...
+
+
+class TripSeriesLookup(Protocol):
+    async def get_by_id(self, series_id: UUID) -> TripSeries | None: ...
+
+
 class TripCancellationEvents(Protocol):
     async def trip_cancelled(self, trip: Trip, rider_ids: list[UUID]) -> None: ...
 

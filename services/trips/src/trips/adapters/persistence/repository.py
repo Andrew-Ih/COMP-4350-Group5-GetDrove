@@ -108,6 +108,19 @@ class SQLAlchemyTripRepository:
         )
         return sorted(result.scalars())
 
+    async def get_cancellable_for_series(self, series_id: UUID, now: datetime) -> list[Trip]:
+        result = await self.session.execute(
+            select(trips)
+            .where(
+                trips.c.series_id == series_id,
+                trips.c.status == TripStatus.SCHEDULED.value,
+                trips.c.departure_at > now,
+            )
+            .order_by(trips.c.departure_at, trips.c.id)
+            .with_for_update()
+        )
+        return [trip_from_row(row) for row in result.mappings()]
+
     async def list_by_driver(self, driver_id: UUID, now: datetime, *, past: bool) -> list[Trip]:
         departure = trips.c.departure_at
         result = await self.session.execute(
