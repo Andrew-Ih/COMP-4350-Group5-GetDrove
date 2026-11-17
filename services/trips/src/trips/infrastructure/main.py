@@ -20,6 +20,7 @@ from events.consumer import StreamConsumer
 from events.outbox import OutboxRelay
 from trips.adapters.account_events import register_handlers
 from trips.adapters.api import health, trips_router
+from trips.adapters.payment_events import register_payment_handlers
 from trips.adapters.persistence.tables import consumer as consumer_tables
 from trips.adapters.persistence.tables import outbox
 from trips.infrastructure.database import create_database_engine
@@ -35,10 +36,11 @@ REDIS_READ_TIMEOUT_SECONDS = 10
 
 def _log_if_consumer_stopped(task: "asyncio.Task[None]") -> None:
     """The consumer should run until shutdown. If it stops with an error, say so loudly:
-    otherwise newly approved drivers would never be able to post."""
+    otherwise newly approved drivers couldn't post, and failed payments wouldn't free
+    their seats."""
     if not task.cancelled() and task.exception() is not None:
         logger.error(
-            "Event consumer stopped; driver approvals won't reach Trips",
+            "Event consumer stopped; driver approvals and payment failures won't reach Trips",
             exc_info=task.exception(),
         )
 
@@ -60,16 +62,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     relay = OutboxRelay(
         session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
     )
-    # Accounts' driver decisions keep Trips' list of approved drivers up to date (#11).
+    # One consumer for every stream Trips listens to: Accounts' driver decisions keep the
+    # list of approved drivers up to date (#11), and failed payments free their seats.
     consumer = StreamConsumer(
         redis=redis,
         session_factory=app.state.session_factory,
         group="trips",
-        streams=[stream_name("accounts")],
+        streams=[stream_name("accounts"), stream_name("payments")],
         tables=consumer_tables,
         block_ms=CONSUMER_BLOCK_MS,
     )
     register_handlers(consumer)
+    register_payment_handlers(consumer)
 
     async with (
         httpx.AsyncClient(

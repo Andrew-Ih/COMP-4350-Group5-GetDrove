@@ -133,3 +133,8 @@ class SeatRequest:
         if self.status not in (RequestStatus.PENDING, RequestStatus.ACCEPTED):
             raise RequestNotCancellableError()
         return replace(self, status=RequestStatus.CANCELLED, decided_at=now, pickup_order=None)
+
+    def fail_payment(self, now: datetime) -> "SeatRequest":
+        if self.status is not RequestStatus.ACCEPTED:
+            raise ValueError("Only an accepted request can fail payment")
+        return replace(self, status=RequestStatus.PAYMENT_FAILED, decided_at=now, pickup_order=None)

@@ -1,4 +1,4 @@
-"""add approved drivers and event consumer tables
+"""add approved drivers (#11)
 
 Revision ID: 5529ada83545
 Revises: 682e9335a989
@@ -9,7 +9,6 @@ from collections.abc import Sequence
 
 import sqlalchemy as sa
 from alembic import op
-from sqlalchemy.dialects import postgresql
 
 revision: str = '5529ada83545'
 down_revision: str | None = '682e9335a989'
@@ -26,37 +25,10 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("driver_id", name=op.f("pk_approved_drivers")),
         schema="trips",
     )
-    # libs/events consumer tables: events handled once, and events that kept failing.
-    op.create_table(
-        "processed_events",
-        sa.Column("event_id", sa.Uuid(), nullable=False),
-        sa.Column("type", sa.String(length=200), nullable=False),
-        sa.Column(
-            "processed_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.PrimaryKeyConstraint("event_id", name=op.f("pk_processed_events")),
-        schema="trips",
-    )
-    op.create_table(
-        "failed_events",
-        sa.Column("event_id", sa.Uuid(), nullable=False),
-        sa.Column("type", sa.String(length=200), nullable=False),
-        sa.Column("stream", sa.String(length=200), nullable=False),
-        sa.Column("envelope", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
-        sa.Column("error", sa.Text(), nullable=False),
-        sa.Column("attempts", sa.Integer(), nullable=False),
-        sa.Column(
-            "failed_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False
-        ),
-        sa.PrimaryKeyConstraint("event_id", name=op.f("pk_failed_events")),
-        schema="trips",
-    )
+    # The libs/events consumer tables (processed_events, failed_events) used to be created here
+    # too. develop's a15300000001 (payment failures) creates them, so they're left to it: Trips
+    # has one consumer for both, and creating them twice would fail.
 
 
 def downgrade() -> None:
-    op.drop_table("failed_events", schema="trips")
-    op.drop_table("processed_events", schema="trips")
     op.drop_table("approved_drivers", schema="trips")
