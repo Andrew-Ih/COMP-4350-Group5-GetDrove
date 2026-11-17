@@ -57,7 +57,8 @@ describe("mock API: posting a trip", () => {
     const sooner = await postTrip(inAWeek(10));
 
     const mine = await unwrap(trips.GET("/mine", { params: { query: { role: "driver" } } }));
-    expect(mine.map((t) => t.id)).toEqual([sooner.id, later.id]);
+    const postedHere = mine.filter((t) => t.id === sooner.id || t.id === later.id);
+    expect(postedHere.map((t) => t.id)).toEqual([sooner.id, later.id]);
   });
 
   it("refuses a departure in the past, and is unavailable for :55", async () => {
@@ -65,5 +66,110 @@ describe("mock API: posting a trip", () => {
     expect((past as ApiError).code).toBe("departure_in_past");
     const unavailable = await postTrip(inAWeek(55)).catch((e: unknown) => e);
     expect((unavailable as ApiError).code).toBe("routing_unavailable");
+  });
+});
+
+describe("mock API: posting a repeating trip (#19)", () => {
+  // Monday, March 8, 2027, in the morning in Winnipeg; the series runs for two weeks.
+  const series = (changes: Partial<{ departureAt: string; weekdays: ("mon" | "tue" | "wed" | "thu" | "fri")[]; endDate: string }> = {}) =>
+    unwrap(
+      trips.POST("/series", {
+        body: {
+          direction: "to_campus",
+          place,
+          departureAt: "2027-03-08T13:45:00Z",
+          seatsTotal: 3,
+          weekdays: ["mon", "wed"],
+          endDate: "2027-03-17",
+          ...changes,
+        },
+      }),
+    );
+  const inWinnipeg = (iso: string, options: Intl.DateTimeFormatOptions) =>
+    new Date(iso).toLocaleString("en-CA", { timeZone: "America/Winnipeg", ...options });
+  const winnipegDay = (iso: string) => inWinnipeg(iso, { year: "numeric", month: "2-digit", day: "2-digit" });
+  const winnipegTime = (iso: string) => inWinnipeg(iso, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+
+  it("makes one trip per chosen weekday, all at the same Winnipeg time", async () => {
+    const result = await series();
+
+    expect(result.trips.map((t) => winnipegDay(t.departureAt))).toEqual(["2027-03-08", "2027-03-10", "2027-03-15", "2027-03-17"]);
+    // The same clock time every day, whatever Winnipeg's UTC offset is on each date.
+    const firstTime = winnipegTime("2027-03-08T13:45:00Z");
+    expect(result.trips.map((t) => winnipegTime(t.departureAt))).toEqual([firstTime, firstTime, firstTime, firstTime]);
+    expect(result.trips.every((t) => t.seriesId === result.seriesId)).toBe(true);
+    expect(result.skippedDates).toEqual([]);
+  });
+
+  it("skips the days that clash with a trip already posted", async () => {
+    await postTrip("2027-03-10T13:45:00Z");
+    const result = await series();
+
+    expect(result.skippedDates).toEqual(["2027-03-10"]);
+    expect(result.trips).toHaveLength(3);
+  });
+
+  it("refuses a first departure that isn't on one of the weekdays (#315), and a last day too far away", async () => {
+    const notOnADay = await series({ weekdays: ["tue"] }).catch((e: unknown) => e);
+    expect((notOnADay as ApiError).problem.errors?.[0]?.field).toBe("weekdays");
+
+    const tooFar = await series({ endDate: "2027-07-01" }).catch((e: unknown) => e);
+    expect((tooFar as ApiError).problem.errors?.[0]?.field).toBe("endDate");
+  });
+
+  it("lists generated occurrences in My Trips and keeps a cancelled occurrence visible", async () => {
+    const result = await series();
+    const mine = () => unwrap(trips.GET("/mine", { params: { query: { when: "upcoming" } } }));
+    const occurrences = async () => (await mine()).filter((trip) => trip.seriesId === result.seriesId);
+    const first = result.trips[0]!;
+
+    expect((await occurrences()).map((trip) => trip.id)).toEqual(result.trips.map((trip) => trip.id));
+    await unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: first.id } } }));
+    expect((await occurrences()).map((trip) => trip.status)).toEqual([
+      "cancelled", "scheduled", "scheduled", "scheduled",
+    ]);
+  });
+});
+
+describe("mock API: My trips", () => {
+  const mine = (when: "upcoming" | "past") => unwrap(trips.GET("/mine", { params: { query: { when } } }));
+  const failure = (call: Promise<unknown>) => call.then(() => undefined).catch((e: unknown) => (e as ApiError).code);
+
+  it("lists upcoming trips soonest first, cancelled ones included, and past ones separately", async () => {
+    const upcoming = await mine("upcoming");
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(upcoming.some((t) => t.status === "cancelled")).toBe(true);
+    expect(upcoming.some((t) => t.seriesId)).toBe(true);
+    const departures = upcoming.map((t) => Date.parse(t.departureAt));
+    expect(departures).toEqual([...departures].sort((a, b) => a - b));
+
+    const past = await mine("past");
+    expect(past.length).toBeGreaterThan(0);
+    expect(past.every((t) => Date.parse(t.departureAt) < Date.now())).toBe(true);
+  });
+
+  it("cancels one trip, and refuses to cancel it again", async () => {
+    const trip = (await mine("upcoming")).find((t) => t.status === "scheduled" && !t.seriesId)!;
+    const cancelled = await unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: trip.id } } }));
+    expect(cancelled.status).toBe("cancelled");
+    expect((await mine("upcoming")).find((t) => t.id === trip.id)?.status).toBe("cancelled");
+    expect(await failure(unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: trip.id } } })))).toBe(
+      "trip_not_cancellable",
+    );
+  });
+
+  it("cancels every trip in a series", async () => {
+    const seriesId = (await mine("upcoming")).find((t) => t.seriesId)!.seriesId!;
+    const cancelled = await unwrap(trips.POST("/series/{series_id}/cancel", { params: { path: { series_id: seriesId } } }));
+    expect(cancelled.length).toBeGreaterThan(1);
+    expect((await mine("upcoming")).filter((t) => t.seriesId === seriesId).every((t) => t.status === "cancelled")).toBe(true);
+  });
+
+  it("lists the rider's upcoming and past rides with their requests", async () => {
+    const upcoming = await unwrap(trips.GET("/requests/mine", { params: { query: { when: "upcoming" } } }));
+    expect(upcoming.map((r) => r.request.status)).toEqual(expect.arrayContaining(["pending", "accepted", "declined"]));
+    expect(upcoming.every((r) => r.trip.origin === null)).toBe(true); // the driver's end stays private
+    const past = await unwrap(trips.GET("/requests/mine", { params: { query: { when: "past" } } }));
+    expect(past[0]?.trip.status).toBe("completed");
   });
 });

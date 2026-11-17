@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from routing.adapters.persistence.tables import SRID, route_samples, routes
 from routing.domain.entities import Route
-from routing.domain.values import Corridor, CorridorHit, LatLng, RouteSample
+from routing.domain.values import Corridor, CorridorHit, Direction, LatLng, RouteSample
 
 # ST_AsGeoJSON rounds to 9 decimal places by default; keep every digit that was stored.
 MAX_DECIMAL_DIGITS = 15
@@ -37,6 +37,8 @@ class SQLAlchemyRouteRepository:
             "path": _linestring(route),
             "distance_meters": route.distance_meters,
             "duration_seconds": route.duration_seconds,
+            "driver_id": route.driver_id,
+            "direction": route.direction.value if route.direction else None,
         }
         statement = insert(routes).values(trip_id=route.trip_id, **values)
         # Computing a trip's route again replaces it (the contract allows retries).
@@ -72,6 +74,8 @@ class SQLAlchemyRouteRepository:
                 func.ST_AsGeoJSON(routes.c.path, MAX_DECIMAL_DIGITS).label("geojson"),
                 routes.c.distance_meters,
                 routes.c.duration_seconds,
+                routes.c.driver_id,
+                routes.c.direction,
             ).where(routes.c.trip_id == trip_id)
         )
         row = result.mappings().one_or_none()
@@ -85,7 +89,15 @@ class SQLAlchemyRouteRepository:
             path=tuple(LatLng(lat=lat, lng=lng) for lng, lat in coordinates),
             distance_meters=row["distance_meters"],
             duration_seconds=row["duration_seconds"],
+            driver_id=row["driver_id"],
+            direction=Direction(row["direction"]) if row["direction"] else None,
         )
+
+    async def has_route(self, trip_id: UUID) -> bool:
+        stored = await self.session.scalar(
+            select(func.count()).select_from(routes).where(routes.c.trip_id == trip_id)
+        )
+        return bool(stored)
 
     async def samples_in_corridor(
         self, rider: LatLng, trip_ids: Sequence[UUID], corridor: Corridor
@@ -139,3 +151,20 @@ class SQLAlchemyRouteRepository:
             )
             for row in result.mappings()
         ]
+
+    async def route_ends(self, trip_id: UUID) -> tuple[LatLng, LatLng] | None:
+        result = await self.session.execute(
+            select(
+                func.ST_Y(func.ST_StartPoint(routes.c.path)).label("start_lat"),
+                func.ST_X(func.ST_StartPoint(routes.c.path)).label("start_lng"),
+                func.ST_Y(func.ST_EndPoint(routes.c.path)).label("end_lat"),
+                func.ST_X(func.ST_EndPoint(routes.c.path)).label("end_lng"),
+            ).where(routes.c.trip_id == trip_id)
+        )
+        row = result.mappings().one_or_none()
+        if row is None:
+            return None
+        return (
+            LatLng(lat=row["start_lat"], lng=row["start_lng"]),
+            LatLng(lat=row["end_lat"], lng=row["end_lng"]),
+        )
