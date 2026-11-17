@@ -5,12 +5,13 @@ import Link from "next/link";
 import { type ReactNode, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
+import { CancelTrip } from "@/features/my-trips";
 import type { ApiError } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 import { CAMPUS, type LngLat, type MapMarker, type MapRoute, MapView } from "@/shared/map";
 import { AppHeader, Avatar, Button, buttonStyles, MapLayout, PrivacyNote, Spinner } from "@/shared/ui";
 
-import { useDecideRequest, useDriverRoute, useDriverTrip, useTripRequests } from "../hooks/useTripRequests";
+import { useDecideRequest, useDriverRoute, useDriverTrip, useTripCancelled, useTripRequests } from "../hooks/useTripRequests";
 import { formatClock, type Trip } from "../model/postTrip";
 import {
   canDecide,
@@ -30,7 +31,8 @@ import {
  * no-shows, pickup point and the detour it adds (#40), and Accept and Decline. The detour
  * comes with the list from GET /api/trips/{id}/requests; when routing couldn't work it out,
  * the request says so with a retry instead of showing a number (#39). Drivers only ever see
- * pickup points, never where riders live (#32).
+ * pickup points, never where riders live (#32). The driver can cancel the trip from here
+ * too, with the same confirmation as My trips (#273).
  */
 export function TripRequests({ tripId }: { tripId: string }) {
   const me = useCurrentUser();
@@ -38,6 +40,7 @@ export function TripRequests({ tripId }: { tripId: string }) {
   const requests = useTripRequests(tripId);
   const route = useDriverRoute(tripId, detail.isSuccess);
   const trip = detail.data?.trip;
+  const afterCancel = useTripCancelled(tripId);
   const { pending, accepted } = useMemo(() => splitRequests(requests.data ?? []), [requests.data]);
 
   const markers = useMemo<MapMarker[]>(() => {
@@ -85,6 +88,9 @@ export function TripRequests({ tripId }: { tripId: string }) {
             {trip && (
               <>
                 <TripCard trip={trip} accepted={accepted} />
+                <div className="mt-4 empty:hidden">
+                  <CancelTrip trip={trip} onCancelled={afterCancel.cancelled} onFailed={afterCancel.failed} />
+                </div>
                 <Requests
                   trip={trip}
                   tripId={tripId}
