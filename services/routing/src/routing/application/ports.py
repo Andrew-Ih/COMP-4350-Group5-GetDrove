@@ -30,6 +30,15 @@ class RoutingEngine(Protocol):
         ...
 
 
+class DrivingMatrix(Protocol):
+    async def durations(self, points: Sequence[LatLng]) -> list[list[float]]:
+        """Drive time in seconds from every point to every other, as a square matrix in
+        the same order as ``points``: ``result[i][j]`` is point i to point j. Raise
+        RoutingEngineUnavailableError if the engine is down or too slow, or if any pair
+        has no route: a detour computed from a guess would be a wrong number."""
+        ...
+
+
 class WalkingEngine(Protocol):
     async def walks(self, origin: LatLng, destinations: Sequence[LatLng]) -> list[Walk | None]:
         """The walk from ``origin`` to each destination, in the same order; None where

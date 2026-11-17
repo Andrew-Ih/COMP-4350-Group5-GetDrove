@@ -28,6 +28,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
     app.state.corridor = Corridor(radius_meters=settings.corridor_meters)
     app.state.max_walk_seconds = settings.max_walk_seconds
+    app.state.detour_timeout_seconds = settings.detour_timeout_seconds
 
     async with (
         httpx.AsyncClient(
