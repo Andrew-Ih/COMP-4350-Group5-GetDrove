@@ -49,7 +49,6 @@ name = "Domain and use cases stay framework-free"
 type = "forbidden"
 source_modules = ["routing.domain", "routing.application"]
 # import-linter only accepts external packages this service actually imports somewhere.
-# Add httpx, redis and stripe here when the service starts using them.
-# import-linter only accepts external packages this service actually imports somewhere.
 # Add stripe here when the service starts using it.
+forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "geoalchemy2", "redis"]
 forbidden_modules = ["fastapi", "sqlalchemy", "pydantic_settings", "httpx", "geoalchemy2", "redis"]
