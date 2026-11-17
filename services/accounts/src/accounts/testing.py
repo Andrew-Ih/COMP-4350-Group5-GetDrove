@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Self
 from uuid import UUID
 
-from accounts.domain.driver import DriverProfile
+from accounts.domain.driver import DriverProfile, DriverStatus
 from accounts.domain.email import Email
 from accounts.domain.errors import EmailTakenError
 from accounts.domain.refresh_token import RefreshToken
@@ -134,6 +134,10 @@ class FakeDriverProfiles:
 
     async def save(self, profile: DriverProfile) -> None:
         self.rows[profile.user_id] = replace(profile)
+
+    async def list_by_status(self, status: DriverStatus) -> list[DriverProfile]:
+        found = [replace(p) for p in self.rows.values() if p.status is status]
+        return sorted(found, key=lambda p: (p.submitted_at is None, p.submitted_at, p.user_id))
 
 
 class FakeDocumentStorage:
