@@ -6,7 +6,7 @@ import pytest
 
 from common_web.errors import InvalidInputError
 from trips.application.auto_accept import GetAutoAcceptRules, SetAutoAcceptRules
-from trips.domain.auto_accept import AutoAcceptRules
+from trips.domain.auto_accept import AutoAcceptRules, auto_accept_allows
 
 
 class FakeAutoAcceptRules:
@@ -82,3 +82,44 @@ async def test_saved_rules_are_read_back_and_can_be_replaced() -> None:
     off = AutoAcceptRules(enabled=False, max_detour_minutes=10, min_rating=4.5)
     await SetAutoAcceptRules(repository).execute(driver, off)
     assert await GetAutoAcceptRules(repository).execute(driver) == off
+
+
+# ---------------------------------------------------------------- the decision (#43)
+
+ON = AutoAcceptRules(enabled=True, max_detour_minutes=5, min_rating=4.0)
+
+
+@pytest.mark.parametrize(
+    ("rules", "detour", "known", "rating", "seats", "accepted"),
+    [
+        (ON, 300, True, 4.5, 1, True),  # everything fits
+        (ON, 300, True, None, 1, True),  # no ratings yet: passes
+        (ON, 300, True, 4.0, 1, True),  # exactly the minimum
+        (AutoAcceptRules(enabled=False), 0, True, 5.0, 3, False),  # off
+        (ON, 301, True, 4.5, 1, False),  # detour one second too long
+        (ON, None, True, 4.5, 1, False),  # detour unknown
+        (ON, 300, True, 3.9, 1, False),  # rated too low
+        (ON, 300, False, None, 1, False),  # Accounts couldn't say
+        (ON, 300, True, 4.5, 0, False),  # no seat left
+        # No minimum rating: the rating doesn't matter, even if unknown.
+        (AutoAcceptRules(enabled=True, min_rating=None), 60, False, None, 1, True),
+    ],
+)
+def test_auto_accept_allows(
+    rules: AutoAcceptRules,
+    detour: int | None,
+    known: bool,
+    rating: float | None,
+    seats: int,
+    accepted: bool,
+) -> None:
+    assert (
+        auto_accept_allows(
+            rules,
+            detour_seconds=detour,
+            rating_known=known,
+            rider_rating=rating,
+            seats_available=seats,
+        )
+        is accepted
+    )
