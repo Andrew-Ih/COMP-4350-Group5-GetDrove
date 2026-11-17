@@ -121,6 +121,31 @@ def seat_request(trip: Trip, status: RequestStatus, now: datetime) -> SeatReques
     )
 
 
+async def test_cancelling_one_occurrence_leaves_siblings_unchanged(api: SeriesAPI) -> None:
+    earlier, selected, later = (api.occurrence(minutes) for minutes in (120, 240, 360))
+    async with api.sessions.begin() as session:
+        repository = SQLAlchemyTripRepository(session)
+        for occurrence in (earlier, selected, later):
+            await repository.add(occurrence)
+
+    response = await api.client.post(f"/{selected.id}/cancel", headers=api.auth.headers())
+
+    assert response.status_code == 200, response.text
+    assert response.json()["id"] == str(selected.id)
+    assert response.json()["status"] == "cancelled"
+    assert response.json()["seriesId"] == str(api.series.id)
+    async with api.sessions() as session:
+        repository = SQLAlchemyTripRepository(session)
+        assert await repository.get(selected.id) == replace(selected, status=TripStatus.CANCELLED)
+        assert await repository.get(earlier.id) == earlier
+        assert await repository.get(later.id) == later
+
+    [event] = await cancellation_events(api)
+    assert event["type"] == "TripCancelled"
+    assert event["payload"]["tripId"] == str(selected.id)
+    assert event["payload"]["seriesId"] == str(api.series.id)
+
+
 async def test_series_cancellation_only_changes_eligible_occurrences(api: SeriesAPI) -> None:
     late, later = api.occurrence(30), api.occurrence(120)
     unchanged = [
