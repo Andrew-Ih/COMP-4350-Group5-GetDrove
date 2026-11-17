@@ -21,6 +21,7 @@ from pydantic import (
 )
 from pydantic.alias_generators import to_camel
 
+from trips.domain.entities import validate_series_end_date
 from trips.domain.values import Direction, TripStatus
 
 
@@ -197,6 +198,14 @@ class PostTripSeriesRequest(PostTripRequest):
         if local_day >= len(WEEKDAYS) or WEEKDAYS[local_day] not in weekdays:
             raise ValueError("The first departure must be on one of the chosen weekdays")
         return weekdays
+
+    @field_validator("end_date")
+    @classmethod
+    def _valid_end_date(cls, end_date: date, info: ValidationInfo) -> date:
+        departure_at = info.data.get("departure_at")
+        if departure_at is not None:
+            validate_series_end_date(departure_at.astimezone(WINNIPEG).date(), end_date)
+        return end_date
 
     model_config = ConfigDict(
         json_schema_extra={

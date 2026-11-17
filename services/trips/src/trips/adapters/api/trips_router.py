@@ -17,9 +17,13 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    CancelSeriesService,
+    CancelTripService,
     DecideRequestService,
+    PostRecurringTripService,
     PostTripService,
     RequestSeatService,
+    RiderTripsService,
     SearchTripsService,
     TripDetailService,
     TripRequestsService,
@@ -55,6 +59,7 @@ from trips.application.list_trip_requests import (
     ListTripRequestsCommand,
 )
 from trips.application.request_seat import RequestSeatCommand
+from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.seat_request import SeatRequest as SeatRequestEntity
 from trips.domain.values import Direction, Location, Point
@@ -157,8 +162,31 @@ async def post_trip(
 async def post_trip_series(
     body: PostTripSeriesRequest,
     user: AuthenticatedUser,
+    service: PostRecurringTripService,
 ) -> TripSeriesResult:
-    _not_implemented()
+    series = TripSeries.create(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+        weekdays=list[str](body.weekdays),
+        end_date=body.end_date,
+    )
+
+    result = await service.execute(series=series)
+
+    return TripSeriesResult(
+        series_id=result.series.id,
+        trips=[_to_response(trip) for trip in result.created_trips],
+        skipped_dates=[
+            departure.astimezone(WINNIPEG_TZ).date() for departure in result.skipped_departures
+        ],
+    )
 
 
 @router.get(
@@ -176,10 +204,7 @@ async def my_trips(
     ] = "driver",
     when: When = "upcoming",
 ) -> list[Trip]:
-    if when == "past":
-        _not_implemented()
-
-    trips = await service.execute(driver_id=user.id)
+    trips = await service.execute(driver_id=user.id, past=when == "past")
     return [_to_response(trip) for trip in trips]
 
 
@@ -191,8 +216,14 @@ async def my_trips(
     "Cancelled trips are included, not removed.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def my_requests(user: AuthenticatedUser, when: When = "upcoming") -> list[RiderTrip]:
-    _not_implemented()
+async def my_requests(
+    user: AuthenticatedUser, service: RiderTripsService, when: When = "upcoming"
+) -> list[RiderTrip]:
+    rows = await service.execute(rider_id=user.id, past=when == "past")
+    return [
+        RiderTrip(trip=_for_rider(trip), request=_seat_request_response(request))
+        for trip, request in rows
+    ]
 
 
 @router.get(
@@ -377,8 +408,11 @@ async def cancel_request(
         404: _problem("No series with this ID", "series_not_found"),
     },
 )
-async def cancel_series(series_id: UUID, user: AuthenticatedUser) -> list[Trip]:
-    _not_implemented()
+async def cancel_series(
+    series_id: UUID, user: AuthenticatedUser, service: CancelSeriesService
+) -> list[Trip]:
+    cancelled = await service.execute(series_id=series_id, driver_id=user.id)
+    return [_to_response(trip) for trip in cancelled]
 
 
 def _place(location: Location) -> Place:
@@ -448,6 +482,7 @@ def _for_rider(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -465,6 +500,7 @@ def _to_response(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -552,8 +588,9 @@ async def get_trip(
         ),
     },
 )
-async def cancel_trip(trip_id: UUID, user: AuthenticatedUser) -> Trip:
-    _not_implemented()
+async def cancel_trip(trip_id: UUID, user: AuthenticatedUser, service: CancelTripService) -> Trip:
+    trip = await service.execute(trip_id=trip_id, driver_id=user.id)
+    return _to_response(trip)
 
 
 @router.post(

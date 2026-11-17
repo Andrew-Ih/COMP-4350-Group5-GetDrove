@@ -20,6 +20,8 @@ from sqlalchemy import (
     func,
 )
 
+from events.consumer import consumer_tables
+
 SCHEMA = "routing"
 
 # WGS 84 longitude/latitude, the coordinates OSRM and the frontend use.
@@ -84,3 +86,6 @@ route_samples = Table(
     ),
     Index("ix_route_samples_point", "point", postgresql_using="gist"),
 )
+
+# Which events this service has handled, and the ones it gave up on (libs/events, #37).
+consumer = consumer_tables(metadata)

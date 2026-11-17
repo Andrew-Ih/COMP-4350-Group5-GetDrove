@@ -1,7 +1,7 @@
 """Dependencies for Trips API handlers."""
 
-from collections.abc import Sequence
-from datetime import datetime
+from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from typing import Annotated
 from uuid import UUID
 
@@ -14,13 +14,17 @@ from events.outbox import OutboxPublisher
 from trips.adapters.accounts import HTTPRiderProfileService
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService, HTTPRiderCardService
-from trips.adapters.persistence.repository import SQLAlchemyTripRepository
+from trips.adapters.persistence.repository import (
+    SQLAlchemyTripRepository,
+    SQLAlchemyTripSeriesRepository,
+)
 from trips.adapters.persistence.seat_request_repository import (
     SQLAlchemySeatRequestRepository,
 )
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.request_routing import HTTPRequestRoutingService
 from trips.adapters.routing import HTTPRoutingService
+from trips.application.cancel_trip import CancelSeries, CancelTrip
 from trips.application.decide_request import (
     AcceptRequest,
     CancelRequest,
@@ -33,12 +37,17 @@ from trips.application.list_trip_requests import (
     ListTripRequests,
     ListTripRequestsCommand,
 )
+from trips.application.post_recurring_trip import (
+    PostRecurringTrip,
+    PostRecurringTripResult,
+)
 from trips.application.post_trip import PostTrip
 from trips.application.request_seat import RequestSeat, RequestSeatCommand
+from trips.application.rider_trips import ListRiderTrips
 from trips.application.search_trips import SearchResult, SearchTrips
 from trips.application.trip_detail import GetTripDetail, TripDetailResult
 from trips.application.upcoming_trips import ListUpcomingTrips
-from trips.domain.entities import Trip
+from trips.domain.entities import Trip, TripSeries
 from trips.domain.errors import PricingUnavailableError
 from trips.domain.request_errors import (
     AlreadyRequestedError,
@@ -100,6 +109,115 @@ def get_post_trip(request: Request) -> PostTripCommand:
 
 
 PostTripService = Annotated[PostTripCommand, Depends(get_post_trip)]
+
+
+class PostRecurringTripCommand:
+    """Post a recurring series within one database transaction."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        routing: HTTPRoutingService,
+    ) -> None:
+        self.session_factory = session_factory
+        self.routing = routing
+
+    async def execute(
+        self,
+        *,
+        series: TripSeries,
+    ) -> PostRecurringTripResult:
+        async with self.session_factory() as session:
+            trip_repository = SQLAlchemyTripRepository(session)
+            series_repository = SQLAlchemyTripSeriesRepository(session)
+
+            events = OutboxTripEvents(
+                OutboxPublisher(
+                    session,
+                    outbox,
+                    producer="trips",
+                    correlation_id=current_request_id(),
+                )
+            )
+
+            use_case = PostRecurringTrip(
+                trip_repository=trip_repository,
+                series_repository=series_repository,
+                routing=self.routing,
+                events=events,
+            )
+
+            candidates = await use_case.prepare(series)
+            async with session.begin():
+                await trip_repository.lock_driver(series.driver_id)
+                return await use_case.execute(series, candidates)
+
+
+def get_post_recurring_trip(
+    request: Request,
+) -> PostRecurringTripCommand:
+    return PostRecurringTripCommand(
+        session_factory=request.app.state.session_factory,
+        routing=HTTPRoutingService(request.app.state.routing_client),
+    )
+
+
+PostRecurringTripService = Annotated[
+    PostRecurringTripCommand,
+    Depends(get_post_recurring_trip),
+]
+
+
+class CancelTripCommand:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+
+    async def execute(self, *, trip_id: UUID, driver_id: UUID) -> Trip:
+        async with self.session_factory.begin() as session:
+            repository = SQLAlchemyTripRepository(session)
+            events = OutboxTripEvents(
+                OutboxPublisher(
+                    session,
+                    outbox,
+                    producer="trips",
+                    correlation_id=current_request_id(),
+                )
+            )
+            return await CancelTrip(repository, events).execute(
+                trip_id=trip_id, driver_id=driver_id
+            )
+
+
+def get_cancel_trip(request: Request) -> CancelTripCommand:
+    return CancelTripCommand(request.app.state.session_factory)
+
+
+CancelTripService = Annotated[CancelTripCommand, Depends(get_cancel_trip)]
+
+
+class CancelSeriesCommand:
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+
+    async def execute(self, *, series_id: UUID, driver_id: UUID) -> list[Trip]:
+        async with self.session_factory.begin() as session:
+            use_case = CancelSeries(
+                SQLAlchemyTripRepository(session),
+                SQLAlchemyTripSeriesRepository(session),
+                OutboxTripEvents(
+                    OutboxPublisher(
+                        session, outbox, producer="trips", correlation_id=current_request_id()
+                    )
+                ),
+            )
+            return await use_case.execute(series_id=series_id, driver_id=driver_id)
+
+
+def get_cancel_series(request: Request) -> CancelSeriesCommand:
+    return CancelSeriesCommand(request.app.state.session_factory)
+
+
+CancelSeriesService = Annotated[CancelSeriesCommand, Depends(get_cancel_series)]
 
 
 class SearchTripsQuery:
@@ -172,19 +290,21 @@ TripDetailService = Annotated[TripDetailQuery, Depends(get_trip_detail)]
 
 
 class UpcomingTripsCommand:
-    """Runs the upcoming-trips query."""
+    """Runs the driver's My Trips query."""
 
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
         self.session_factory = session_factory
+        self.clock = clock
 
-    async def execute(self, *, driver_id: UUID) -> list[Trip]:
+    async def execute(self, *, driver_id: UUID, past: bool) -> list[Trip]:
         async with self.session_factory() as session:
             repository = SQLAlchemyTripRepository(session)
-            use_case = ListUpcomingTrips(repository)
-            return await use_case.execute(driver_id=driver_id)
+            use_case = ListUpcomingTrips(repository, self.clock)
+            return await use_case.execute(driver_id=driver_id, past=past)
 
 
 def get_upcoming_trips(request: Request) -> UpcomingTripsCommand:
@@ -194,6 +314,28 @@ def get_upcoming_trips(request: Request) -> UpcomingTripsCommand:
 
 
 UpcomingTripsService = Annotated[UpcomingTripsCommand, Depends(get_upcoming_trips)]
+
+
+class RiderTripsQuery:
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+    ) -> None:
+        self.session_factory = session_factory
+        self.clock = clock
+
+    async def execute(self, *, rider_id: UUID, past: bool) -> list[tuple[Trip, SeatRequest]]:
+        async with self.session_factory() as session:
+            use_case = ListRiderTrips(SQLAlchemySeatRequestRepository(session), self.clock)
+            return await use_case.execute(rider_id, past=past)
+
+
+def get_rider_trips(request: Request) -> RiderTripsQuery:
+    return RiderTripsQuery(request.app.state.session_factory)
+
+
+RiderTripsService = Annotated[RiderTripsQuery, Depends(get_rider_trips)]
 
 
 class RequestSeatRunner:

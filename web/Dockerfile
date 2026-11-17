@@ -4,16 +4,17 @@
 # Three stages: install dependencies, build, then a small runtime image that holds only
 # Next.js' standalone server (no node_modules), running as a non-root user.
 
-ARG NODE_VERSION=24
+# The Node image is written out in each FROM line (not an ARG) so Dependabot can see it and
+# open a PR when there's an update (#179). Change all three lines together.
 
 # ---- 1. Dependencies (cached until package.json or package-lock.json change)
-FROM node:${NODE_VERSION}-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
 # ---- 2. Build
-FROM node:${NODE_VERSION}-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
@@ -21,7 +22,7 @@ COPY . .
 RUN npm run build
 
 # ---- 3. Runtime
-FROM node:${NODE_VERSION}-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \

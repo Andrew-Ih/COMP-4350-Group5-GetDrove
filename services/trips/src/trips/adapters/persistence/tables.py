@@ -5,9 +5,11 @@ Alembic autogenerates migrations from ``metadata``.
 """
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -41,11 +43,45 @@ metadata = MetaData(
 outbox = outbox_table(metadata)
 consumer = consumer_tables(metadata)
 
+
+trip_series = Table(
+    "trip_series",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("driver_id", Uuid, nullable=False),
+    Column("direction", String(20), nullable=False),
+    Column("place_label", String(200), nullable=False),
+    Column("place_lat", Float, nullable=False),
+    Column("place_lng", Float, nullable=False),
+    Column("departure_at", DateTime(timezone=True), nullable=False),
+    Column("seats_total", Integer, nullable=False),
+    Column("weekdays", JSON, nullable=False),
+    Column("end_date", Date, nullable=False),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    ),
+    CheckConstraint(
+        "seats_total BETWEEN 1 AND 6",
+        name="valid_series_seats_total",
+    ),
+    Index("ix_trip_series_driver_id", "driver_id"),
+)
+
 trips = Table(
     "trips",
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("driver_id", Uuid, nullable=False),
+    Column(
+        "series_id",
+        Uuid,
+        ForeignKey("trips.trip_series.id"),
+        nullable=True,
+    ),
+    Index("ix_trips_series_id", "series_id"),
     Column("direction", String(20), nullable=False),
     Column("origin_label", String(200), nullable=False),
     Column("origin_lat", Float, nullable=False),

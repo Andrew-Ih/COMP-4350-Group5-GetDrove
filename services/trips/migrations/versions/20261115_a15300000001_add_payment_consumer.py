@@ -1,13 +1,13 @@
 """Payment failure consumer deduplication and failed-event parking (#153).
 Revision ID: a15300000001
-Revises: a31000000001
+Revises: b15d20261116
 """
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 from alembic import op
 
 revision = "a15300000001"
-down_revision = "a31000000001"
+down_revision = "b15d20261116"
 branch_labels = None
 depends_on = None
 

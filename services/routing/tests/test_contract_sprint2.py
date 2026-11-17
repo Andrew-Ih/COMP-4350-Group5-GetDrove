@@ -1,6 +1,6 @@
 """The Sprint 2 Routing contract (#262): pickup points and detours exist and validate their
-input. Detours return 501 until implemented (#36, #38); pickup points are implemented (#29)
-and tested with a real database in test_pickup_points_api.py."""
+input. Both are implemented (#29, #36) and tested with a real database in
+test_pickup_points_api.py and test_detour_api.py."""
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -19,7 +19,12 @@ DETOUR = {
 
 @pytest.fixture
 async def client() -> AsyncClient:
-    return AsyncClient(transport=ASGITransport(app=create_app()), base_url="http://test")
+    app = create_app()
+    app.state.detour_plans = None
+    app.state.session_factory = None
+    app.state.osrm_car_client = None
+    app.state.detour_timeout_seconds = 0.8
+    return AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
 
 
 def test_spec_documents_the_sprint_2_endpoints() -> None:
@@ -45,14 +50,6 @@ def test_routes_still_accept_the_sprint_1_body() -> None:
 
     assert route.driver_id is None
     assert route.direction is None
-
-
-async def test_valid_detour_requests_reach_the_not_yet_implemented_handler(
-    client: AsyncClient,
-) -> None:
-    response = await client.post("/internal/detours", json=DETOUR)
-
-    assert response.status_code == 501, response.text
 
 
 async def test_more_than_six_accepted_pickups_is_rejected(client: AsyncClient) -> None:

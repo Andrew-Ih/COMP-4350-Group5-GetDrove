@@ -5,6 +5,7 @@ import type { components as Routing } from "@/shared/api/generated/routing";
 
 import { driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from "./data";
 import { driveHandlers } from "./drive";
+import { myRidesHandlers } from "./myRides";
 import { notificationHandlers } from "./notifications";
 import { requestHandlers } from "./requests";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
@@ -52,7 +53,8 @@ function tomorrowAt830(): string {
   return date.toISOString();
 }
 export const handlers = [
-  ...driveHandlers, // posting a trip (#96): see drive.ts
+  ...driveHandlers, // posting a trip (#96), and the driver's side of My trips: see drive.ts
+  ...myRidesHandlers, // the rider's side of My trips (#131): see myRides.ts
   ...notificationHandlers, // the notification bell (#147): see notifications.ts
   ...requestHandlers, // the driver's requests on a trip (#142), with a demo trip: see requests.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
