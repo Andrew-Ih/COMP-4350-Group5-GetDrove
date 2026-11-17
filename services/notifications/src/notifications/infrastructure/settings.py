@@ -20,6 +20,11 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
     email_from: str = "GetDrove <no-reply@getdrove.local>"
+    # Addresses that never get an email (#415), as patterns: ``*`` is any text. Production
+    # lists the made-up demo accounts, so nothing bounces; they still get in-app
+    # notifications. Empty locally, where Mailpit catches everything anyway. As an
+    # environment variable, a JSON list: '["getdrove.demo.*@myumanitoba.ca"]'.
+    email_skip_patterns: list[str] = Field(default_factory=list)
 
     # The web app's address, for links in emails: the Next.js dev server locally, the live
     # site in production. Never hard-coded, so links always open the right site.
