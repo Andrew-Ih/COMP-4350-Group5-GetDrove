@@ -38,6 +38,26 @@ class DrivingMatrix(Protocol):
         has no route: a detour computed from a guess would be a wrong number."""
         ...
 
+    async def durations_around(
+        self, point: LatLng, others: Sequence[LatLng]
+    ) -> tuple[list[float], list[float]]:
+        """Drive time from ``point`` to each of ``others``, then from each of ``others`` to
+        ``point``. Raise RoutingEngineUnavailableError as ``durations`` does."""
+        ...
+
+
+class DetourPlanCache(Protocol):
+    """The duration matrix of a trip's start, accepted pickups and end (#37), by the exact
+    points it was worked out for. A cache never fails a quote: errors are a miss."""
+
+    async def get(self, trip_id: UUID, key: str) -> list[list[float]] | None: ...
+
+    async def put(self, trip_id: UUID, key: str, matrix: list[list[float]]) -> None: ...
+
+    async def forget(self, trip_id: UUID) -> None:
+        """Drop every plan of the trip."""
+        ...
+
 
 class WalkingEngine(Protocol):
     async def walks(self, origin: LatLng, destinations: Sequence[LatLng]) -> list[Walk | None]:
@@ -67,4 +87,9 @@ class RouteRepository(Protocol):
         """Samples of these trips' routes within the corridor's radius of the rider, in a
         straight line: a quick first pass before checking walking times (#26). Ordered by
         trip, then nearest first. Trips with no sample in the corridor are left out."""
+        ...
+
+    async def route_ends(self, trip_id: UUID) -> tuple[LatLng, LatLng] | None:
+        """The first and last points of the trip's route, or None if it has none. Cheaper
+        than ``get``: the rest of the path isn't read."""
         ...

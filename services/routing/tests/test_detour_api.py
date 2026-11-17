@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Callable
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 import pytest
@@ -51,6 +51,7 @@ class API:
 async def api() -> AsyncIterator[API]:
     app = create_app()
     engine = create_async_engine(get_settings().database_url)
+    app.state.detour_plans = MemoryPlans()
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
     app.state.detour_timeout_seconds = DETOUR_TIMEOUT
     route = east_west()
@@ -75,10 +76,33 @@ def points_in(request: httpx.Request) -> list[LatLng]:
     ]
 
 
+class MemoryPlans:
+    def __init__(self) -> None:
+        self.plans: dict[tuple[UUID, str], list[list[float]]] = {}
+
+    async def get(self, trip_id: UUID, key: str) -> list[list[float]] | None:
+        return self.plans.get((trip_id, key))
+
+    async def put(self, trip_id: UUID, key: str, matrix: list[list[float]]) -> None:
+        self.plans[(trip_id, key)] = matrix
+
+    async def forget(self, trip_id: UUID) -> None:
+        self.plans = {k: v for k, v in self.plans.items() if k[0] != trip_id}
+
+
 def driving(request: httpx.Request) -> httpx.Response:
-    """OSRM's table service, driving at 10 m/s in a straight line between any two points."""
+    """OSRM's table service, driving at 10 m/s in a straight line between any two points,
+    for the ``sources`` and ``destinations`` asked for (all points if none)."""
     points = points_in(request)
-    durations = [[distance_meters(a, b) / DRIVING_SPEED for b in points] for a in points]
+
+    def indexes(name: str) -> list[int]:
+        value = request.url.params.get(name)
+        return list(range(len(points))) if value is None else [int(i) for i in value.split(";")]
+
+    durations = [
+        [distance_meters(points[i], points[j]) / DRIVING_SPEED for j in indexes("destinations")]
+        for i in indexes("sources")
+    ]
     return httpx.Response(200, json={"code": "Ok", "durations": durations})
 
 
@@ -194,3 +218,16 @@ async def test_invalid_input_returns_422_without_calling_osrm(
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_input"
     assert api.osrm_requests == []
+
+
+async def test_a_second_quote_uses_the_saved_plan_and_gives_the_same_answer(api: API) -> None:
+    first = await call(api, detour_request(api), driving)
+    second = await call(api, detour_request(api), driving)
+
+    assert first.status_code == second.status_code == 200
+    assert second.json() == first.json()
+    # One full matrix for the first quote; the second only asks for the new pickup's row
+    # and column.
+    assert len(api.osrm_requests) == 3
+    assert "sources" not in api.osrm_requests[0].url.params
+    assert all("sources" in r.url.params for r in api.osrm_requests[1:])

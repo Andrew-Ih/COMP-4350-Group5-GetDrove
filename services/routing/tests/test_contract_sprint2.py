@@ -20,6 +20,7 @@ DETOUR = {
 @pytest.fixture
 async def client() -> AsyncClient:
     app = create_app()
+    app.state.detour_plans = None
     app.state.session_factory = None
     app.state.osrm_car_client = None
     app.state.detour_timeout_seconds = 0.8

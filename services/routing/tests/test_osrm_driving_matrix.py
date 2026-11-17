@@ -153,3 +153,46 @@ def table_failure(request: pytest.FixtureRequest) -> Handler:
 async def test_driving_matrix_failure_is_unavailable(table_failure: Handler) -> None:
     with pytest.raises(RoutingEngineUnavailableError):
         await durations(table_failure, points(3))
+
+
+def selected(request: httpx.Request) -> httpx.Response:
+    """A table answer honouring ``sources`` and ``destinations``: point i to point j takes
+    10 * i + j seconds, so a row and a column can't be mixed up."""
+    size = len(request.url.path.removeprefix("/table/v1/driving/").split(";"))
+
+    def indexes(name: str) -> list[int]:
+        value = request.url.params.get(name)
+        return list(range(size)) if value is None else [int(i) for i in value.split(";")]
+
+    rows = [[float(10 * i + j) for j in indexes("destinations")] for i in indexes("sources")]
+    return httpx.Response(200, json={"code": "Ok", "durations": rows})
+
+
+async def test_durations_around_asks_for_the_row_and_the_column() -> None:
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return selected(request)
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://osrm-car:5000", timeout=2.5
+    ) as client:
+        engine = OSRMRoutingEngine(client, detour_timeout_seconds=DETOUR_TIMEOUT)
+        result = await engine.durations_around(points(1)[0], points(3)[1:])
+
+    # From the point to each other (0 -> 1, 0 -> 2), then from each other to the point.
+    assert result == ([1.0, 2.0], [10.0, 20.0])
+    asked = {(r.url.params["sources"], r.url.params["destinations"]) for r in requests}
+    assert asked == {("0", "1;2"), ("1;2", "0")}
+    assert all(r.extensions["timeout"]["read"] == DETOUR_TIMEOUT for r in requests)
+
+
+async def test_durations_around_nothing_asks_nothing() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        pytest.fail("OSRM must not be called without other points")
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://osrm-car:5000"
+    ) as client:
+        assert await OSRMRoutingEngine(client).durations_around(points(1)[0], []) == ([], [])

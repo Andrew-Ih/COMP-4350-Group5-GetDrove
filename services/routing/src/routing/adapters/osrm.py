@@ -144,7 +144,29 @@ class OSRMRoutingEngine:
     async def durations(self, points: Sequence[LatLng]) -> list[list[float]]:
         if not points:
             return []
+        return await self._table(points, {}, rows=len(points), columns=len(points))
 
+    async def durations_around(
+        self, point: LatLng, others: Sequence[LatLng]
+    ) -> tuple[list[float], list[float]]:
+        if not others:
+            return [], []
+        points = [point, *others]
+        indexes = ";".join(str(i) for i in range(1, len(points)))
+        # Two small requests, sent together: the point's row, then its column.
+        row, column = await asyncio.gather(
+            self._table(
+                points, {"sources": "0", "destinations": indexes}, rows=1, columns=len(others)
+            ),
+            self._table(
+                points, {"sources": indexes, "destinations": "0"}, rows=len(others), columns=1
+            ),
+        )
+        return row[0], [seconds for [seconds] in column]
+
+    async def _table(
+        self, points: Sequence[LatLng], selection: dict[str, str], *, rows: int, columns: int
+    ) -> list[list[float]]:
         coordinates = ";".join(_coordinate(point) for point in points)
         try:
             response = await self.client.get(
@@ -152,6 +174,7 @@ class OSRMRoutingEngine:
                 params={
                     "annotations": "duration",
                     "radiuses": ";".join([str(MAX_SNAP_METERS)] * len(points)),
+                    **selection,
                 },
                 # None would mean no timeout at all in httpx, so fall back to the client's.
                 timeout=(
@@ -164,12 +187,11 @@ class OSRMRoutingEngine:
         except (httpx.HTTPError, ValidationError) as exc:
             raise RoutingEngineUnavailableError() from exc
 
-        size = len(points)
         if (
             response.status_code != 200
             or data.code != "Ok"
-            or len(data.durations) != size
-            or any(len(row) != size for row in data.durations)
+            or len(data.durations) != rows
+            or any(len(row) != columns for row in data.durations)
         ):
             raise RoutingEngineUnavailableError()
 
