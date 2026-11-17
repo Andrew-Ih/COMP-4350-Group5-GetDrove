@@ -2,7 +2,7 @@ import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { mockFetch, problem, renderWithProviders } from "@/shared/testing/render";
+import { mockFetch, OFFLINE, problem, renderWithProviders } from "@/shared/testing/render";
 
 import { SignupForm } from "./SignupForm";
 
@@ -85,6 +85,16 @@ describe("SignupForm", () => {
 
     expect(await screen.findByText("String should have at most 50 characters")).toBeInTheDocument();
     expect(screen.getByLabelText("Last name")).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("asks to check the connection when offline, without crashing", async () => {
+    mockFetch(OFFLINE);
+    renderWithProviders(<SignupForm />);
+
+    await fillIn();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Check your connection and try again.");
+    expect(screen.getByRole("button", { name: "Create account" })).toBeEnabled();
   });
 
   it("shows a message when the service is down", async () => {

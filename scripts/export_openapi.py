@@ -8,6 +8,10 @@ in the PR and the frontend can generate types without running the services:
 
     uv run python scripts/export_openapi.py           # write the files
     uv run python scripts/export_openapi.py --check   # fail if any file is out of date (CI)
+
+Files in contracts/openapi/ or contracts/events/ that the code no longer produces (an event
+or service that was removed) count as out of date too: --check reports them and writing
+deletes them (#178).
 """
 
 import argparse
@@ -49,21 +53,37 @@ def event_files() -> dict[Path, str]:
     return files
 
 
+def leftover_files(expected: dict[Path, str]) -> list[Path]:
+    """Contract files the code doesn't produce any more."""
+    existing = [*CONTRACTS.glob("openapi/*.json"), *CONTRACTS.glob("events/*.json")]
+    return sorted(path for path in existing if path not in expected)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Export API and event contracts.")
     parser.add_argument("--check", action="store_true", help="fail if any file is out of date")
     args = parser.parse_args()
 
+    expected = {**openapi_files(), **event_files()}
     stale = []
-    for path, content in {**openapi_files(), **event_files()}.items():
-        if path.exists() and path.read_text() == content:
+    for path, content in expected.items():
+        if path.exists() and path.read_text(encoding="utf-8") == content:
             continue
         if args.check:
             stale.append(str(path.relative_to(CONTRACTS.parent)))
         else:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(content)
+            # UTF-8 and \n on every OS: on Windows the defaults are cp1252 and \r\n, which
+            # would mangle the non-ASCII examples and make --check fail there.
+            path.write_text(content, encoding="utf-8", newline="\n")
             print(f"wrote {path.relative_to(CONTRACTS.parent)}")
+
+    for path in leftover_files(expected):
+        if args.check:
+            stale.append(f"{path.relative_to(CONTRACTS.parent)} (no longer produced)")
+        else:
+            path.unlink()
+            print(f"removed {path.relative_to(CONTRACTS.parent)}")
 
     if stale:
         print(f"Out of date: {', '.join(stale)}. Run: uv run python scripts/export_openapi.py")
