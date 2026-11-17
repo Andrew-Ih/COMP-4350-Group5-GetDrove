@@ -13,7 +13,7 @@ import {
   today,
   useCurrentPosition,
 } from "@/features/ride";
-import type { ApiError } from "@/shared/api";
+import { type ApiError, NETWORK_ERROR } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 import { CAMPUS, type LngLat, type MapMarker, type MapRoute, MapView, WINNIPEG_VIEW } from "@/shared/map";
 import { AppHeader, Button, buttonStyles, MapLayout, PrivacyNote, Spinner } from "@/shared/ui";
@@ -62,6 +62,9 @@ function postProblem(error: ApiError): FormProblem | { field: "session"; message
   }
   if (error.code === "unauthorized") {
     return { field: "session", message: "Your session has ended. Log in again to post your trip." };
+  }
+  if (error.code === NETWORK_ERROR) {
+    return { field: "place", message: "We couldn't reach GetDrove, so the trip wasn't posted. Check your connection and try again." };
   }
   return { field: "place", message: error.message };
 }

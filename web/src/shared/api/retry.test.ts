@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError } from "./problem";
+import { ApiError, networkProblem } from "./problem";
 import { retryServerErrors } from "./retry";
 
 const apiError = (status: number, code: string) =>
@@ -13,8 +13,8 @@ describe("retryServerErrors", () => {
   });
 
   it("tries a request that didn't get through again once", () => {
-    expect(retryServerErrors(0, new TypeError("Failed to fetch"))).toBe(true);
-    expect(retryServerErrors(1, new TypeError("Failed to fetch"))).toBe(false);
+    expect(retryServerErrors(0, new ApiError(networkProblem()))).toBe(true);
+    expect(retryServerErrors(1, new ApiError(networkProblem()))).toBe(false);
   });
 
   it.each([

@@ -57,7 +57,8 @@ describe("mock API: posting a trip", () => {
     const sooner = await postTrip(inAWeek(10));
 
     const mine = await unwrap(trips.GET("/mine", { params: { query: { role: "driver" } } }));
-    expect(mine.map((t) => t.id)).toEqual([sooner.id, later.id]);
+    const postedHere = mine.filter((t) => t.id === sooner.id || t.id === later.id);
+    expect(postedHere.map((t) => t.id)).toEqual([sooner.id, later.id]);
   });
 
   it("refuses a departure in the past, and is unavailable for :55", async () => {
@@ -65,5 +66,48 @@ describe("mock API: posting a trip", () => {
     expect((past as ApiError).code).toBe("departure_in_past");
     const unavailable = await postTrip(inAWeek(55)).catch((e: unknown) => e);
     expect((unavailable as ApiError).code).toBe("routing_unavailable");
+  });
+});
+
+describe("mock API: My trips", () => {
+  const mine = (when: "upcoming" | "past") => unwrap(trips.GET("/mine", { params: { query: { when } } }));
+  const failure = (call: Promise<unknown>) => call.then(() => undefined).catch((e: unknown) => (e as ApiError).code);
+
+  it("lists upcoming trips soonest first, cancelled ones included, and past ones separately", async () => {
+    const upcoming = await mine("upcoming");
+    expect(upcoming.length).toBeGreaterThan(0);
+    expect(upcoming.some((t) => t.status === "cancelled")).toBe(true);
+    expect(upcoming.some((t) => t.seriesId)).toBe(true);
+    const departures = upcoming.map((t) => Date.parse(t.departureAt));
+    expect(departures).toEqual([...departures].sort((a, b) => a - b));
+
+    const past = await mine("past");
+    expect(past.length).toBeGreaterThan(0);
+    expect(past.every((t) => Date.parse(t.departureAt) < Date.now())).toBe(true);
+  });
+
+  it("cancels one trip, and refuses to cancel it again", async () => {
+    const trip = (await mine("upcoming")).find((t) => t.status === "scheduled" && !t.seriesId)!;
+    const cancelled = await unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: trip.id } } }));
+    expect(cancelled.status).toBe("cancelled");
+    expect((await mine("upcoming")).find((t) => t.id === trip.id)?.status).toBe("cancelled");
+    expect(await failure(unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: trip.id } } })))).toBe(
+      "trip_not_cancellable",
+    );
+  });
+
+  it("cancels every trip in a series", async () => {
+    const seriesId = (await mine("upcoming")).find((t) => t.seriesId)!.seriesId!;
+    const cancelled = await unwrap(trips.POST("/series/{series_id}/cancel", { params: { path: { series_id: seriesId } } }));
+    expect(cancelled.length).toBeGreaterThan(1);
+    expect((await mine("upcoming")).filter((t) => t.seriesId === seriesId).every((t) => t.status === "cancelled")).toBe(true);
+  });
+
+  it("lists the rider's upcoming and past rides with their requests", async () => {
+    const upcoming = await unwrap(trips.GET("/requests/mine", { params: { query: { when: "upcoming" } } }));
+    expect(upcoming.map((r) => r.request.status)).toEqual(expect.arrayContaining(["pending", "accepted", "declined"]));
+    expect(upcoming.every((r) => r.trip.origin === null)).toBe(true); // the driver's end stays private
+    const past = await unwrap(trips.GET("/requests/mine", { params: { query: { when: "past" } } }));
+    expect(past[0]?.trip.status).toBe("completed");
   });
 });
