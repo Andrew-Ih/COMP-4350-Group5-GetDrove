@@ -4,6 +4,7 @@ import { CircleCheck, Clock, Link2Off } from "lucide-react";
 import Link from "next/link";
 import { type ReactNode, useEffect, useRef } from "react";
 
+import { NETWORK_ERROR } from "@/shared/api";
 import { buttonStyles, Spinner } from "@/shared/ui";
 
 import { useVerifyEmail } from "../hooks/useAuthMutations";
@@ -107,7 +108,7 @@ export function VerifyEmail({ token }: { token: string | undefined }) {
           icon={<span className={`${iconClass} bg-surface-muted`}><Link2Off aria-hidden="true" className="size-6" /></span>}
           title="We couldn't verify your email"
         >
-          Something went wrong on our side.
+          {verify.error.code === NETWORK_ERROR ? "We couldn't reach GetDrove." : "Something went wrong on our side."}
         </Heading>
         <div className="mt-6"><FormAlert>{verify.error.problem.detail}</FormAlert></div>
         <button
