@@ -1,17 +1,14 @@
 """Add recurring trip series schema.
 
 Revision ID: a16b20261113
-Revises: a31000000001
-
-Re-pointed after the seat requests migrations when develop was merged into
-feature/15, so Trips has one migration history (one head).
+Revises: 682e9335a989
 """
 
 import sqlalchemy as sa
 from alembic import op
 
 revision = "a16b20261113"
-down_revision = "a31000000001"
+down_revision = "682e9335a989"
 branch_labels = None
 depends_on = None
 

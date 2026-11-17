@@ -67,13 +67,13 @@ async def client(fake_trip_detail: Any) -> AsyncClient:
     app = create_app()
     auth.install(app)
     app.dependency_overrides[get_upcoming_trips] = lambda: object()
+    app.dependency_overrides[get_post_recurring_trip] = object
     app.dependency_overrides[get_rider_trips] = lambda: AsyncMock(
         execute=AsyncMock(return_value=[])
     )
     app.dependency_overrides[get_request_seat] = lambda: object()
     # The trip detail is implemented (#30): see test_trip_detail_api.py.
     app.dependency_overrides[get_trip_detail] = lambda: fake_trip_detail
-    app.dependency_overrides[get_post_recurring_trip] = object
     return AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
     )

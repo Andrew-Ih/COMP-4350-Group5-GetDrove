@@ -145,6 +145,8 @@ async def test_post_series_creates_searchable_trips_and_events(
     def routing(request: httpx.Request) -> httpx.Response:
         data = json.loads(request.content)
         if request.url.path == "/internal/routes":
+            assert data["driverId"] == str(auth.user_id)
+            assert data["direction"] == "to_campus"
             routed_ids.add(data["tripId"])
             return route(request)
         assert request.url.path == "/internal/matches"
@@ -249,6 +251,24 @@ async def test_post_series_creates_searchable_trips_and_events(
     assert {row["envelope"]["payload"]["tripId"] for row in saved_events} == {
         trip["id"] for trip in result["trips"]
     }
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=app),
+        base_url="http://test",
+        headers={**auth.headers(), "X-Request-ID": str(auth.user_id)},
+    ) as client:
+        cancelled = await client.post(f"/{occurrence['id']}/cancel")
+
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["seriesId"] == series_id
+    _, saved_trips, saved_events = await saved_rows(engine, auth.user_id)
+    assert {str(row["id"]): row["status"] for row in saved_trips} == {
+        trip["id"]: "cancelled" if trip["id"] == occurrence["id"] else "scheduled"
+        for trip in result["trips"]
+    }
+    [event] = [row["envelope"] for row in saved_events if row["type"] == "TripCancelled"]
+    assert event["payload"]["tripId"] == occurrence["id"]
+    assert event["payload"]["seriesId"] == series_id
 
 
 async def test_concurrent_series_do_not_duplicate_trips(

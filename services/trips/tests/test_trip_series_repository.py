@@ -98,7 +98,9 @@ async def test_trip_can_reference_recurring_series() -> None:
             await session.flush()
 
             retrieved = await trip_repository.list_by_driver(
-                driver_id, departure - timedelta(days=1), past=False
+                driver_id=driver_id,
+                now=departure - timedelta(days=1),
+                past=False,
             )
 
             assert len(retrieved) == 1

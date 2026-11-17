@@ -8,9 +8,8 @@ import type { components as Trips } from "@/shared/api/generated/trips";
  * POST /api/trips/series and the route of a posted trip. Special inputs to try the error states:
  *   - a departure in the past              → 422 departure_in_past
  *   - a departure time ending in :55       → 503 routing_unavailable (nothing saved)
- * Posted trips are listed by GET /api/trips/mine, so the "you already have a trip then"
- * warning can be tried too. A repeating trip skips the days that clash with trips already
- * posted (post a one-off trip first, then repeat over the same day).
+ * Posted trips appear in My Trips at GET /api/trips/mine?role=driver. To try the
+ * clash warning, post a one-off trip first, then repeat over the same day.
  *
  * My trips (#131, #133): the list also has a few made-up trips, so every case shows: a
  * recurring series (cancel one day or all of it), a trip leaving in 45 minutes (the late
@@ -250,12 +249,13 @@ export const driveHandlers = [
     return HttpResponse.json({ seriesId, trips, skippedDates }, { status: 201 });
   }),
 
-  // The driver's trips, cancelled ones included: upcoming (not arrived yet, soonest first)
-  // or past (most recent first).
+  // The driver's trips, cancelled ones included. In-progress trips stay upcoming.
   http.get("*/api/trips/mine", ({ request }) => {
     const when = new URL(request.url).searchParams.get("when") === "past" ? "past" : "upcoming";
     const all = [...postedTrips, ...examples];
-    const upcoming = (trip: Trip) => Date.parse(trip.estimatedArrivalAt) > Date.now() && trip.status !== "completed";
+    const now = Date.now();
+    const upcoming = (trip: Trip) =>
+      trip.status === "in_progress" || (trip.status !== "completed" && Date.parse(trip.estimatedArrivalAt) > now);
     const list =
       when === "upcoming"
         ? all.filter(upcoming).sort((a, b) => Date.parse(a.departureAt) - Date.parse(b.departureAt))

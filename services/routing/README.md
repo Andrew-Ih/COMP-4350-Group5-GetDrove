@@ -106,6 +106,22 @@ A rider who's only near an end of a route, only near excluded roads, or can't wa
 
 An empty list means the route doesn't pass within walking distance (or every point there was rejected). 404 `route_not_found` if the trip has no stored route (checked before calling OSRM), 503 `routing_engine_unavailable` if the foot profile is down.
 
+### Extra driving time for a new pickup (#36, #38)
+
+`POST /internal/detours` is called by Trips when a seat is requested, with a trip, the pickups of the riders already accepted (in pickup order, at most 6) and the new pickup. It returns how much driving time the new pickup adds to the trip, at its best place among the accepted ones.
+
+1. **One OSRM request:** a car `table` request gives the drive time between every pair of the trip's start, the accepted pickups, the new pickup and the trip's end. The start and end are the first and last points of the stored route.
+2. **Cheapest insertion** (`domain/insertion.py`, #38): the new pickup is tried at every position and the one that adds the least time wins. On a tie, the earliest position wins. The added time is never negative.
+3. **The answer:** `addedSeconds`, `position` (how many accepted pickups come before it, 0 = first) and `totalSeconds` (the trip as it stands plus `addedSeconds`), all in whole seconds.
+
+It fails fast, because Trips calls it while the rider waits. The call to OSRM waits at most `ROUTING_DETOUR_TIMEOUT_SECONDS` (default 0.8; the other endpoints use `ROUTING_OSRM_TIMEOUT_SECONDS`, 2.5). A pair of points with no route between them is a 503 as well: a detour worked out from a guess would be a wrong number.
+
+| Status | Code | When |
+|---|---|---|
+| 404 | `route_not_found` | The trip has no stored route (checked before calling OSRM) |
+| 422 | `invalid_input` | Bad coordinates, or more than 6 accepted pickups |
+| 503 | `routing_engine_unavailable` | OSRM is down, errors, returns something unexpected, has no route between two of the points, or takes longer than `ROUTING_DETOUR_TIMEOUT_SECONDS` |
+
 ### A trip's route for the map (#123, #135)
 
 `GET /trips/{tripId}/geometry` (gateway: `GET /api/routing/trips/{tripId}/geometry`) returns the route as a GeoJSON `Feature` with a `LineString`, which MapLibre draws as is. Coordinates are `[lng, lat]` pairs; `properties` has the trip ID, and the whole trip's distance and duration. The driver's screen after posting a trip and the rider's search results both use it.

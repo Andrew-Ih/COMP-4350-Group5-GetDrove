@@ -116,6 +116,19 @@ describe("mock API: posting a repeating trip (#19)", () => {
     const tooFar = await series({ endDate: "2027-07-01" }).catch((e: unknown) => e);
     expect((tooFar as ApiError).problem.errors?.[0]?.field).toBe("endDate");
   });
+
+  it("lists generated occurrences in My Trips and keeps a cancelled occurrence visible", async () => {
+    const result = await series();
+    const mine = () => unwrap(trips.GET("/mine", { params: { query: { when: "upcoming" } } }));
+    const occurrences = async () => (await mine()).filter((trip) => trip.seriesId === result.seriesId);
+    const first = result.trips[0]!;
+
+    expect((await occurrences()).map((trip) => trip.id)).toEqual(result.trips.map((trip) => trip.id));
+    await unwrap(trips.POST("/{trip_id}/cancel", { params: { path: { trip_id: first.id } } }));
+    expect((await occurrences()).map((trip) => trip.status)).toEqual([
+      "cancelled", "scheduled", "scheduled", "scheduled",
+    ]);
+  });
 });
 
 describe("mock API: My trips", () => {

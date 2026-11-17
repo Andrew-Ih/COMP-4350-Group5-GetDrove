@@ -46,6 +46,10 @@ class RiderTripRepository(Protocol):
     ) -> list[tuple[Trip, SeatRequest]]: ...
 
 
+class TripSeriesRepository(Protocol):
+    async def add(self, series: TripSeries) -> None: ...
+
+
 class TripCancellationRepository(Protocol):
     async def get_for_update(self, trip_id: UUID) -> Trip | None: ...
 
@@ -66,10 +70,6 @@ class RiderRequestLookup(Protocol):
     async def get_active_for_trip(self, trip_id: UUID, rider_id: UUID) -> SeatRequest | None:
         """The rider's pending or accepted request on this trip, if any."""
         ...
-
-
-class TripSeriesRepository(Protocol):
-    async def add(self, series: TripSeries) -> None: ...
 
 
 class TripEvents(Protocol):
