@@ -35,7 +35,11 @@ def test_exactly_5_mb_is_accepted() -> None:
     assert Document.check(DocumentKind.LICENCE, content).content_type == "application/pdf"
 
 
-@pytest.mark.parametrize("content", [b"", PDF + b"0" * MAX_DOCUMENT_BYTES])
+# Short ids: pytest puts the test's id in an environment variable, and on Windows a 5 MB
+# parameter makes it too long to set.
+@pytest.mark.parametrize(
+    "content", [b"", PDF + b"0" * MAX_DOCUMENT_BYTES], ids=["empty", "over 5 MB"]
+)
 def test_empty_or_over_5_mb_is_refused(content: bytes) -> None:
     with pytest.raises(FileTooLargeError) as raised:
         Document.check(DocumentKind.LICENCE, content)

@@ -11,9 +11,12 @@ KEY = f"{uuid4()}/licence-{uuid4().hex}.pdf"
 
 
 def files_on_disk(root: Path) -> dict[str, bytes]:
-    """Every file under ``root``, by its path relative to it."""
+    """Every file under ``root``, by its path relative to it, with ``/`` like the storage keys
+    (on Windows, ``str()`` of a path would use backslashes)."""
     return {
-        str(path.relative_to(root)): path.read_bytes() for path in root.rglob("*") if path.is_file()
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file()
     }
 
 
