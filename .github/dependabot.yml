@@ -50,6 +50,15 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: "chore(deps)"
+    # We develop and test on Python 3.13 and Node 24 (web/.nvmrc, CI). With tags like
+    # python:3.13-slim and node:24-alpine, the only updates Dependabot could propose are new
+    # versions (python:3.14-slim, node:25-alpine), which have to change together with
+    # pyproject.toml, .nvmrc and CI. So those are upgraded by hand, not here.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
 
   # Actions used by our workflows
   - package-ecosystem: github-actions

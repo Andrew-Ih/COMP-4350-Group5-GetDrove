@@ -8,6 +8,8 @@
 # ---------------------------------------------------------------- build stage
 FROM python:3.13-slim AS build
 ARG SERVICE
+# uv comes from its image through COPY --from, which Dependabot doesn't read (only FROM
+# lines), so it's upgraded by hand: change the tag here, and in CI's setup-uv if needed.
 COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /bin/uv
 
 ENV UV_COMPILE_BYTECODE=1 \
