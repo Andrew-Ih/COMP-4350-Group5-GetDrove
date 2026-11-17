@@ -152,8 +152,9 @@ jobs:
 
       - name: Smoke tests load (e2e/)
         # The browser smoke tests only run against the live site after a deploy (#177), so
-        # check here that they still load, without a browser or a site.
+        # check here that they still load, and test their helpers, without a browser or a site.
         working-directory: e2e
         run: |
           npm ci
           npm run list
+          npm test

@@ -6,7 +6,6 @@ import { defineConfig, devices } from "@playwright/test";
  */
 export default defineConfig({
   testDir: ".",
-  testMatch: "*.smoke.ts",
   timeout: 60_000,
   // One retry, so a slow first page load right after a restart doesn't fail the deploy.
   retries: 1,
@@ -16,5 +15,10 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    // Browser tests against the site: npm run smoke
+    { name: "chromium", testMatch: "*.smoke.ts", use: { ...devices["Desktop Chrome"] } },
+    // Plain checks of the helpers, no browser or site: npm test
+    { name: "unit", testMatch: "*.test.ts" },
+  ],
 });

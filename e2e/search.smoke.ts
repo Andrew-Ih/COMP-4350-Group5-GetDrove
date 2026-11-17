@@ -1,15 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { nextWeekdayMorning } from "./winnipeg-time";
+
 // A demo rider from infra/seed/demo.json (Priya, on Maya's route), seeded on the live site.
 const email = process.env.SMOKE_EMAIL ?? "getdrove.demo.priya@myumanitoba.ca";
 const password = process.env.SMOKE_PASSWORD;
-
-/** The next weekday after today, at 13:00 UTC (8 AM in Winnipeg), as the search's ISO time. */
-function nextWeekdayMorning(now = new Date()): string {
-  const day = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 13));
-  while (day.getUTCDay() === 0 || day.getUTCDay() === 6) day.setUTCDate(day.getUTCDate() + 1);
-  return day.toISOString();
-}
 
 test("a demo rider can log in and search for a ride to campus", async ({ page }) => {
   if (!password) throw new Error("Set SMOKE_PASSWORD to the demo accounts' password (DEMO_ACCOUNT_PASSWORD).");
