@@ -53,11 +53,14 @@ class Trip:
         if self.estimated_arrival_at < self.departure_at:
             raise ValueError("Arrival cannot be before departure")
 
+    def can_cancel(self, now: datetime) -> bool:
+        return self.status == TripStatus.SCHEDULED and self.departure_at > now
+
     def cancel(self, driver_id: UUID, now: datetime) -> bool:
         """Cancel the trip and report whether the cancellation is late."""
         if driver_id != self.driver_id:
             raise NotTripDriverError()
-        if self.status != TripStatus.SCHEDULED or self.departure_at <= now:
+        if not self.can_cancel(now):
             raise TripNotCancellableError()
 
         self.status = TripStatus.CANCELLED

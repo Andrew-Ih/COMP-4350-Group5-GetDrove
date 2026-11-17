@@ -17,6 +17,7 @@ from pydantic import AwareDatetime
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    CancelSeriesService,
     CancelTripService,
     DecideRequestService,
     PostRecurringTripService,
@@ -407,8 +408,11 @@ async def cancel_request(
         404: _problem("No series with this ID", "series_not_found"),
     },
 )
-async def cancel_series(series_id: UUID, user: AuthenticatedUser) -> list[Trip]:
-    _not_implemented()
+async def cancel_series(
+    series_id: UUID, user: AuthenticatedUser, service: CancelSeriesService
+) -> list[Trip]:
+    cancelled = await service.execute(series_id=series_id, driver_id=user.id)
+    return [_to_response(trip) for trip in cancelled]
 
 
 def _place(location: Location) -> Place:
