@@ -11,8 +11,7 @@ from payments.adapters.api.cards import CardOperations
 from payments.adapters.persistence.tables import customers
 from payments.application.ports import PaymentGatewayPort
 from payments.domain.cards import SavedCard
-
-from .card_fakes import FakeGateway
+from payments.testing import FakeGateway
 
 
 async def test_concurrent_setup_uses_one_customer_and_persists_default(

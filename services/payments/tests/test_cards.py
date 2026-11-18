@@ -12,8 +12,7 @@ from payments.application.cards import Cards
 from payments.application.ports import PaymentGatewayPort
 from payments.domain.cards import SavedCard
 from payments.infrastructure.main import create_app
-
-from .card_fakes import FakeGateway, FakeOperations, MemoryCustomers
+from payments.testing import FakeGateway, FakeOperations, MemoryCustomers
 
 
 @pytest.fixture
