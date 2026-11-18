@@ -1,34 +1,32 @@
-# Hold funds on acceptance (#70)
+# Hold funds on acceptance (#70, #154, #428)
 
-## Branch and integration scope
+## Saved cards and runtime
 
-This implements hold persistence, the RequestAccepted consumer, background authorization,
-outcome events and explicit capture on the #67 story branch. It does not merge #151 or
-add its customer/card tables or endpoints.
+The normal runtime uses CustomerSavedCardLookup. It reads the rider's Stripe customer
+mapping from payments.customers and asks Stripe for the current cards, using the same
+newest-card/default selection rule as the card screen (#151). It does not use an
+operator-maintained user-to-card map.
 
-SavedCardLookup remains an application interface. ConfiguredSavedCardLookup is a real,
-per-rider sandbox adapter populated from operator-supplied Stripe references. An unmapped
-rider raises a configuration error; it is not reported as no_card. Stripe verifies that
-the supplied payment method belongs to the supplied customer when authorizing.
+Card discovery happens without customer/hold row locks or an open database transaction.
+A changed local default is updated in a separate short transaction. A successful lookup
+with no mapping/customer or an empty Stripe card list means no_card. Database and Stripe
+lookup failures propagate and are retried; they are never interpreted as missing cards.
 
-Automatic processing is disabled by default. To enable it locally, configure these values
-in the root, gitignored .env (replace every example ID with a real reference):
+Resolve the card only when authorization is due: immediately for acceptance at most six
+days before departure, otherwise 24 hours before departure (#154). Retries use the
+committed card snapshot instead of looking up a different default.
+
+To enable locally, set these in the root, gitignored .env and save a card through the UI:
 
 ```dotenv
 PAYMENTS_STRIPE_SECRET_KEY=sk_test_replace_me
 PAYMENTS_HOLD_PROCESSING_ENABLED=true
-PAYMENTS_SAVED_CARD_REFERENCES='{"00000000-0000-0000-0000-000000000001":{"customer_id":"cus_example","payment_method_id":"pm_example"}}'
 ```
 
-The UUID must be the riderId in RequestAccepted, and both Stripe IDs must belong to the
-same sandbox as the secret key. No card number, CVC or client secret belongs in this map.
-The app uses this lookup automatically; an explicitly injected lookup still takes priority.
-Local Compose forwards these settings to Payments. Its default remains disabled.
-Do not enable a shared server without configuring every participating rider.
-
-This is operator-configured test-mode integration, not automatic onboarding: adding or
-changing a card through the UI remains #151. That later integration can replace this
-adapter without changing hold logic or merging #151 into this task.
+Local Compose forwards the flag and defaults to disabled. Production Compose explicitly
+enables it (#428), uses the internal Redis URL and still requires the test secret key.
+See [deployment](../deployment/deployment.md#saved-card-payment-holds-428) for rollout.
+An explicitly injected SavedCardLookup remains available for isolated tests.
 
 ## Flow
 
@@ -38,9 +36,10 @@ adapter without changing hold logic or merging #151 into this task.
 2. The request ID is unique in the database. Identical duplicates do nothing; a conflicting
    duplicate cannot overwrite the saved quote. processed_events additionally deduplicates
    re-delivery of the same event envelope.
-3. A worker locks the hold, obtains SavedPaymentCard(customer_id, payment_method_id) from
-   the lookup and commits those references before calling Stripe. The snapshot survives
-   worker crashes and retries even if the rider later changes their default card.
+3. The worker discovers SavedPaymentCard(customer_id, payment_method_id) without a hold
+   lock or pooled connection. It then reloads the hold under a lock: cancellation or a
+   previously committed snapshot wins. The snapshot is committed before authorization
+   and survives retries even if the rider later changes their default card.
 4. Authorization is off-session, manual capture, with key hold:<request-id>. Only a returned
    requires_capture status produces AUTHORIZED and PaymentHeld. The hold and its outbox
    event commit together; the relay publishes to events.payments.
@@ -68,12 +67,9 @@ payment-method references are added to event payloads.
   provider reconciliation is required; it is not a successful hold or a card decline.
 - Unexpected provider states (including processing or an unexpected succeeded result)
   preserve the Stripe ID and pause for reconciliation. They never publish PaymentHeld.
-- #153 extends failure handling, including operational visibility and recovery for
-  SCHEDULED rows with retry_at=NULL (stuck reconciliation). #154 schedules far-ahead bookings around authorization
-  windows; the immediate worker here is not that scheduler.
-- When #151 is replayed on the integrated payment foundation, its customers migration must
-  descend from a70000000001 rather than remain a second root. No #151 migration is copied
-  into this task.
+- #153 returns failed seats and cancels rider reminders; #154 schedules far-ahead holds.
+- The customer and hold migrations are joined at a15115400001; no new migration is
+  introduced by #428.
 
 ## Test
 

@@ -107,6 +107,13 @@ class SQLAlchemyHolds:
         if any(getattr(existing, field) != getattr(hold, field) for field in fields):
             raise HoldConflictError("RequestAccepted conflicts with its saved payment hold")
 
+    async def get(self, request_id: UUID) -> PaymentHold | None:
+        result = await self.session.execute(
+            select(payment_holds).where(payment_holds.c.request_id == request_id)
+        )
+        row = result.mappings().first()
+        return from_row(row) if row is not None else None
+
     async def lock(self, request_id: UUID, *, skip_locked: bool = False) -> PaymentHold | None:
         result = await self.session.execute(
             select(payment_holds)

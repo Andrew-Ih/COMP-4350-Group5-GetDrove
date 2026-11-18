@@ -42,6 +42,17 @@ class PaymentHold:
     # None on a scheduled hold means manual reconciliation is required, not retry forever.
     retry_at: datetime | None = None
 
+    def needs_card(self, now: datetime) -> bool:
+        return (
+            self.status is HoldStatus.SCHEDULED
+            and not self.release_requested
+            and self.card is None
+            and self.retry_at is not None
+            and self.authorize_at <= now
+            and self.retry_at <= now
+            and now < self.departure_at
+        )
+
     def __post_init__(self) -> None:
         if self.amount_cents <= 0 or self.currency != "CAD":
             raise ValueError("A hold requires a positive CAD amount")

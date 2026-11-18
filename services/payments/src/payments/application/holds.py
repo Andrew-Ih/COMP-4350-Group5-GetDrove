@@ -13,9 +13,8 @@ from payments.application.ports import (
     PaymentGatewayError,
     PaymentGatewayPort,
     PaymentIntentStatus,
-    SavedCardLookup,
 )
-from payments.domain.holds import FailureReason, HoldStatus, PaymentHold
+from payments.domain.holds import FailureReason, HoldStatus, PaymentHold, SavedPaymentCard
 
 
 class HoldConflictError(Exception):
@@ -30,16 +29,14 @@ class HoldPayments:
     def __init__(
         self,
         holds: HoldRepository,
-        cards: SavedCardLookup,
         gateway: PaymentGatewayPort,
         events: HoldEvents,
     ) -> None:
         self.holds = holds
-        self.cards = cards
         self.gateway = gateway
         self.events = events
 
-    async def prepare(self, request_id: UUID, now: datetime) -> None:
+    async def prepare(self, request_id: UUID, now: datetime, card: SavedPaymentCard | None) -> None:
         """Commit this phase before authorize: provider parameters survive crashes/retries."""
         hold = await self.holds.lock(request_id)
         if hold is None or hold.status is not HoldStatus.SCHEDULED:
@@ -55,7 +52,6 @@ class HoldPayments:
             # that a historical trip's payment failed when no authorization was attempted.
             await self.holds.save(replace(hold, status=HoldStatus.FAILED, retry_at=None))
             return
-        card = await self.cards.for_rider(hold.rider_id)
         if card is None:
             await self._fail(hold, "no_card")
         else:

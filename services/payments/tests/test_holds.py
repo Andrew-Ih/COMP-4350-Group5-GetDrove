@@ -64,15 +64,21 @@ class Setup:
         )
         self.events = AsyncMock()
         self.use_case = HoldPayments(
-            self.holds, self.cards, cast(PaymentGatewayPort, self.gateway), self.events
+            self.holds, cast(PaymentGatewayPort, self.gateway), self.events
         )
 
     @property
     def stored(self) -> PaymentHold:
         return self.holds.items[self.hold.request_id]
 
+    async def prepare(self, now: datetime) -> None:
+        card = (
+            await self.cards.for_rider(self.hold.rider_id) if self.stored.needs_card(now) else None
+        )
+        await self.use_case.prepare(self.hold.request_id, now, card)
+
     async def authorize(self) -> None:
-        await self.use_case.prepare(self.hold.request_id, NOW)
+        await self.prepare(NOW)
         await self.use_case.authorize(self.hold.request_id, NOW)
 
 
@@ -110,7 +116,7 @@ async def test_transient_failure_reuses_snapshot_key_and_saved_amount() -> None:
     assert s.stored.status is HoldStatus.SCHEDULED
     s.events.failed.assert_not_awaited()
     s.cards.for_rider.return_value = SavedPaymentCard("cus_changed", "pm_changed")
-    await s.use_case.prepare(s.hold.request_id, NOW + timedelta(seconds=31))
+    await s.prepare(NOW + timedelta(seconds=31))
     await s.use_case.authorize(s.hold.request_id, NOW + timedelta(seconds=31))
     calls = s.gateway.authorize.await_args_list
     assert calls[0] == calls[1]
@@ -143,7 +149,7 @@ async def test_no_card_fails_but_lookup_outage_does_not_mean_no_card() -> None:
     s = Setup()
     s.cards.for_rider.side_effect = RuntimeError("Lookup not configured")
     with pytest.raises(RuntimeError):
-        await s.use_case.prepare(s.hold.request_id, NOW)
+        await s.prepare(NOW)
     assert s.stored.status is HoldStatus.SCHEDULED
     s.events.failed.assert_not_awaited()
 
@@ -169,7 +175,7 @@ async def test_non_authorized_status_never_publishes_held(status) -> None:
 async def test_expired_idempotency_window_and_configuration_errors_stop_automatic_retries() -> None:
     s = Setup()
     s.holds.items[s.hold.request_id] = replace(s.hold, departure_at=NOW + timedelta(days=3))
-    await s.use_case.prepare(s.hold.request_id, NOW)
+    await s.prepare(NOW)
     await s.use_case.authorize(s.hold.request_id, NOW + timedelta(hours=24))
     assert s.stored.retry_at is None
     s.gateway.authorize.assert_not_awaited()
@@ -207,7 +213,7 @@ async def test_capture_rejects_wrong_state_or_uncertain_provider_response() -> N
 
 async def test_old_accepted_event_does_not_authorize_after_departure() -> None:
     s = Setup()
-    await s.use_case.prepare(s.hold.request_id, NOW + timedelta(days=1))
+    await s.prepare(NOW + timedelta(days=1))
     assert s.stored.status is HoldStatus.FAILED
     assert s.stored.retry_at is None
     s.cards.for_rider.assert_not_awaited()
@@ -216,7 +222,7 @@ async def test_old_accepted_event_does_not_authorize_after_departure() -> None:
     s.events.held.assert_not_awaited()
 
 
-async def test_enabled_runtime_requires_explicit_saved_card_integration(monkeypatch) -> None:
+async def test_enabled_runtime_requires_stripe_key(monkeypatch) -> None:
     import payments.infrastructure.main as main
     from payments.infrastructure.settings import Settings
 
@@ -226,14 +232,14 @@ async def test_enabled_runtime_requires_explicit_saved_card_integration(monkeypa
         lambda: Settings(_env_file=None, hold_processing_enabled=True, stripe_secret_key=None),
     )
     app = main.create_app()
-    with pytest.raises(RuntimeError, match="saved-card lookup"):
+    with pytest.raises(RuntimeError, match="Stripe test key"):
         async with app.router.lifespan_context(app):
             pass
 
 
 async def test_prepared_hold_past_departure_is_paused_without_false_failure() -> None:
     s = Setup()
-    await s.use_case.prepare(s.hold.request_id, NOW)
+    await s.prepare(NOW)
     await s.use_case.authorize(s.hold.request_id, NOW + timedelta(days=1))
     assert s.stored.status is HoldStatus.SCHEDULED
     assert s.stored.retry_at is None
@@ -324,7 +330,7 @@ async def test_captured_or_uncertain_release_never_reports_money_released(provid
 
 async def test_uncertain_authorization_is_recovered_before_release() -> None:
     s = Setup()
-    await s.use_case.prepare(s.hold.request_id, NOW)
+    await s.prepare(NOW)
     s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True)
     s.gateway.retrieve_payment_intent.return_value = PaymentIntentResult(
         "pi_test", PaymentIntentStatus.REQUIRES_CAPTURE
@@ -343,7 +349,7 @@ async def test_uncertain_authorization_is_recovered_before_release() -> None:
 
 async def test_expired_uncertain_authorization_stops_for_reconciliation() -> None:
     s = Setup()
-    await s.use_case.prepare(s.hold.request_id, NOW)
+    await s.prepare(NOW)
     s.holds.items[s.hold.request_id] = replace(s.stored, release_requested=True)
     await s.use_case.release(s.hold.request_id, NOW + timedelta(days=1))
     assert s.stored.retry_at is None
@@ -358,7 +364,7 @@ async def test_far_ahead_hold_waits_to_snapshot_card_until_authorization_time() 
         s.hold, departure_at=NOW + timedelta(days=14), authorize_at=due, retry_at=due
     )
     await s.authorize()
-    await s.use_case.prepare(s.hold.request_id, due - timedelta(microseconds=1))
+    await s.prepare(due - timedelta(microseconds=1))
     await s.use_case.authorize(s.hold.request_id, due - timedelta(microseconds=1))
     assert s.stored.first_attempt_at is None
     s.cards.for_rider.assert_not_awaited()
@@ -366,7 +372,7 @@ async def test_far_ahead_hold_waits_to_snapshot_card_until_authorization_time() 
     s.events.failed.assert_not_awaited()
     # The rider's card is resolved at authorization time, not weeks before it.
     s.cards.for_rider.return_value = SavedPaymentCard("cus_current", "pm_current")
-    await s.use_case.prepare(s.hold.request_id, due)
+    await s.prepare(due)
     await s.use_case.authorize(s.hold.request_id, due)
     assert s.stored.status is HoldStatus.AUTHORIZED
     assert s.stored.first_attempt_at == due
@@ -391,7 +397,7 @@ async def test_delayed_authorization_uses_existing_payment_failure_flow(reason) 
         )
     await s.authorize()
     s.events.failed.assert_not_awaited()
-    await s.use_case.prepare(s.hold.request_id, due)
+    await s.prepare(due)
     await s.use_case.authorize(s.hold.request_id, due)
     assert s.stored.status is HoldStatus.FAILED
     s.events.failed.assert_awaited_once_with(s.stored, reason)
@@ -408,7 +414,7 @@ async def test_cancelling_far_ahead_schedule_does_not_wait_or_contact_stripe() -
         retry_at=NOW,
     )
     await s.use_case.release(s.hold.request_id, NOW)
-    await s.use_case.prepare(s.hold.request_id, due)
+    await s.prepare(due)
     await s.use_case.authorize(s.hold.request_id, due)
     assert s.stored.status is HoldStatus.RELEASED
     s.cards.for_rider.assert_not_awaited()
