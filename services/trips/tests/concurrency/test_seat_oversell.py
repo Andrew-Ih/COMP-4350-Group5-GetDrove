@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
@@ -269,27 +269,34 @@ async def test_twenty_riders_three_seats_exactly_three_are_accepted(api: API) ->
 
 
 @pytest.mark.parametrize("attempt", range(3))
-async def test_auto_accept_racing_a_manual_accept_for_the_last_seat(api: API, attempt: int) -> None:
-    """A rider's request would be auto-accepted at the same moment the driver accepts
+async def after(delay: float, call: Awaitable[httpx.Response]) -> httpx.Response:
+    await asyncio.sleep(delay)
+    return await call
+
+
+@pytest.mark.parametrize("manual_delay", [0.0, 0.5])  # 0.5 s lets auto-accept finish first
+async def test_auto_accept_racing_a_manual_accept_for_the_last_seat(
+    api: API, manual_delay: float
+) -> None:
+    """A rider's request is auto-accepted at about the same moment the driver accepts
     another rider by hand. One seat: exactly one of them gets it, whichever is first."""
     trip = await seed_trip(api, seats=1)
     waiting = await add_pending(api, trip)
     await set_rules(api)
 
     manual, automatic = await asyncio.gather(
-        accept(api, waiting.id), request_seat(api, trip, uuid4())
+        after(manual_delay, accept(api, waiting.id)), request_seat(api, trip, uuid4())
     )
 
     assert await seats_left(api, trip) == 0
     assert await count_with_status(api, trip, RequestStatus.ACCEPTED) == 1
     assert await accepted_events(api) == 1
     if manual.status_code == 200:
-        # The driver was first: the other request is pending or refused as full.
-        assert (automatic.status_code, automatic.json().get("status")) in {
-            (201, "pending"),
-            (409, None),
-        }
-        if automatic.status_code == 409:
+        # The driver was first: the other request is left pending or refused as full.
+        if automatic.status_code == 201:
+            assert automatic.json()["status"] == "pending"
+        else:
+            assert automatic.status_code == 409
             assert automatic.json()["code"] == "trip_full"
     else:
         # Auto-accept was first: the driver's accept loses the seat.
