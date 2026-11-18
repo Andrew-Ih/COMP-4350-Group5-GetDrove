@@ -3,8 +3,10 @@ import { delay, http, HttpResponse } from "msw";
 import type { components as Accounts } from "@/shared/api/generated/accounts";
 import type { components as Routing } from "@/shared/api/generated/routing";
 
-import { driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from "./data";
+import { autoAcceptHandlers } from "./autoAccept";
+import { adminUser, driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from "./data";
 import { driveHandlers } from "./drive";
+import { driverHandlers } from "./driver";
 import { myRidesHandlers } from "./myRides";
 import { notificationHandlers } from "./notifications";
 import { requestHandlers } from "./requests";
@@ -27,6 +29,7 @@ function problem(status: number, code: string, detail: string, instance: string,
  *   - signup with taken@myumanitoba.ca                    → 409 email_taken
  *   - login with password "wrong"                         → 401 invalid_credentials
  *   - login with unverified@myumanitoba.ca                → 403 email_not_verified
+ *   - login with admin@myumanitoba.ca                     → the admin, for /admin/drivers (#128)
  *   - /verify?token=expired                               → 410 token_expired
  *   - /verify?token=used                                  → 400 invalid_token
  *   - any other token                                     → verified
@@ -53,7 +56,9 @@ function tomorrowAt830(): string {
   return date.toISOString();
 }
 export const handlers = [
+  ...autoAcceptHandlers, // the driver's auto-accept rules (#45): see autoAccept.ts
   ...driveHandlers, // posting a trip (#96), and the driver's side of My trips: see drive.ts
+  ...driverHandlers, // applying to drive (#12, #126): see driver.ts
   ...myRidesHandlers, // the rider's side of My trips (#131): see myRides.ts
   ...notificationHandlers, // the notification bell (#147): see notifications.ts
   ...requestHandlers, // the driver's requests on a trip (#142), with a demo trip: see requests.ts
@@ -107,11 +112,12 @@ export const handlers = [
     if (body.email.toLowerCase() === "unverified@myumanitoba.ca") {
       return problem(403, "email_not_verified", "Verify your email before logging in", instance);
     }
-    mockSessionState.logIn(); // so refreshing after a reload keeps you logged in (see session.ts)
+    // So refreshing after a reload keeps you logged in (see session.ts), as the admin for admin@.
+    mockSessionState.logIn(body.email.toLowerCase() === adminUser.email);
     return HttpResponse.json(MOCK_TOKEN);
   }),
 
-  http.get("*/api/accounts/me", () => HttpResponse.json(maya)),
+  http.get("*/api/accounts/me", () => HttpResponse.json(mockSessionState.isAdmin() ? adminUser : maya)),
 
   http.get("*/api/trips/search", async ({ request }) => {
     const params = new URL(request.url).searchParams;

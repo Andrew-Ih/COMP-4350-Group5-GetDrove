@@ -5,9 +5,11 @@ Alembic autogenerates migrations from ``metadata``.
 """
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     CheckConstraint,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -22,6 +24,7 @@ from sqlalchemy import (
     text,
 )
 
+from events.consumer import consumer_tables
 from events.outbox import outbox_table
 
 SCHEMA = "trips"
@@ -39,11 +42,57 @@ metadata = MetaData(
 
 outbox = outbox_table(metadata)
 
+# Events Trips has handled from other services, and ones that kept failing (libs/events):
+# each event changes Trips' data once, even if it's delivered twice.
+consumer = consumer_tables(metadata)
+
+# Students approved to drive (#11): Trips' copy of Accounts' decisions, filled from the
+# DriverApproved event and emptied by DriverRejected. Posting a trip checks it.
+approved_drivers = Table(
+    "approved_drivers",
+    metadata,
+    Column("driver_id", Uuid, primary_key=True),
+    Column("approved_at", DateTime(timezone=True), nullable=False),
+)
+
+trip_series = Table(
+    "trip_series",
+    metadata,
+    Column("id", Uuid, primary_key=True),
+    Column("driver_id", Uuid, nullable=False),
+    Column("direction", String(20), nullable=False),
+    Column("place_label", String(200), nullable=False),
+    Column("place_lat", Float, nullable=False),
+    Column("place_lng", Float, nullable=False),
+    Column("departure_at", DateTime(timezone=True), nullable=False),
+    Column("seats_total", Integer, nullable=False),
+    Column("weekdays", JSON, nullable=False),
+    Column("end_date", Date, nullable=False),
+    Column(
+        "created_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    ),
+    CheckConstraint(
+        "seats_total BETWEEN 1 AND 6",
+        name="valid_series_seats_total",
+    ),
+    Index("ix_trip_series_driver_id", "driver_id"),
+)
+
 trips = Table(
     "trips",
     metadata,
     Column("id", Uuid, primary_key=True),
     Column("driver_id", Uuid, nullable=False),
+    Column(
+        "series_id",
+        Uuid,
+        ForeignKey("trips.trip_series.id"),
+        nullable=True,
+    ),
+    Index("ix_trips_series_id", "series_id"),
     Column("direction", String(20), nullable=False),
     Column("origin_label", String(200), nullable=False),
     Column("origin_lat", Float, nullable=False),
@@ -169,4 +218,26 @@ seat_requests = Table(
         postgresql_where=text("status IN ('pending', 'accepted')"),
     ),
     Index("ix_seat_requests_rider_created", "rider_id", "created_at"),
+)
+
+
+# Each driver's auto-accept rules (#42). No row means the defaults: off, 5 minutes, no
+# minimum rating. driver_id is an Accounts user, so there's no foreign key (no service reads
+# another's tables).
+auto_accept_rules = Table(
+    "auto_accept_rules",
+    metadata,
+    Column("driver_id", Uuid, primary_key=True),
+    Column("enabled", Boolean, nullable=False),
+    Column("max_detour_minutes", Integer, nullable=False),
+    Column("min_rating", Float, nullable=True),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    CheckConstraint("max_detour_minutes BETWEEN 0 AND 30", name="valid_max_detour"),
+    CheckConstraint("min_rating IS NULL OR min_rating BETWEEN 1 AND 5", name="valid_min_rating"),
 )

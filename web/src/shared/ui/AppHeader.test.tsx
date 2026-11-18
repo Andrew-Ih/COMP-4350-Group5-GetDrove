@@ -47,6 +47,14 @@ describe("AppHeader", () => {
     expect(bell).not.toHaveAttribute("aria-current");
   });
 
+  it("links to the driver status from the account menu", async () => {
+    renderWithProviders(<AppHeader userName="Priya" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+
+    expect(screen.getByRole("menuitem", { name: "Driver status" })).toHaveAttribute("href", "/account/driver");
+  });
+
   it("shows the app's notification bell when it's given one", () => {
     renderWithProviders(
       <HeaderBellContext.Provider value={<button type="button">the real bell</button>}>

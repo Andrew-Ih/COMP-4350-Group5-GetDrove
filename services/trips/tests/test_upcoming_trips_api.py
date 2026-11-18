@@ -8,11 +8,11 @@ from typing import Any
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import delete
+from sqlalchemy import delete, insert
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
-from trips.adapters.persistence.tables import outbox, trips
+from trips.adapters.persistence.tables import approved_drivers, outbox, trips
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
 
@@ -29,6 +29,11 @@ async def api() -> AsyncIterator[API]:
     auth.install(app)
     engine = create_async_engine(get_settings().database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    # Only approved drivers can post (#11); this test's driver is one.
+    async with engine.begin() as connection:
+        await connection.execute(
+            insert(approved_drivers).values(driver_id=auth.user_id, approved_at=datetime.now(UTC))
+        )
 
     try:
         yield app, auth, engine
@@ -41,6 +46,9 @@ async def api() -> AsyncIterator[API]:
                     )
                 )
                 await connection.execute(delete(trips).where(trips.c.driver_id == auth.user_id))
+                await connection.execute(
+                    delete(approved_drivers).where(approved_drivers.c.driver_id == auth.user_id)
+                )
         finally:
             await engine.dispose()
 

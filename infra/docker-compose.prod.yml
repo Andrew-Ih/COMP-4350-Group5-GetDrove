@@ -131,6 +131,10 @@ services:
       ACCOUNTS_REDIS_URL: redis://redis:6379/0
       ACCOUNTS_ENVIRONMENT: production
       ACCOUNTS_JWT_PRIVATE_KEY: ${ACCOUNTS_JWT_PRIVATE_KEY:?set in .env}
+      ACCOUNTS_DOCUMENTS_DIR: /data/driver-documents
+    # Driver documents (#9, ADR 0011): only Accounts mounts this volume.
+    volumes:
+      - driver-documents:/data/driver-documents
     labels:
       - traefik.enable=true
       - traefik.http.routers.accounts.rule=Host(`${SITE_DOMAIN}`) && PathPrefix(`/api/accounts`) && !PathPrefix(`/api/accounts/internal`)
@@ -193,6 +197,7 @@ services:
     environment:
       PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD}@postgres:5432/getdrove
       PAYMENTS_REDIS_URL: redis://redis:6379/0
+      PAYMENTS_STRIPE_SECRET_KEY: ${PAYMENTS_STRIPE_SECRET_KEY:?Stripe test key required}
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
@@ -220,6 +225,9 @@ services:
       NOTIFICATIONS_SMTP_PASSWORD: ${NOTIFICATIONS_SMTP_PASSWORD:?set in .env}
       # A sender verified in Brevo, e.g. "GetDrove <team@example.com>".
       NOTIFICATIONS_EMAIL_FROM: ${NOTIFICATIONS_EMAIL_FROM:?set in .env}
+      # The demo accounts' addresses are made up: never email them, or Brevo bounces (#415).
+      # They still get in-app notifications.
+      NOTIFICATIONS_EMAIL_SKIP_PATTERNS: '["getdrove.demo.*@myumanitoba.ca"]'
       # Links in emails (e.g. /verify?token=...) open the live site. SITE_URL is the site's
       # one address, set at the top of deploy.yml; each service reads it through its own
       # NOTIFICATIONS_* style setting, like the database passwords above.
@@ -259,5 +267,6 @@ services:
 
 volumes:
   postgres-data:
+  driver-documents:
   redis-data:
   letsencrypt:

@@ -1,24 +1,26 @@
 """Trips API: post a trip, my trips and search (Sprint 1), and the Sprint 2 contract (#262):
 recurring trips, cancelling, trip detail with pickup points, seat requests, and auto-accept.
 
-Endpoints that return 501 are contracts: their task implements them.
 Paths here are relative to the gateway prefix /api/trips. Fixed paths (/mine, /search,
 /series, /requests/..., /auto-accept) are declared before /{trip_id}, so they aren't read as
 a trip ID.
 """
 
 from datetime import UTC, datetime
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
 from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    AutoAcceptRulesService,
+    CancelSeriesService,
     CancelTripService,
     DecideRequestService,
+    PostRecurringTripService,
     PostTripService,
     RequestSeatService,
     RiderTripsService,
@@ -50,6 +52,7 @@ from trips.adapters.api.schemas import (
     Trip,
     TripDetail,
     TripSeriesResult,
+    TripVehicle,
 )
 from trips.application.decide_request import RequestActionCommand
 from trips.application.list_trip_requests import (
@@ -57,6 +60,8 @@ from trips.application.list_trip_requests import (
     ListTripRequestsCommand,
 )
 from trips.application.request_seat import RequestSeatCommand
+from trips.domain import auto_accept
+from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
 from trips.domain.seat_request import SeatRequest as SeatRequestEntity
 from trips.domain.values import Direction, Location, Point
@@ -87,13 +92,6 @@ When = Annotated[
     Literal["upcoming", "past"],
     Query(description="Upcoming (soonest first) or past (most recent first)."),
 ]
-
-
-def _not_implemented() -> NoReturn:
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet: this is a contract (#108).",
-    )
 
 
 @router.post(
@@ -159,8 +157,31 @@ async def post_trip(
 async def post_trip_series(
     body: PostTripSeriesRequest,
     user: AuthenticatedUser,
+    service: PostRecurringTripService,
 ) -> TripSeriesResult:
-    _not_implemented()
+    series = TripSeries.create(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+        weekdays=list[str](body.weekdays),
+        end_date=body.end_date,
+    )
+
+    result = await service.execute(series=series)
+
+    return TripSeriesResult(
+        series_id=result.series.id,
+        trips=[_to_response(trip) for trip in result.created_trips],
+        skipped_dates=[
+            departure.astimezone(WINNIPEG_TZ).date() for departure in result.skipped_departures
+        ],
+    )
 
 
 @router.get(
@@ -206,8 +227,10 @@ async def my_requests(
     description="The driver's rules. If they've never set any: off, 5 minutes, no minimum rating.",
     responses=UNAUTHORIZED,
 )
-async def get_auto_accept(user: AuthenticatedUser) -> AutoAcceptRules:
-    _not_implemented()
+async def get_auto_accept(
+    user: AuthenticatedUser, service: AutoAcceptRulesService
+) -> AutoAcceptRules:
+    return _auto_accept_out(await service.get(driver_id=user.id))
 
 
 @router.put(
@@ -220,8 +243,23 @@ async def get_auto_accept(user: AuthenticatedUser) -> AutoAcceptRules:
     "to new requests only.",
     responses={**UNAUTHORIZED, **INVALID},
 )
-async def put_auto_accept(body: AutoAcceptRules, user: AuthenticatedUser) -> AutoAcceptRules:
-    _not_implemented()
+async def put_auto_accept(
+    body: AutoAcceptRules, user: AuthenticatedUser, service: AutoAcceptRulesService
+) -> AutoAcceptRules:
+    rules = auto_accept.AutoAcceptRules(
+        enabled=body.enabled,
+        max_detour_minutes=body.max_detour_minutes,
+        min_rating=body.min_rating,
+    )
+    return _auto_accept_out(await service.set(driver_id=user.id, rules=rules))
+
+
+def _auto_accept_out(rules: auto_accept.AutoAcceptRules) -> AutoAcceptRules:
+    return AutoAcceptRules(
+        enabled=rules.enabled,
+        max_detour_minutes=rules.max_detour_minutes,
+        min_rating=rules.min_rating,
+    )
 
 
 @router.get(
@@ -382,8 +420,11 @@ async def cancel_request(
         404: _problem("No series with this ID", "series_not_found"),
     },
 )
-async def cancel_series(series_id: UUID, user: AuthenticatedUser) -> list[Trip]:
-    _not_implemented()
+async def cancel_series(
+    series_id: UUID, user: AuthenticatedUser, service: CancelSeriesService
+) -> list[Trip]:
+    cancelled = await service.execute(series_id=series_id, driver_id=user.id)
+    return [_to_response(trip) for trip in cancelled]
 
 
 def _place(location: Location) -> Place:
@@ -453,6 +494,7 @@ def _for_rider(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -470,6 +512,7 @@ def _to_response(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -520,8 +563,15 @@ async def get_trip(
     return TripDetail(
         # The driver sees their own end; everyone else, only the campus end.
         trip=_to_response(detail.trip) if detail.viewer_is_driver else _for_rider(detail.trip),
-        # The driver's vehicle needs Accounts' /internal/users (#143).
-        vehicle=None,
+        # Only the driver and accepted riders get it (#361); null for everyone else.
+        vehicle=TripVehicle(
+            make=detail.vehicle.make,
+            model=detail.vehicle.model,
+            colour=detail.vehicle.colour,
+            plate=detail.vehicle.plate,
+        )
+        if detail.vehicle
+        else None,
         pickups=[
             PickupOption(
                 id=priced.offer.id,

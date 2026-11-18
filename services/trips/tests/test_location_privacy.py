@@ -16,13 +16,13 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import delete, text
+from sqlalchemy import delete, insert, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from common_security.testing import TestAuth
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import outbox, trips
+from trips.adapters.persistence.tables import approved_drivers, outbox, trips
 from trips.domain.entities import Trip
 from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.main import create_app
@@ -57,6 +57,11 @@ async def api() -> AsyncIterator[API]:
     engine = create_database_engine(get_settings().database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
     api = API(app, auth)
+    # Only approved drivers can post (#11); this test's driver is one.
+    async with engine.begin() as connection:
+        await connection.execute(
+            insert(approved_drivers).values(driver_id=api.driver, approved_at=datetime.now(UTC))
+        )
     try:
         yield api
     finally:
@@ -68,6 +73,9 @@ async def api() -> AsyncIterator[API]:
                     )
                 )
                 await connection.execute(delete(trips).where(trips.c.driver_id == api.driver))
+                await connection.execute(
+                    delete(approved_drivers).where(approved_drivers.c.driver_id == api.driver)
+                )
         finally:
             await engine.dispose()
 

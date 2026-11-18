@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 
@@ -558,3 +558,76 @@ async def test_accepting_and_a_cancel_at_once_on_one_trip_dont_deadlock(api: API
     assert await pickup_order(api, seated) is None
     assert await pickup_order(api, newcomer) == 1
     assert await seats_left(api, trip) == 2
+
+
+@pytest.mark.parametrize("leave_action", ["decline", "cancel"])
+async def test_saved_share_survives_acceptance_and_other_riders_joining_or_leaving(
+    api: API, leave_action: str
+) -> None:
+    """Acceptance exports the saved quote even if today's pricing would differ (#69)."""
+    trip, original = await seed(api, as_driver=True)
+    # A historical quote deliberately differs from today's quote for 4 km.
+    saved = {"amount_cents": 625, "currency": "CAD", "rider_distance_meters": 4000}
+    async with api[2].begin() as connection:
+        await connection.execute(
+            update(seat_requests)
+            .where(seat_requests.c.id == original.id)
+            .values(**saved, cost_explanation="Saved earlier")
+        )
+
+    def payments_must_not_be_called(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("Acceptance must use the saved quote without calling Payments")
+
+    async def original_quote() -> dict[str, object]:
+        async with api[2].connect() as connection:
+            row = (
+                (
+                    await connection.execute(
+                        select(seat_requests).where(seat_requests.c.id == original.id)
+                    )
+                )
+                .mappings()
+                .one()
+            )
+            return {key: row[key] for key in saved}
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(payments_must_not_be_called), base_url="http://payments"
+    ) as payments:
+        api[0].state.payments_client = payments
+        accepted = await act(api, "accept", original.id)
+        assert accepted.status_code == 200, accepted.text
+        assert accepted.json()["cost"]["amountCents"] == saved["amount_cents"]
+        assert accepted.json()["cost"]["currency"] == saved["currency"]
+        assert await original_quote() == saved
+
+        other = await add_request(api, trip, uuid4())
+        joined = await act(api, "accept", other.id)
+        assert joined.status_code == 200, joined.text
+        assert await original_quote() == saved
+
+        if leave_action == "decline":
+            left = await act(api, "decline", other.id)
+        else:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=api[0]), base_url="http://test"
+            ) as client:
+                left = await client.post(
+                    f"/requests/{other.id}/cancel",
+                    headers={
+                        **api[1].headers(user_id=other.rider_id),
+                        "X-Request-ID": str(api[1].user_id),
+                    },
+                )
+        assert left.status_code == 200, left.text
+        assert await original_quote() == saved
+
+    events = await saved_events(api)
+    [accepted_event] = [
+        row
+        for row in events
+        if row["type"] == "RequestAccepted"
+        and row["envelope"]["payload"]["requestId"] == str(original.id)
+    ]
+    assert accepted_event["envelope"]["payload"]["amountCents"] == saved["amount_cents"]
+    assert accepted_event["envelope"]["payload"]["currency"] == saved["currency"]
