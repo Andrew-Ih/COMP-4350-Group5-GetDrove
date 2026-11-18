@@ -188,7 +188,7 @@ describe("MyTrips: driving", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
     const confirm = screen.getByRole("group", { name: "Cancel this trip?" });
-    expect(confirm).toHaveTextContent("Riders on it will be told");
+    expect(confirm).toHaveTextContent("Riders on it will be told, and any payment holds on their cards are released.");
     expect(confirm).not.toHaveTextContent("late cancellation");
 
     await userEvent.click(within(confirm).getByRole("button", { name: "Cancel trip" }));
