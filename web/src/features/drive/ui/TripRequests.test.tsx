@@ -310,7 +310,7 @@ describe("TripRequests", () => {
 
     await userEvent.click(await screen.findByRole("button", { name: "Cancel trip" }));
     const confirm = screen.getByRole("group", { name: "Cancel this trip?" });
-    expect(confirm).toHaveTextContent("Riders on it will be told.");
+    expect(confirm).toHaveTextContent("Riders on it will be told, and any payment holds on their cards are released.");
     await userEvent.click(within(confirm).getByRole("button", { name: "Cancel trip" }));
 
     expect(await screen.findByText("This trip was cancelled.")).toBeInTheDocument();

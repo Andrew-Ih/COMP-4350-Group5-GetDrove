@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, CreditCard, LogOut, Menu, X } from "lucide-react";
+import { Bell, Car, CreditCard, LogOut, Menu, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext, useEffect, useRef, useState } from "react";
@@ -21,8 +21,8 @@ const NAV = [
 
 /**
  * Top bar on every signed-in screen. Desktop: logo, Ride / Drive / My trips, bell, and the
- * avatar, which opens a menu with Payment card and Log out. Mobile: logo, avatar and a menu
- * button that opens the same links, Payment card and Log out.
+ * avatar, which opens a menu with Payment card, Driver status, Auto-accept and Log out.
+ * Mobile: logo, avatar and a menu button that opens the same links and Log out.
  */
 export function AppHeader({ userName }: { userName: string }) {
   const pathname = usePathname();
@@ -120,6 +120,22 @@ export function AppHeader({ userName }: { userName: string }) {
                 >
                   <CreditCard aria-hidden="true" className="size-4" /> Payment card
                 </Link>
+                <Link
+                  href="/account/driver"
+                  role="menuitem"
+                  onClick={() => setAccountOpen(false)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
+                >
+                  <Car aria-hidden="true" className="size-4" /> Driver status
+                </Link>
+                <Link
+                  href="/account/auto-accept"
+                  role="menuitem"
+                  onClick={() => setAccountOpen(false)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
+                >
+                  <Zap aria-hidden="true" className="size-4" /> Auto-accept
+                </Link>
                 <button
                   type="button"
                   role="menuitem"
@@ -177,6 +193,20 @@ export function AppHeader({ userName }: { userName: string }) {
             className="block border-b border-line py-4 text-lg font-semibold text-muted"
           >
             Payment card
+          </Link>
+          <Link
+            href="/account/driver"
+            onClick={() => setMenuOpen(false)}
+            className="block border-b border-line py-4 text-lg font-semibold text-muted"
+          >
+            Driver status
+          </Link>
+          <Link
+            href="/account/auto-accept"
+            onClick={() => setMenuOpen(false)}
+            className="block border-b border-line py-4 text-lg font-semibold text-muted"
+          >
+            Auto-accept
           </Link>
           <button
             type="button"

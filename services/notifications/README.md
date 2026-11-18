@@ -17,7 +17,7 @@ Then open http://localhost:8005/health and the API docs at http://localhost:8005
 
 Notifications needs PostgreSQL, Redis and an SMTP server; the defaults point at the ones Docker Compose starts on localhost (`docker compose up postgres redis mailpit`). Emails land in Mailpit at http://localhost:8025, and nothing reaches a real inbox. Settings are listed in `.env.example` under "Notifications email", including `NOTIFICATIONS_REMINDER_LEAD_MINUTES`: how long before departure riders are reminded (default 30). Notification emails also need Accounts (`NOTIFICATIONS_ACCOUNTS_URL`, default http://localhost:8001; `http://accounts:8000` in Docker) for each person's name and email address.
 
-In production, email goes out through Brevo's SMTP relay, and links open the live site. The settings come from `infra/docker-compose.prod.yml` and GitHub Secrets; see [Deployment: Email (Brevo)](../../docs/deployment/deployment.md#email-brevo).
+In production, email goes out through Brevo's SMTP relay, and links open the live site. The settings come from `infra/docker-compose.prod.yml` and GitHub Secrets; see [Deployment: Email (Brevo)](../../docs/deployment/deployment.md#email-brevo). Production also never emails the demo accounts (`getdrove.demo.*@myumanitoba.ca`, made-up addresses that would bounce): `NOTIFICATIONS_EMAIL_SKIP_PATTERNS` lists them, and they get in-app notifications only (#415).
 
 ## Test and check
 

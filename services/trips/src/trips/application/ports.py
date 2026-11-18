@@ -6,6 +6,7 @@ from datetime import datetime
 from typing import Protocol
 from uuid import UUID
 
+from trips.domain.auto_accept import AutoAcceptRules
 from trips.domain.entities import Trip, TripSeries
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import (
@@ -82,6 +83,14 @@ class RiderRequestLookup(Protocol):
         ...
 
 
+class ApprovedDrivers(Protocol):
+    """Trips' copy of which students are approved to drive (#11), kept up to date from
+    Accounts' DriverApproved and DriverRejected events. Read locally, so posting doesn't
+    call Accounts, and an approval counts straight away, without logging in again."""
+
+    async def is_approved(self, driver_id: UUID) -> bool: ...
+
+
 class TripEvents(Protocol):
     async def trip_posted(self, trip_id: UUID) -> None:
         """Record TripPosted in the same transaction as the Trip."""
@@ -101,6 +110,25 @@ class RiderProfile:
     rating: float | None
     rating_count: int
     no_show_count: int
+
+
+@dataclass(frozen=True)
+class DriverVehicle:
+    """The driver's vehicle, with its plate (#361): only for the driver and their accepted
+    riders."""
+
+    make: str
+    model: str
+    colour: str
+    plate: str
+
+
+class DriverVehicleLookup(Protocol):
+    async def get_vehicle(self, driver_id: UUID) -> DriverVehicle | None:
+        """The driver's vehicle from Accounts (#143), or None if they have none (only approved
+        drivers do) or Accounts doesn't know them. Raise AccountsUnavailableError if Accounts
+        can't answer."""
+        ...
 
 
 class RiderProfileService(Protocol):
@@ -220,3 +248,15 @@ class SeatRequestEvents(Protocol):
     async def request_cancelled(
         self, request: SeatRequest, trip: Trip, *, was_accepted: bool
     ) -> None: ...
+
+
+class AutoAcceptRulesRepository(Protocol):
+    """Each driver's auto-accept rules (#42)."""
+
+    async def get(self, driver_id: UUID) -> AutoAcceptRules | None:
+        """The driver's saved rules, or None if they've never set any."""
+        ...
+
+    async def save(self, driver_id: UUID, rules: AutoAcceptRules) -> None:
+        """Saves the rules, replacing any the driver had."""
+        ...

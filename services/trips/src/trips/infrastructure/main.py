@@ -18,6 +18,7 @@ from common_web.app import install
 from events import stream_name
 from events.consumer import StreamConsumer
 from events.outbox import OutboxRelay
+from trips.adapters.account_events import register_handlers
 from trips.adapters.api import health, trips_router
 from trips.adapters.payment_events import register_payment_handlers
 from trips.adapters.persistence.tables import consumer as consumer_tables
@@ -26,6 +27,22 @@ from trips.infrastructure.database import create_database_engine
 from trips.infrastructure.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# How long the event consumer waits on Redis for new events before checking again. Reads
+# must outlast it, or redis-py times out while idle (see the libs/events README).
+CONSUMER_BLOCK_MS = 5_000
+REDIS_READ_TIMEOUT_SECONDS = 10
+
+
+def _log_if_consumer_stopped(task: "asyncio.Task[None]") -> None:
+    """The consumer should run until shutdown. If it stops with an error, say so loudly:
+    otherwise newly approved drivers couldn't post, and failed payments wouldn't free
+    their seats."""
+    if not task.cancelled() and task.exception() is not None:
+        logger.error(
+            "Event consumer stopped; driver approvals and payment failures won't reach Trips",
+            exc_info=task.exception(),
+        )
 
 
 @asynccontextmanager
@@ -41,10 +58,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         expire_on_commit=False,
     )
 
-    redis = Redis.from_url(settings.redis_url, socket_timeout=10)
+    redis = Redis.from_url(settings.redis_url, socket_timeout=REDIS_READ_TIMEOUT_SECONDS)
     relay = OutboxRelay(
         session_factory=app.state.session_factory, redis=redis, table=outbox, producer="trips"
     )
+    # One consumer for every stream Trips listens to: Accounts' driver decisions keep the
+    # list of approved drivers up to date (#11), and failed payments free their seats.
+    consumer = StreamConsumer(
+        redis=redis,
+        session_factory=app.state.session_factory,
+        group="trips",
+        streams=[stream_name("accounts"), stream_name("payments")],
+        tables=consumer_tables,
+        block_ms=CONSUMER_BLOCK_MS,
+    )
+    register_handlers(consumer)
+    register_payment_handlers(consumer)
 
     async with (
         httpx.AsyncClient(
@@ -66,26 +95,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.accounts_client = accounts_client
         stop = asyncio.Event()
         relay_task = asyncio.create_task(relay.run(stop))
-        consumer = StreamConsumer(
-            redis=redis,
-            session_factory=app.state.session_factory,
-            group="trips",
-            streams=[stream_name("payments")],
-            tables=consumer_tables,
-        )
-        register_payment_handlers(consumer)
         consumer_task = asyncio.create_task(consumer.run(stop))
-
-        def report_stopped(task: asyncio.Task[None]) -> None:
-            if not task.cancelled() and task.exception() is not None:
-                logger.error("Payment failure consumer stopped", exc_info=task.exception())
-
-        consumer_task.add_done_callback(report_stopped)
+        consumer_task.add_done_callback(_log_if_consumer_stopped)
 
         try:
             yield
         finally:
             stop.set()
+            # The consumer may be waiting up to 5 s for new events; don't hold shutdown up.
             consumer_task.cancel()
             try:
                 with contextlib.suppress(asyncio.CancelledError):

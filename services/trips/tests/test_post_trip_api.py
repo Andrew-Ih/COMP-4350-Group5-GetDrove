@@ -13,7 +13,7 @@ import pytest
 from fastapi import FastAPI
 from redis.asyncio import Redis
 from redis.exceptions import ConnectionError as RedisConnectionError
-from sqlalchemy import delete, event, select, text
+from sqlalchemy import delete, event, insert, select, text
 from sqlalchemy.engine import RowMapping
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.ext.asyncio import (
@@ -28,7 +28,7 @@ from common_security.testing import TestAuth
 from events.outbox import OutboxRelay
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.persistence.repository import SQLAlchemyTripRepository
-from trips.adapters.persistence.tables import outbox, trips
+from trips.adapters.persistence.tables import approved_drivers, outbox, trips
 from trips.domain.entities import Trip
 from trips.infrastructure.main import create_app
 from trips.infrastructure.settings import get_settings
@@ -46,6 +46,11 @@ async def api() -> AsyncIterator[API]:
     auth.install(app)
     engine = create_async_engine(get_settings().database_url)
     app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+    # Only approved drivers can post (#11); this test's driver is one.
+    async with engine.begin() as connection:
+        await connection.execute(
+            insert(approved_drivers).values(driver_id=auth.user_id, approved_at=datetime.now(UTC))
+        )
     try:
         yield app, auth, engine
     finally:
@@ -58,6 +63,9 @@ async def api() -> AsyncIterator[API]:
                     )
                 )
                 await connection.execute(delete(trips).where(trips.c.driver_id == auth.user_id))
+                await connection.execute(
+                    delete(approved_drivers).where(approved_drivers.c.driver_id == auth.user_id)
+                )
         finally:
             await engine.dispose()
 
@@ -268,21 +276,29 @@ async def test_lifespan_retries_pending_event_and_stops_relay(
 
     monkeypatch.setattr(OutboxRelay, "publish_pending", publish_pending)
     redis.xadd.side_effect = xadd
+
+    # The event consumer (driver decisions #11, and failed payments) shares this Redis. There
+    # are no events to read, and like a real idle Redis, each read waits a moment before
+    # answering "nothing new".
+    async def no_new_events(*args: object, **kwargs: object) -> list[object]:
+        await asyncio.sleep(0.05)
+        return []
+
     redis.xgroup_create = AsyncMock()
+    redis.xreadgroup = AsyncMock(side_effect=no_new_events)
     redis.xautoclaim = AsyncMock(return_value=[b"0-0", [], []])
-
-    async def wait_for_payment_events(*args, **kwargs):
-        await asyncio.Event().wait()  # Like an idle blocking Redis read, until shutdown.
-
-    redis.xreadgroup = AsyncMock(side_effect=wait_for_payment_events)
-    monkeypatch.setattr("trips.infrastructure.main.Redis.from_url", lambda url, **kwargs: redis)
+    monkeypatch.setattr("trips.infrastructure.main.Redis.from_url", lambda url, **options: redis)
     app = api[0]
     async with app.router.lifespan_context(app), asyncio.timeout(5):
         await delivered.wait()
         assert (await saved_events(api))[0]["published_at"] is not None
 
     assert attempts == 2
-    redis.xgroup_create.assert_awaited_once_with("events.payments", "trips", id="0", mkstream=True)
+    # One consumer listens from the start of both streams: Accounts' driver decisions (#11)
+    # and failed payments.
+    redis.xgroup_create.assert_any_await("events.accounts", "trips", id="0", mkstream=True)
+    redis.xgroup_create.assert_any_await("events.payments", "trips", id="0", mkstream=True)
+    assert redis.xgroup_create.await_count == 2
     redis.aclose.assert_awaited_once()
 
 
@@ -335,5 +351,25 @@ async def test_past_departure_identifies_invalid_field(api: API) -> None:
         }
     ]
 
+    assert await saved(api) == []
+    assert await saved_events(api) == []
+
+
+async def test_an_unapproved_driver_gets_403_and_nothing_is_saved(api: API) -> None:
+    _, auth, engine = api
+    async with engine.begin() as connection:
+        await connection.execute(
+            delete(approved_drivers).where(approved_drivers.c.driver_id == auth.user_id)
+        )
+
+    def no_route(request: httpx.Request) -> httpx.Response:
+        raise AssertionError("an unapproved driver's trip shouldn't be routed")
+
+    response = await post(api, no_route, payload())
+
+    assert response.status_code == 403
+    assert response.headers["content-type"] == "application/problem+json"
+    assert response.json()["code"] == "driver_not_approved"
+    assert "approved to drive" in response.json()["detail"]
     assert await saved(api) == []
     assert await saved_events(api) == []

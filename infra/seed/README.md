@@ -36,7 +36,9 @@ Two parts, because accounts and trips are created differently:
 1. **Accounts**: `python -m accounts.infrastructure.seed`, run inside the Accounts
    container, reads `demo.json` and creates each person already verified. It doesn't go
    through sign-up, because sign-up would email the made-up addresses and the bounces
-   would hurt our email sender's reputation. People who already exist are skipped.
+   would hurt our email sender's reputation. People who already exist are skipped. On the live site, Notifications
+   doesn't email them later either (`NOTIFICATIONS_EMAIL_SKIP_PATTERNS`, #415): they see
+   their notifications in the app's bell.
 2. **Trips**: [`seed_trips.py`](seed_trips.py) logs in as each driver and posts their
    commutes for the next two weeks through the API (`POST /api/trips/`), like the app does.
    That way Routing works out and stores the real route. It compares each driver's plan with
