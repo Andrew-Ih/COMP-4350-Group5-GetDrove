@@ -20,6 +20,10 @@ creation, so retrying a failed setup reuses the existing customer.
 Card lists are fetched from Stripe each time, including all pages. After Elements
 confirms setup, refetch `/methods` to see the saved card. The card with the latest Stripe
 creation timestamp becomes the local default; IDs break timestamp ties consistently.
+Card reads use a plain SELECT without creating or locking a customer row. The read
+transaction ends before Stripe is called. A separate short transaction updates only a
+changed default, without overwriting a concurrent refresh.
+
 There is no card deletion or default-selection endpoint in Sprint 2. The internal card
 check refreshes that same default, for later holds to use. Provider failures return
 `503` with code `payments_unavailable` rather than an empty card list.

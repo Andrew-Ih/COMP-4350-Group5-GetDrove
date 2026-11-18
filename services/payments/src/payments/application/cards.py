@@ -10,7 +10,7 @@ from payments.application.ports import (
     PaymentGatewayPort,
     SetupIntentResult,
 )
-from payments.domain.cards import CardView
+from payments.domain.cards import CardView, Customer
 
 
 class PaymentsUnavailableError(DomainError):
@@ -45,9 +45,9 @@ class Cards:
         except PaymentGatewayError:
             raise PaymentsUnavailableError() from None
 
-    async def methods(self, user_id: UUID) -> list[CardView]:
-        customer = await self.customers.lock(user_id)
-        if customer.stripe_customer_id is None:
+    async def methods(self, customer: Customer | None) -> list[CardView]:
+        """Fetch display data from a detached snapshot, without database work."""
+        if customer is None or customer.stripe_customer_id is None:
             return []
         try:
             cards = await self.gateway.list_cards(customer_id=customer.stripe_customer_id)
@@ -56,5 +56,4 @@ class Cards:
         # Stripe timestamps have second precision; IDs break ties consistently.
         cards.sort(key=lambda card: (card.created, card.id), reverse=True)
         default_id = cards[0].id if cards else None
-        await self.customers.save(replace(customer, default_payment_method_id=default_id))
         return [CardView(card=card, is_default=card.id == default_id) for card in cards]

@@ -34,8 +34,18 @@ class CardOperations:
             return await cards.setup(customer_id)
 
     async def methods(self, user_id: UUID) -> list[CardView]:
-        async with self.sessions() as session, session.begin():
-            return await Cards(SQLAlchemyCustomers(session), self.gateway).methods(user_id)
+        gateway = self.gateway
+        async with self.sessions() as session:
+            customers = SQLAlchemyCustomers(session)
+            async with session.begin():
+                customer = await customers.get(user_id)
+            # The SELECT transaction has ended and returned its pooled connection.
+            methods = await Cards(customers, gateway).methods(customer)
+            default_id = next((item.card.id for item in methods if item.is_default), None)
+            if customer is not None and customer.default_payment_method_id != default_id:
+                async with session.begin():
+                    await customers.update_default(customer, default_id)
+            return methods
 
 
 def get_card_operations(request: Request) -> CardOperations:

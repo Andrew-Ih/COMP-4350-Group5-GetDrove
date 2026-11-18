@@ -14,6 +14,30 @@ class SQLAlchemyCustomers:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def get(self, user_id: UUID) -> Customer | None:
+        result = await self.session.execute(select(customers).where(customers.c.user_id == user_id))
+        row = result.mappings().first()
+        return (
+            Customer(user_id, row["stripe_customer_id"], row["default_payment_method_id"])
+            if row is not None
+            else None
+        )
+
+    async def update_default(self, customer: Customer, payment_method_id: str | None) -> None:
+        # Do not overwrite another refresh's update or an intervening customer change.
+        await self.session.execute(
+            update(customers)
+            .where(
+                customers.c.user_id == customer.user_id,
+                customers.c.stripe_customer_id == customer.stripe_customer_id,
+                customers.c.default_payment_method_id.is_not_distinct_from(
+                    customer.default_payment_method_id
+                ),
+                customers.c.default_payment_method_id.is_distinct_from(payment_method_id),
+            )
+            .values(default_payment_method_id=payment_method_id)
+        )
+
     async def lock(self, user_id: UUID) -> Customer:
         await self.session.execute(
             insert(customers)

@@ -1,5 +1,6 @@
 """Stateful test doubles for card setup; no Stripe or database calls."""
 
+from dataclasses import replace
 from uuid import UUID
 
 from payments.application.cards import Cards
@@ -10,6 +11,15 @@ from payments.domain.cards import CardView, Customer, SavedCard
 class MemoryCustomers:
     def __init__(self) -> None:
         self.values: dict[UUID, Customer] = {}
+
+    async def get(self, user_id: UUID) -> Customer | None:
+        return self.values.get(user_id)
+
+    async def update_default(self, customer: Customer, payment_method_id: str | None) -> None:
+        if self.values.get(customer.user_id) == customer:
+            self.values[customer.user_id] = replace(
+                customer, default_payment_method_id=payment_method_id
+            )
 
     async def lock(self, user_id: UUID) -> Customer:
         return self.values.setdefault(user_id, Customer(user_id, None))
@@ -59,4 +69,9 @@ class FakeOperations:
         return await self.cards.setup(customer_id)
 
     async def methods(self, user_id: UUID) -> list[CardView]:
-        return await self.cards.methods(user_id)
+        customer = await self.cards.customers.get(user_id)
+        methods = await self.cards.methods(customer)
+        default_id = next((item.card.id for item in methods if item.is_default), None)
+        if customer is not None and customer.default_payment_method_id != default_id:
+            await self.cards.customers.update_default(customer, default_id)
+        return methods

@@ -76,6 +76,10 @@ class PaymentGatewayPort(Protocol):
 
 
 class CustomerRepository(Protocol):
+    async def get(self, user_id: UUID) -> Customer | None: ...
+
+    async def update_default(self, customer: Customer, payment_method_id: str | None) -> None: ...
+
     async def lock(self, user_id: UUID) -> Customer:
         """Ensure a row exists and lock it until the caller's transaction ends."""
         ...

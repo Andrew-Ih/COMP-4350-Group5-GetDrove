@@ -43,6 +43,7 @@ async def test_methods_refresh_after_setup_and_do_not_leak_between_users(harness
     app, auth, customers, gateway = harness
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         assert (await client.get("/methods", headers=auth.headers())).json() == []
+        assert customers.values == {}
         await client.post("/setup-intent", headers=auth.headers())
         assert (await client.get(f"/internal/customers/{auth.user_id}/card")).json()[
             "hasCard"
