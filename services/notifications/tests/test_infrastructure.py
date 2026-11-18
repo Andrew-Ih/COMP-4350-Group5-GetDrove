@@ -6,7 +6,9 @@ import logging
 
 import pytest
 
+from events import stream_name
 from notifications.infrastructure.main import (
+    CONSUMED_STREAMS,
     CONSUMER_BLOCK_MS,
     _log_if_consumer_stopped,
     redis_client,
@@ -45,3 +47,13 @@ def test_redis_reads_outlast_the_consumers_wait() -> None:
     timeout = client.connection_pool.connection_kwargs["socket_timeout"]
 
     assert timeout > CONSUMER_BLOCK_MS / 1000
+
+
+def test_reads_the_streams_notifications_come_from() -> None:
+    """Accounts (verification emails, driver approval), Trips (requests and trips) and
+    Payments (failed holds), #146."""
+    assert set(CONSUMED_STREAMS) == {
+        stream_name("accounts"),
+        stream_name("trips"),
+        stream_name("payments"),
+    }

@@ -1330,9 +1330,11 @@ dependencies = [
     { name = "common-web" },
     { name = "events" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
+    { name = "tzdata" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -1344,9 +1346,11 @@ requires-dist = [
     { name = "common-web", editable = "libs/common-web" },
     { name = "events", editable = "libs/events" },
     { name = "fastapi", specifier = ">=0.118" },
+    { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pydantic-settings", specifier = ">=2.11" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.43" },
+    { name = "tzdata", specifier = ">=2025.2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37" },
 ]
 
@@ -1393,6 +1397,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "stripe", extra = ["async"] },
     { name = "uvicorn", extra = ["standard"] },
@@ -1408,6 +1413,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.118" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pydantic-settings", specifier = ">=2.11" },
+    { name = "redis", specifier = ">=6.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.43" },
     { name = "stripe", extras = ["async"], specifier = ">=14,<15" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37" },
@@ -1734,6 +1740,7 @@ dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
+    { name = "redis" },
     { name = "sqlalchemy", extra = ["asyncio"] },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1750,6 +1757,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "pydantic", specifier = ">=2.11" },
     { name = "pydantic-settings", specifier = ">=2.11" },
+    { name = "redis", specifier = ">=6.0" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.0.43" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.37" },
 ]

@@ -98,7 +98,7 @@ def test_reject_live_keys_and_missing_configuration(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.parametrize(
-    "operation", ["customer", "setup", "authorize", "capture", "cancel", "list_cards"]
+    "operation", ["customer", "setup", "authorize", "capture", "cancel", "list_cards", "retrieve"]
 )
 @pytest.mark.parametrize(
     ("status", "error_type", "code", "expected"),
@@ -133,6 +133,8 @@ async def test_gateway_translates_sdk_errors(
         )
         with pytest.raises(expected) as caught:
             match operation:
+                case "retrieve":
+                    await gateway.retrieve_payment_intent(payment_intent_id="pi_test")
                 case "list_cards":
                     await gateway.list_cards(customer_id="cus_test")
                 case "customer":

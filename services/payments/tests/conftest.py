@@ -1,4 +1,4 @@
-"""Throwaway database with the real Payments migrations, never a developer database."""
+"""Isolated infrastructure for hold tests; never migrate the developer's database."""
 
 import asyncio
 from collections.abc import Iterator
@@ -14,8 +14,8 @@ from sqlalchemy.ext.asyncio import create_async_engine
 async def prepare(url: str) -> None:
     engine = create_async_engine(url, hide_parameters=True)
     try:
-        async with engine.begin() as connection:
-            await connection.execute(text("CREATE SCHEMA payments"))
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE SCHEMA payments"))
     finally:
         await engine.dispose()
 
@@ -28,9 +28,11 @@ def payments_database() -> Iterator[str]:
     try:
         docker.from_env().ping()
     except docker.errors.DockerException:
-        pytest.skip("Docker is not running; start Docker Desktop for Payments database tests")
+        pytest.skip("Docker is not running; start Docker Desktop for hold integration tests")
     with PostgresContainer("postgres:17-alpine", driver="asyncpg") as postgres:
-        url = postgres.get_connection_url()
+        # This disposable Postgres has no TLS. Avoid SSL negotiation through Docker's
+        # Windows port proxy; production connection settings are not changed.
+        url = postgres.get_connection_url() + "?ssl=disable"
         asyncio.run(prepare(url))
         with pytest.MonkeyPatch.context() as patch:
             patch.setenv("PAYMENTS_DATABASE_URL", url)
@@ -40,3 +42,11 @@ def payments_database() -> Iterator[str]:
             )
             command.upgrade(config, "head")
         yield url
+
+
+@pytest.fixture(scope="session")
+def payments_redis(payments_database: str) -> Iterator[str]:
+    from testcontainers.community.redis import RedisContainer
+
+    with RedisContainer("redis:7.4-alpine") as container:
+        yield f"redis://{container.get_container_host_ip()}:{container.get_exposed_port(6379)}/0"
