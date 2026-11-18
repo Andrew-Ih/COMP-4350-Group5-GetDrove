@@ -1,17 +1,18 @@
 """Payments API: price quotes (Sprint 1 contract, #108) and saved cards (Sprint 2, #262).
 
 Internal endpoints are called inside Docker (http://payments:8000/internal/...); the gateway
-never exposes them. Card endpoints are public (/api/payments/...) and return 501 until #151
-implements them. Holds and releases have no endpoints: they react to Trips' events.
+never exposes them. Public card endpoints implement setup and discovery (#151).
+Holds and releases react to Trips' events rather than HTTP endpoints.
 """
 
 from dataclasses import dataclass
-from typing import Annotated, Any, NoReturn
+from typing import Annotated, Any
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from common_security.dependencies import AuthenticatedUser
+from payments.adapters.api.cards import CardService
 from payments.adapters.api.schemas import (
     CardStatus,
     PaymentMethod,
@@ -86,10 +87,6 @@ def _problem(description: str, code: str) -> dict[str, Any]:
     return {"model": Problem, "description": f"{description} (code `{code}`)"}
 
 
-def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#262).")
-
-
 CARD_ERRORS: dict[int | str, dict[str, Any]] = {
     401: _problem("Missing or invalid access token", "unauthorized"),
     503: _problem("Stripe can't be reached right now", "payments_unavailable"),
@@ -104,8 +101,9 @@ CARD_ERRORS: dict[int | str, dict[str, Any]] = {
     "customer, the first time). The frontend passes `clientSecret` to Stripe Elements.",
     responses=CARD_ERRORS,
 )
-async def create_setup_intent(user: AuthenticatedUser) -> SetupIntent:
-    _not_implemented()
+async def create_setup_intent(user: AuthenticatedUser, service: CardService) -> SetupIntent:
+    intent = await service.setup(user.id)
+    return SetupIntent(client_secret=intent.client_secret)
 
 
 @cards_router.get(
@@ -117,8 +115,19 @@ async def create_setup_intent(user: AuthenticatedUser) -> SetupIntent:
     "shows a saving state until it returns.",
     responses=CARD_ERRORS,
 )
-async def payment_methods(user: AuthenticatedUser) -> list[PaymentMethod]:
-    _not_implemented()
+async def payment_methods(user: AuthenticatedUser, service: CardService) -> list[PaymentMethod]:
+    methods = await service.methods(user.id)
+    return [
+        PaymentMethod(
+            id=item.card.id,
+            brand=item.card.brand,
+            last4=item.card.last4,
+            exp_month=item.card.exp_month,
+            exp_year=item.card.exp_year,
+            is_default=item.is_default,
+        )
+        for item in methods
+    ]
 
 
 @internal_router.get(
@@ -127,5 +136,5 @@ async def payment_methods(user: AuthenticatedUser) -> list[PaymentMethod]:
     description="For Trips: a rider needs a saved card before requesting a seat.",
     responses=INVALID,
 )
-async def card_status(user_id: UUID) -> CardStatus:
-    _not_implemented()
+async def card_status(user_id: UUID, service: CardService) -> CardStatus:
+    return CardStatus(user_id=user_id, has_card=bool(await service.methods(user_id)))

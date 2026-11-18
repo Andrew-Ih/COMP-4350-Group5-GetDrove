@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, Car, LogOut, Menu, X, Zap } from "lucide-react";
+import { Bell, Car, CreditCard, LogOut, Menu, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext, useEffect, useRef, useState } from "react";
@@ -21,8 +21,8 @@ const NAV = [
 
 /**
  * Top bar on every signed-in screen. Desktop: logo, Ride / Drive / My trips, bell, and the
- * avatar, which opens a menu with Driver status and Log out. Mobile: logo, avatar and a
- * menu button that opens the same links, Driver status and Log out.
+ * avatar, which opens a menu with Payment card, Driver status, Auto-accept and Log out.
+ * Mobile: logo, avatar and a menu button that opens the same links and Log out.
  */
 export function AppHeader({ userName }: { userName: string }) {
   const pathname = usePathname();
@@ -113,6 +113,14 @@ export function AppHeader({ userName }: { userName: string }) {
               <div role="menu" className="absolute top-full right-0 mt-2 w-56 rounded-md bg-surface py-2 shadow-card">
                 {userName && <p className="truncate px-4 pt-1 pb-2 text-sm text-ink-soft">Logged in as {userName}</p>}
                 <Link
+                  href="/account/card"
+                  role="menuitem"
+                  onClick={() => setAccountOpen(false)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
+                >
+                  <CreditCard aria-hidden="true" className="size-4" /> Payment card
+                </Link>
+                <Link
                   href="/account/driver"
                   role="menuitem"
                   onClick={() => setAccountOpen(false)}
@@ -178,6 +186,13 @@ export function AppHeader({ userName }: { userName: string }) {
             )}
           >
             Notifications
+          </Link>
+          <Link
+            href="/account/card"
+            onClick={() => setMenuOpen(false)}
+            className="block border-b border-line py-4 text-lg font-semibold text-muted"
+          >
+            Payment card
           </Link>
           <Link
             href="/account/driver"

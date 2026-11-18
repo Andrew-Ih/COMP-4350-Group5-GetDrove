@@ -9,6 +9,7 @@ import { driveHandlers } from "./drive";
 import { driverHandlers } from "./driver";
 import { myRidesHandlers } from "./myRides";
 import { notificationHandlers } from "./notifications";
+import { paymentHandlers } from "./payments";
 import { requestHandlers } from "./requests";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
 import { riderRequestHandlers, withMyRequest } from "./riderRequests";
@@ -62,6 +63,7 @@ export const handlers = [
   ...myRidesHandlers, // the rider's side of My trips (#131): see myRides.ts
   ...notificationHandlers, // the notification bell (#147): see notifications.ts
   ...requestHandlers, // the driver's requests on a trip (#142), with a demo trip: see requests.ts
+  ...paymentHandlers, // saving a payment card (#152): see payments.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
   ...riderRequestHandlers, // a rider asking for a seat (#141): see riderRequests.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {

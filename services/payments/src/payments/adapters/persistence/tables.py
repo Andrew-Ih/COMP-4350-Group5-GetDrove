@@ -81,3 +81,12 @@ cancelled_trips = Table(
     Column("trip_id", Uuid, primary_key=True),
     Column("driver_id", Uuid, nullable=False),
 )
+
+
+customers = Table(
+    "customers",
+    metadata,
+    Column("user_id", Uuid, primary_key=True),
+    Column("stripe_customer_id", String(255), unique=True, nullable=True),
+    Column("default_payment_method_id", String(255), nullable=True),
+)

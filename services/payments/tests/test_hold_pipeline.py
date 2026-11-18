@@ -226,7 +226,7 @@ async def test_conflicting_duplicate_cannot_change_saved_price(setup) -> None:
         await schedule(sessions, event.model_copy(update={"event_id": uuid4(), "payload": payload}))
 
 
-async def test_app_processes_acceptance_using_configured_card_lookup(
+async def test_app_processes_acceptance_using_card_saved_through_setup_endpoints(
     setup, payments_redis: str, payments_database: str, monkeypatch
 ) -> None:
     from pydantic import SecretStr
@@ -244,14 +244,36 @@ async def test_app_processes_acceptance_using_configured_card_lookup(
         redis_url=redis_url,
         stripe_secret_key=SecretStr("sk_test_mock"),
         hold_processing_enabled=True,
-        saved_card_references={data.rider_id: SavedPaymentCard("cus_configured", "pm_configured")},
     )
     monkeypatch.setattr(main, "get_settings", lambda: settings)
     monkeypatch.setattr(main, "create_payment_gateway", lambda settings, client: provider.gateway)
-    app = main.create_app()  # No custom lookup injection: exercise the normal settings path.
+    from httpx import ASGITransport, AsyncClient
+
+    from common_security.testing import TestAuth
+    from payments.application.ports import SetupIntentResult
+    from payments.domain.cards import SavedCard
+
+    provider.gateway.create_customer.return_value = "cus_database"
+    provider.gateway.create_setup_intent.return_value = SetupIntentResult(
+        "seti_test", "seti_secret"
+    )
+    provider.gateway.list_cards.return_value = [
+        SavedCard("pm_database", "visa", "4242", 12, 2030, 1)
+    ]
+    app = main.create_app()  # No injected lookup or handwritten references.
+    auth = TestAuth()
+    auth.install(app)
     redis = Redis.from_url(redis_url)
     try:
         async with app.router.lifespan_context(app):
+            async with AsyncClient(
+                transport=ASGITransport(app=app), base_url="http://test"
+            ) as client:
+                headers = auth.headers(user_id=data.rider_id)
+                response = await client.post("/setup-intent", headers=headers)
+                assert response.status_code == 201
+                response = await client.get("/methods", headers=headers)
+                assert response.json()[0]["id"] == "pm_database"
             await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: event.to_json()})
             async with asyncio.timeout(10):
                 for _ in range(200):
@@ -261,8 +283,8 @@ async def test_app_processes_acceptance_using_configured_card_lookup(
                 else:
                     pytest.fail("Configured hold processor did not publish an outcome")
             provider.gateway.authorize.assert_awaited_once_with(
-                customer_id="cus_configured",
-                payment_method_id="pm_configured",
+                customer_id="cus_database",
+                payment_method_id="pm_database",
                 amount_cents=625,
                 currency="CAD",
                 idempotency_key=f"hold:{data.request_id}",

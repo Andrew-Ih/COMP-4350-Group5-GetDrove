@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 
 async def prepare(url: str) -> None:
-    engine = create_async_engine(url)
+    engine = create_async_engine(url, hide_parameters=True)
     try:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE SCHEMA payments"))

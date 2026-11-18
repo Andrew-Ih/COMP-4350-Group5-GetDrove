@@ -47,12 +47,14 @@ describe("AppHeader", () => {
     expect(bell).not.toHaveAttribute("aria-current");
   });
 
-  it("links to the driver status from the account menu", async () => {
+  it("links to the payment card, driver status and auto-accept from the account menu", async () => {
     renderWithProviders(<AppHeader userName="Priya" />);
 
     await userEvent.click(screen.getByRole("button", { name: "Account" }));
 
+    expect(screen.getByRole("menuitem", { name: "Payment card" })).toHaveAttribute("href", "/account/card");
     expect(screen.getByRole("menuitem", { name: "Driver status" })).toHaveAttribute("href", "/account/driver");
+    expect(screen.getByRole("menuitem", { name: "Auto-accept" })).toHaveAttribute("href", "/account/auto-accept");
   });
 
   it("shows the app's notification bell when it's given one", () => {

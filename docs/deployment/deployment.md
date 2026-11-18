@@ -33,6 +33,58 @@ release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflow
 
 Database migrations run automatically: each service container applies its migrations when it starts.
 
+### Saved-card payment holds (#428)
+
+Production Compose enables `PAYMENTS_HOLD_PROCESSING_ENABLED=true` and sets
+`PAYMENTS_REDIS_URL=redis://redis:6379/0`. The normal lookup uses the `payments.customers`
+table and Stripe, so a per-rider reference map is no longer needed. Local Compose still
+defaults to disabled.
+
+Before releasing story #150 to main:
+
+- Merge the card setup and hold integration together. The Payments startup migration must
+  include the customer table (`a15100000001`) and joined head (`a15115400001`), including
+  the hold migrations. Containers apply these automatically before serving requests.
+- Set GitHub Actions secret `PAYMENTS_STRIPE_SECRET_KEY` to an `sk_test_` key. The existing
+  deployment secrets check and production Compose requirement remain in place; missing
+  keys block deployment and live keys are rejected. The browser's publishable test key
+  must belong to the same Stripe sandbox, using the existing frontend build configuration.
+- Riders add their card through Stripe Elements. New authorizations resolve their current
+  saved card only when due. No saved card produces the existing `PaymentFailed/no_card`
+  flow; lookup outages retry without falsely returning seats. Already prepared retries
+  keep their committed card references and idempotency key.
+
+**First-deploy impact on existing seats.** On its first production start, the Payments
+consumer group is created at `id="0"` and reads Trips' event history, including previous
+`RequestAccepted` events. Past departures and zero-cent shares are acknowledged without
+authorizing. Accepted requests for upcoming trips are scheduled for authorization under
+the normal timing rules. Riders could not save cards before #151: if they still have no
+saved card when authorization becomes due, `PaymentFailed/no_card` makes Trips mark the
+request failed and return the seat, and Notifications tells the rider and cancels their
+reminder. Existing accepted seats on upcoming trips can therefore be removed by this
+first rollout, immediately for due holds or later when a far-ahead hold becomes due.
+
+Immediately before the release, run this read-only check against the production database:
+
+```sql
+SELECT count(*)
+FROM trips.seat_requests r
+JOIN trips.trips t ON t.id = r.trip_id
+WHERE r.status = 'accepted'
+  AND t.departure_at > now();
+```
+
+If the count is not zero, identify and ask those riders to add a card before their hold
+becomes due, or explicitly accept that riders without a card will lose their seats and
+receive a payment-failure notification. The count identifies potentially affected seats;
+it does not check whether a rider has since saved a card. Card setup must be available
+for riders to add a card; if it is not yet available, make that rollout decision before
+enabling holds rather than assuming the existing seats will be preserved.
+
+This change places uncaptured test-mode holds only; final trip capture and no-show
+charging remain #71 and #155.
+
+
 ### Continuous delivery on develop
 
 `develop` is our main development branch, so every merged pull request goes through the **Delivery** workflow ([`.github/workflows/delivery.yml`](../../.github/workflows/delivery.yml), [runs](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/delivery.yml)):
@@ -96,6 +148,12 @@ All secrets live in **GitHub → Settings → Secrets and variables → Actions*
 | `DEMO_ACCOUNT_PASSWORD` | In the **production** environment. The demo accounts' password, used by Seed demo data and by the browser smoke test |
 
 The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed. Links in emails use `SITE_URL` from the top of `deploy.yml`, which isn't a secret.
+
+**Variables** (same page, the **Variables** tab) hold settings that aren't secret:
+
+| Variable | What it is |
+|---|---|
+| `STRIPE_PUBLISHABLE_KEY` | Stripe's publishable **test** key (`pk_test_...`) for the Add card form. It's built into the web image, since the browser needs it; it's public by design. The secret key belongs to the Payments service only. Without it, the Add card screen says card payments aren't set up |
 
 **Creating them.** With the [GitHub CLI](https://cli.github.com/) logged in to the repository, each value goes straight into GitHub without being shown or saved on your computer:
 

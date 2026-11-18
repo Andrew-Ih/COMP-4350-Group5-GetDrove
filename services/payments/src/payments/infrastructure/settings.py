@@ -1,11 +1,7 @@
 """Configuration from environment variables (prefix ``PAYMENTS_``), with local-dev defaults."""
 
-from uuid import UUID
-
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
-
-from payments.domain.holds import SavedPaymentCard
 
 
 class Settings(BaseSettings):
@@ -19,22 +15,6 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://payments:payments@localhost:5432/getdrove"
     redis_url: str = "redis://localhost:6379/0"
     hold_processing_enabled: bool = False
-    saved_card_references: dict[UUID, SavedPaymentCard] = Field(default_factory=dict, repr=False)
-
-    @field_validator("saved_card_references")
-    @classmethod
-    def validate_card_references(
-        cls, value: dict[UUID, SavedPaymentCard]
-    ) -> dict[UUID, SavedPaymentCard]:
-        for card in value.values():
-            if not card.customer_id.startswith("cus_") or not card.payment_method_id.startswith(
-                "pm_"
-            ):
-                raise ValueError(
-                    "Saved-card references must contain Stripe customer and payment-method IDs"
-                )
-        return value
-
     rate_cents_per_km: int = Field(default=45, ge=0)
     minimum_fare_cents: int = Field(default=200, ge=0)
 
