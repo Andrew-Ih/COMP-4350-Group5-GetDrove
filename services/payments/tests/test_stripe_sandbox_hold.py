@@ -16,7 +16,6 @@ from events.catalog import RequestAccepted, RequestCancelled, RequestDeclined, T
 from events.streams import ENVELOPE_FIELD
 from payments.adapters.persistence.tables import consumer as consumer_tables
 from payments.adapters.persistence.tables import outbox, payment_holds
-from payments.domain.holds import SavedPaymentCard
 from payments.infrastructure.settings import Settings
 
 
@@ -56,7 +55,6 @@ async def test_real_sandbox_hold_and_duplicate_acceptance(
                 "database_url": payments_database,
                 "redis_url": redis_url,
                 "hold_processing_enabled": True,
-                "saved_card_references": {rider: SavedPaymentCard(customer.id, method.id)},
             }
         )
         monkeypatch.setattr(main, "get_settings", lambda: settings)
@@ -75,6 +73,18 @@ async def test_real_sandbox_hold_and_duplicate_acceptance(
             ),
             producer="trips",
         )
+        from sqlalchemy.dialects.postgresql import insert
+
+        from payments.adapters.persistence.tables import customers
+
+        async with sessions() as session, session.begin():
+            await session.execute(
+                insert(customers).values(
+                    user_id=rider,
+                    stripe_customer_id=customer.id,
+                    default_payment_method_id=method.id,
+                )
+            )
         app = main.create_app()
         async with app.router.lifespan_context(app):
             await redis.xadd(stream_name("trips"), {ENVELOPE_FIELD: event.to_json()})
