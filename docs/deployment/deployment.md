@@ -54,10 +54,35 @@ Before releasing story #150 to main:
   flow; lookup outages retry without falsely returning seats. Already prepared retries
   keep their committed card references and idempotency key.
 
-Enabling the consumer can replay historical acceptance events. Past departures and
-zero-cent shares are acknowledged without authorizing; eligible future requests follow
-the saved-card and scheduling rules. This change places uncaptured test-mode holds only;
-final trip capture and no-show charging remain #71 and #155.
+**First-deploy impact on existing seats.** On its first production start, the Payments
+consumer group is created at `id="0"` and reads Trips' event history, including previous
+`RequestAccepted` events. Past departures and zero-cent shares are acknowledged without
+authorizing. Accepted requests for upcoming trips are scheduled for authorization under
+the normal timing rules. Riders could not save cards before #151: if they still have no
+saved card when authorization becomes due, `PaymentFailed/no_card` makes Trips mark the
+request failed and return the seat, and Notifications tells the rider and cancels their
+reminder. Existing accepted seats on upcoming trips can therefore be removed by this
+first rollout, immediately for due holds or later when a far-ahead hold becomes due.
+
+Immediately before the release, run this read-only check against the production database:
+
+```sql
+SELECT count(*)
+FROM trips.seat_requests r
+JOIN trips.trips t ON t.id = r.trip_id
+WHERE r.status = 'accepted'
+  AND t.departure_at > now();
+```
+
+If the count is not zero, identify and ask those riders to add a card before their hold
+becomes due, or explicitly accept that riders without a card will lose their seats and
+receive a payment-failure notification. The count identifies potentially affected seats;
+it does not check whether a rider has since saved a card. Card setup must be available
+for riders to add a card; if it is not yet available, make that rollout decision before
+enabling holds rather than assuming the existing seats will be preserved.
+
+This change places uncaptured test-mode holds only; final trip capture and no-show
+charging remain #71 and #155.
 
 
 ### Continuous delivery on develop
