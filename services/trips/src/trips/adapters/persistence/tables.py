@@ -219,3 +219,25 @@ seat_requests = Table(
     ),
     Index("ix_seat_requests_rider_created", "rider_id", "created_at"),
 )
+
+
+# Each driver's auto-accept rules (#42). No row means the defaults: off, 5 minutes, no
+# minimum rating. driver_id is an Accounts user, so there's no foreign key (no service reads
+# another's tables).
+auto_accept_rules = Table(
+    "auto_accept_rules",
+    metadata,
+    Column("driver_id", Uuid, primary_key=True),
+    Column("enabled", Boolean, nullable=False),
+    Column("max_detour_minutes", Integer, nullable=False),
+    Column("min_rating", Float, nullable=True),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    CheckConstraint("max_detour_minutes BETWEEN 0 AND 30", name="valid_max_detour"),
+    CheckConstraint("min_rating IS NULL OR min_rating BETWEEN 1 AND 5", name="valid_min_rating"),
+)

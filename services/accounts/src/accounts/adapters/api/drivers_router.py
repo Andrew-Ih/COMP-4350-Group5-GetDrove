@@ -1,17 +1,17 @@
 """Accounts API, Sprint 2 contract (#262): driver applications and approval, public
 profiles, and the internal user lookups other services use.
 
-Implemented: status (#10), documents (#9), vehicle (#125), admin approval (#127), and
-the contacts lookup Notifications needs for emails (#146). Profiles and /internal/users
-(#143) return 501 until their task implements them.
+Implemented: status (#10), documents (#9), vehicle (#125), admin approval (#127), public
+profiles and the internal user lookup (#143), and the contacts lookup Notifications needs
+for emails (#146).
 Paths are relative to the gateway prefix /api/accounts; /internal/... is only reachable
 inside Docker (http://accounts:8000/internal/...).
 """
 
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 
 from accounts.adapters.api.dependencies import AppClock, Documents, Uow
 from accounts.adapters.api.schemas import (
@@ -22,9 +22,11 @@ from accounts.adapters.api.schemas import (
     DriverStatus,
     InternalContact,
     InternalContacts,
+    InternalUser,
     InternalUsers,
     Problem,
     PublicProfile,
+    PublicVehicle,
     RejectDriverRequest,
     Vehicle,
 )
@@ -41,6 +43,7 @@ from accounts.application.documents import (
     UploadDriverDocuments,
 )
 from accounts.application.drivers import GetMyDriverProfile, SaveVehicle
+from accounts.application.profiles import GetPublicProfile, LookUpUsers, UserSummary
 from accounts.domain import driver as domain
 from accounts.domain.documents import MAX_DOCUMENT_BYTES
 from accounts.domain.documents import DocumentKind as DomainDocumentKind
@@ -118,10 +121,6 @@ def admin_driver_out(application: Application) -> AdminDriver:
         reviewed_at=profile.reviewed_at,
         rejection_reason=profile.rejection_reason,
     )
-
-
-def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#262).")
 
 
 UNAUTHORIZED: Responses = {401: _problem("Missing or invalid access token", "unauthorized")}
@@ -290,8 +289,21 @@ async def reject_driver(
         404: _problem("No user with this ID", "user_not_found"),
     },
 )
-async def public_profile(user_id: UUID, user: AuthenticatedUser) -> PublicProfile:
-    _not_implemented()
+async def public_profile(user_id: UUID, user: AuthenticatedUser, uow: Uow) -> PublicProfile:
+    summary = await GetPublicProfile(uow)(user_id)
+    vehicle = summary.vehicle
+    return PublicProfile(
+        id=summary.user.id,
+        first_name=summary.user.first_name,
+        rating=summary.reputation.rating,
+        rating_count=summary.reputation.rating_count,
+        trip_count=summary.reputation.trip_count,
+        is_driver=summary.is_driver,
+        # PublicVehicle has no plate field, so the plate can't reach the public profile.
+        vehicle=PublicVehicle(make=vehicle.make, model=vehicle.model, colour=vehicle.colour)
+        if vehicle
+        else None,
+    )
 
 
 # ---------------------------------------------------------------- internal lookups
@@ -303,8 +315,28 @@ async def public_profile(user_id: UUID, user: AuthenticatedUser) -> PublicProfil
     description="For Trips (the driver's list of requests, auto-accept). No email.",
     responses=INVALID,
 )
-async def internal_users(ids: UserIds) -> InternalUsers:
-    _not_implemented()
+async def internal_users(ids: UserIds, uow: Uow) -> InternalUsers:
+    return InternalUsers(
+        users=[_internal_user_out(summary) for summary in await LookUpUsers(uow)(ids)]
+    )
+
+
+def _internal_user_out(summary: UserSummary) -> InternalUser:
+    vehicle = summary.vehicle
+    return InternalUser(
+        id=summary.user.id,
+        first_name=summary.user.first_name,
+        rating=summary.reputation.rating,
+        rating_count=summary.reputation.rating_count,
+        trip_count=summary.reputation.trip_count,
+        no_show_count=summary.reputation.no_show_count,
+        # With the plate: Trips shows it only to the riders accepted on the driver's trip.
+        vehicle=Vehicle(
+            make=vehicle.make, model=vehicle.model, colour=vehicle.colour, plate=vehicle.plate
+        )
+        if vehicle
+        else None,
+    )
 
 
 @internal_router.get(

@@ -59,6 +59,8 @@ def make_use_case() -> tuple[RequestSeat, Trip]:
         pricing=pricing,
         cards=cards,
         events=AsyncMock(),
+        auto_accept=AsyncMock(get=AsyncMock(return_value=None)),  # off (#43)
+        riders=AsyncMock(),
     )
     return use_case, trip
 

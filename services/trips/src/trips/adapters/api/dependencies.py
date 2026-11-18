@@ -11,10 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from common_web import current_request_id
 from events.outbox import OutboxPublisher
-from trips.adapters.accounts import HTTPRiderProfileService
+from trips.adapters.accounts import HTTPDriverVehicleService, HTTPRiderProfileService
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService, HTTPRiderCardService
 from trips.adapters.persistence.approved_drivers import SQLAlchemyApprovedDrivers
+from trips.adapters.persistence.auto_accept_repository import (
+    SQLAlchemyAutoAcceptRulesRepository,
+)
 from trips.adapters.persistence.repository import (
     SQLAlchemyTripRepository,
     SQLAlchemyTripSeriesRepository,
@@ -25,6 +28,7 @@ from trips.adapters.persistence.seat_request_repository import (
 from trips.adapters.persistence.tables import outbox
 from trips.adapters.request_routing import HTTPRequestRoutingService
 from trips.adapters.routing import HTTPRoutingService
+from trips.application.auto_accept import GetAutoAcceptRules, SetAutoAcceptRules
 from trips.application.cancel_trip import CancelSeries, CancelTrip
 from trips.application.decide_request import (
     AcceptRequest,
@@ -48,6 +52,7 @@ from trips.application.rider_trips import ListRiderTrips
 from trips.application.search_trips import SearchResult, SearchTrips
 from trips.application.trip_detail import GetTripDetail, TripDetailResult
 from trips.application.upcoming_trips import ListUpcomingTrips
+from trips.domain.auto_accept import AutoAcceptRules
 from trips.domain.entities import Trip, TripSeries
 from trips.domain.errors import PricingUnavailableError
 from trips.domain.request_errors import (
@@ -266,10 +271,12 @@ class TripDetailQuery:
         session_factory: async_sessionmaker[AsyncSession],
         routing: HTTPRoutingService,
         pricing: HTTPPricingService,
+        vehicles: HTTPDriverVehicleService,
     ) -> None:
         self.session_factory = session_factory
         self.routing = routing
         self.pricing = pricing
+        self.vehicles = vehicles
 
     async def execute(
         self, *, trip_id: UUID, viewer_id: UUID, rider: Point | None, exclude: Sequence[str]
@@ -280,6 +287,7 @@ class TripDetailQuery:
                 self.routing,
                 self.pricing,
                 SQLAlchemySeatRequestRepository(session),
+                self.vehicles,
             )
             return await use_case.execute(trip_id, viewer_id, rider, exclude)
 
@@ -289,6 +297,7 @@ def get_trip_detail(request: Request) -> TripDetailQuery:
         session_factory=request.app.state.session_factory,
         routing=HTTPRoutingService(request.app.state.routing_client),
         pricing=HTTPPricingService(request.app.state.payments_client),
+        vehicles=HTTPDriverVehicleService(request.app.state.accounts_client),
     )
 
 
@@ -353,11 +362,13 @@ class RequestSeatRunner:
         routing: HTTPRequestRoutingService,
         pricing: HTTPPricingService,
         cards: HTTPRiderCardService,
+        riders: HTTPRiderProfileService,
     ) -> None:
         self.session_factory = session_factory
         self.routing = routing
         self.pricing = pricing
         self.cards = cards
+        self.riders = riders
 
     async def execute(self, command: RequestSeatCommand) -> SeatRequest:
         try:
@@ -377,6 +388,8 @@ class RequestSeatRunner:
                     pricing=self.pricing,
                     cards=self.cards,
                     events=events,
+                    auto_accept=SQLAlchemyAutoAcceptRulesRepository(session),
+                    riders=self.riders,
                 )
                 async with session.begin():
                     return await use_case.execute(command)
@@ -394,6 +407,7 @@ def get_request_seat(request: Request) -> RequestSeatRunner:
         routing=HTTPRequestRoutingService(request.app.state.routing_client),
         pricing=HTTPPricingService(request.app.state.payments_client),
         cards=HTTPRiderCardService(request.app.state.payments_client),
+        riders=HTTPRiderProfileService(request.app.state.accounts_client),
     )
 
 
@@ -490,3 +504,27 @@ def get_trip_requests(request: Request) -> TripRequestsRunner:
 
 
 TripRequestsService = Annotated[TripRequestsRunner, Depends(get_trip_requests)]
+
+
+class AutoAcceptRulesRunner:
+    """Reads and saves a driver's auto-accept rules (#42)."""
+
+    def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
+        self.session_factory = session_factory
+
+    async def get(self, *, driver_id: UUID) -> AutoAcceptRules:
+        async with self.session_factory() as session:
+            repository = SQLAlchemyAutoAcceptRulesRepository(session)
+            return await GetAutoAcceptRules(repository).execute(driver_id)
+
+    async def set(self, *, driver_id: UUID, rules: AutoAcceptRules) -> AutoAcceptRules:
+        async with self.session_factory.begin() as session:
+            repository = SQLAlchemyAutoAcceptRulesRepository(session)
+            return await SetAutoAcceptRules(repository).execute(driver_id, rules)
+
+
+def get_auto_accept_rules(request: Request) -> AutoAcceptRulesRunner:
+    return AutoAcceptRulesRunner(request.app.state.session_factory)
+
+
+AutoAcceptRulesService = Annotated[AutoAcceptRulesRunner, Depends(get_auto_accept_rules)]

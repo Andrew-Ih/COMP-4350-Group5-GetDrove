@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from "msw";
 import type { components as Accounts } from "@/shared/api/generated/accounts";
 import type { components as Routing } from "@/shared/api/generated/routing";
 
+import { autoAcceptHandlers } from "./autoAccept";
 import { adminUser, driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from "./data";
 import { driveHandlers } from "./drive";
 import { driverHandlers } from "./driver";
@@ -55,6 +56,7 @@ function tomorrowAt830(): string {
   return date.toISOString();
 }
 export const handlers = [
+  ...autoAcceptHandlers, // the driver's auto-accept rules (#45): see autoAccept.ts
   ...driveHandlers, // posting a trip (#96), and the driver's side of My trips: see drive.ts
   ...driverHandlers, // applying to drive (#12, #126): see driver.ts
   ...myRidesHandlers, // the rider's side of My trips (#131): see myRides.ts

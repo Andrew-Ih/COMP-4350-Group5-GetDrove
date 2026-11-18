@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     MetaData,
     String,
     Table,
@@ -143,6 +144,31 @@ driver_profiles = Table(
     CheckConstraint("status IN ('none', 'pending', 'approved', 'rejected')", name="status"),
     # The admin page lists applications by status, oldest first (#127).
     Index("ix_driver_profiles_status_submitted_at", "status", "submitted_at"),
+)
+
+# Ratings, completed trips and no-shows (#143). No row means all zeros, so existing users
+# need no backfill. Ratings and no-shows are recorded from Sprint 3.
+reputation = Table(
+    "reputation",
+    metadata,
+    Column("user_id", Uuid, ForeignKey(users.c.id, ondelete="CASCADE"), primary_key=True),
+    # Sum and count rather than an average, so adding a rating is exact.
+    Column("rating_sum", Integer, nullable=False, server_default="0"),
+    Column("rating_count", Integer, nullable=False, server_default="0"),
+    Column("trip_count", Integer, nullable=False, server_default="0"),
+    Column("no_show_count", Integer, nullable=False, server_default="0"),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    CheckConstraint(
+        "rating_count >= 0 AND trip_count >= 0 AND no_show_count >= 0", name="not_negative"
+    ),
+    # Every rating is 1 to 5, so the average always is too.
+    CheckConstraint("rating_sum BETWEEN rating_count AND 5 * rating_count", name="ratings_1_to_5"),
 )
 
 # Events waiting to be sent to Redis (libs/events). Saved in the same transaction as

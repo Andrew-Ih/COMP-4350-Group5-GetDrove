@@ -1,6 +1,6 @@
-"""The Sprint 2 Trips contract (#262): every new endpoint exists, validates its input,
-needs a token and returns 501 until its task implements it. The trip detail is implemented
-(#30), so it's tested in test_trip_detail_api.py; here only its validation."""
+"""The Sprint 2 Trips contract (#262): every new endpoint exists, validates its input and
+needs a token. All of them are implemented now, so their behaviour is tested against the
+database in their own files (e.g. test_trip_detail_api.py, test_auto_accept_api.py)."""
 
 from typing import Any
 from unittest.mock import AsyncMock
@@ -10,6 +10,7 @@ from httpx import ASGITransport, AsyncClient
 
 from common_security.testing import TestAuth
 from trips.adapters.api.dependencies import (
+    get_auto_accept_rules,
     get_post_recurring_trip,
     get_request_seat,
     get_rider_trips,
@@ -17,6 +18,7 @@ from trips.adapters.api.dependencies import (
     get_upcoming_trips,
 )
 from trips.adapters.api.schemas import AutoAcceptRules, PostTripSeriesRequest, SeatRequestBody
+from trips.domain.auto_accept import AutoAcceptRules as AutoAcceptRulesEntity
 from trips.infrastructure.main import create_app
 
 ID = "5f0b6a52-3c5d-4b6e-9a51-2b8f3a0c9d11"
@@ -46,20 +48,6 @@ NEW_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/requests/{ID}/decline", {}),
     ("POST", f"/requests/{ID}/cancel", {}),
 ]
-IMPLEMENTED = {
-    ("POST", "/series"),
-    ("POST", f"/series/{ID}/cancel"),
-    ("GET", "/mine?when=past"),
-    ("GET", "/requests/mine"),
-    ("GET", "/requests/mine?when=past"),
-    ("POST", f"/{ID}/requests"),
-    ("GET", f"/requests/{ID}"),
-    ("POST", f"/requests/{ID}/accept"),
-    ("POST", f"/requests/{ID}/decline"),
-    ("POST", f"/requests/{ID}/cancel"),
-    ("GET", f"/{ID}/requests"),
-}
-STILL_501 = [e for e in NEW_ENDPOINTS if (e[0], e[1]) not in IMPLEMENTED]
 
 
 @pytest.fixture
@@ -75,6 +63,9 @@ async def client(fake_trip_detail: Any) -> AsyncClient:
     app.dependency_overrides[get_request_seat] = lambda: object()
     # The trip detail is implemented (#30): see test_trip_detail_api.py.
     app.dependency_overrides[get_trip_detail] = lambda: fake_trip_detail
+    app.dependency_overrides[get_auto_accept_rules] = lambda: AsyncMock(
+        get=AsyncMock(return_value=AutoAcceptRulesEntity())
+    )
     return AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", headers=auth.headers()
     )
@@ -103,15 +94,6 @@ def test_examples_are_valid() -> None:
     assert PostTripSeriesRequest.model_validate(SERIES).weekdays == ["mon", "wed", "fri"]
     assert SeatRequestBody.model_validate(SEAT_REQUEST).pickup_id == "s42"
     assert AutoAcceptRules.model_validate(RULES).max_detour_minutes == 5
-
-
-@pytest.mark.parametrize(("method", "path", "kwargs"), STILL_501)
-async def test_valid_requests_reach_the_not_yet_implemented_handler(
-    client: AsyncClient, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    response = await client.request(method, path, **kwargs)
-
-    assert response.status_code == 501, response.text
 
 
 @pytest.mark.parametrize(
@@ -185,7 +167,7 @@ async def test_unknown_when_is_rejected(client: AsyncClient, path: str) -> None:
 async def test_fixed_paths_are_not_read_as_a_trip_id(client: AsyncClient) -> None:
     """/auto-accept and /requests/mine must not be matched by /{trip_id} (a 422 for "not a
     UUID" would mean they were)."""
-    assert (await client.get("/auto-accept")).status_code == 501
+    assert (await client.get("/auto-accept")).status_code == 200
     response = await client.get("/requests/mine")
     assert response.status_code == 200
     assert response.json() == []
