@@ -6,6 +6,7 @@ from enum import StrEnum
 from typing import Protocol
 from uuid import UUID
 
+from payments.domain.cards import Customer, SavedCard
 from payments.domain.holds import FailureReason, PaymentHold, SavedPaymentCard
 
 
@@ -54,6 +55,7 @@ class PaymentGatewayPort(Protocol):
     async def create_setup_intent(
         self, *, customer_id: str, idempotency_key: str
     ) -> SetupIntentResult: ...
+    async def list_cards(self, *, customer_id: str) -> list[SavedCard]: ...
     async def authorize(
         self,
         *,
@@ -71,6 +73,18 @@ class PaymentGatewayPort(Protocol):
     async def cancel(
         self, *, payment_intent_id: str, idempotency_key: str
     ) -> PaymentIntentResult: ...
+
+
+class CustomerRepository(Protocol):
+    async def get(self, user_id: UUID) -> Customer | None: ...
+
+    async def update_default(self, customer: Customer, payment_method_id: str | None) -> None: ...
+
+    async def lock(self, user_id: UUID) -> Customer:
+        """Ensure a row exists and lock it until the caller's transaction ends."""
+        ...
+
+    async def save(self, customer: Customer) -> None: ...
 
 
 class SavedCardLookup(Protocol):

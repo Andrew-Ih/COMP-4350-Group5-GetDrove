@@ -37,50 +37,51 @@ logger = logging.getLogger(__name__)
 def create_app(saved_cards: SavedCardLookup | None = None) -> FastAPI:
     settings = get_settings()
 
+    engine = create_async_engine(settings.database_url, pool_pre_ping=True, hide_parameters=True)
+    sessions = async_sessionmaker(engine, expire_on_commit=False)
+    stripe_http = HTTPXClient(timeout=10)
+    gateway = create_payment_gateway(settings, stripe_http) if settings.stripe_secret_key else None
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        if not settings.hold_processing_enabled:
-            yield
-            return
-        lookup = saved_cards
-        if lookup is None and settings.saved_card_references:
-            lookup = ConfiguredSavedCardLookup(settings.saved_card_references)
-        if lookup is None or settings.stripe_secret_key is None:
-            raise RuntimeError("Hold processing requires a saved-card lookup and Stripe test key")
-        engine = create_async_engine(
-            settings.database_url, pool_pre_ping=True, hide_parameters=True
-        )
-        sessions = async_sessionmaker(engine, expire_on_commit=False)
-        redis = Redis.from_url(settings.redis_url, socket_timeout=10)
-        stripe_http = HTTPXClient(timeout=10)
-        gateway = create_payment_gateway(settings, stripe_http)
-        worker = HoldWorker(sessions, lookup, gateway)
-        consumer = StreamConsumer(
-            redis=redis,
-            session_factory=sessions,
-            group="payments",
-            streams=[stream_name("trips")],
-            tables=consumer_tables,
-        )
-        register_hold_handlers(consumer)
-        relay = OutboxRelay(
-            session_factory=sessions, redis=redis, table=outbox, producer="payments"
-        )
+        redis = None
         stop = asyncio.Event()
-        tasks = [
-            asyncio.create_task(consumer.run(stop)),
-            asyncio.create_task(relay.run(stop)),
-            asyncio.create_task(worker.run(stop)),
-        ]
-
-        def report_stopped(task: asyncio.Task[None]) -> None:
-            if not task.cancelled() and task.exception() is not None:
-                logger.error("Payment background task stopped", exc_info=task.exception())
-
-        for task in tasks:
-            task.add_done_callback(report_stopped)
-        app.state.hold_worker = worker
+        tasks: list[asyncio.Task[None]] = []
         try:
+            if settings.hold_processing_enabled:
+                lookup = saved_cards
+                if lookup is None and settings.saved_card_references:
+                    lookup = ConfiguredSavedCardLookup(settings.saved_card_references)
+                if lookup is None or gateway is None:
+                    raise RuntimeError(
+                        "Hold processing requires a saved-card lookup and Stripe test key"
+                    )
+                redis = Redis.from_url(settings.redis_url, socket_timeout=10)
+                worker = HoldWorker(sessions, lookup, gateway)
+                consumer = StreamConsumer(
+                    redis=redis,
+                    session_factory=sessions,
+                    group="payments",
+                    streams=[stream_name("trips")],
+                    tables=consumer_tables,
+                )
+                register_hold_handlers(consumer)
+                relay = OutboxRelay(
+                    session_factory=sessions, redis=redis, table=outbox, producer="payments"
+                )
+                tasks = [
+                    asyncio.create_task(consumer.run(stop)),
+                    asyncio.create_task(relay.run(stop)),
+                    asyncio.create_task(worker.run(stop)),
+                ]
+
+                def report_stopped(task: asyncio.Task[None]) -> None:
+                    if not task.cancelled() and task.exception() is not None:
+                        logger.error("Payment background task stopped", exc_info=task.exception())
+
+                for task in tasks:
+                    task.add_done_callback(report_stopped)
+                app.state.hold_worker = worker
             yield
         finally:
             stop.set()
@@ -89,9 +90,10 @@ def create_app(saved_cards: SavedCardLookup | None = None) -> FastAPI:
             for task in tasks:
                 with contextlib.suppress(asyncio.CancelledError):
                     await task
-            # Stripe 14 does not annotate this method.
+            # Card endpoints and the worker share the bounded Stripe client and DB pool.
             await cast(Callable[[], Awaitable[None]], stripe_http.close_async)()
-            await redis.aclose()
+            if redis is not None:
+                await redis.aclose()
             await engine.dispose()
 
     app = FastAPI(
@@ -99,6 +101,8 @@ def create_app(saved_cards: SavedCardLookup | None = None) -> FastAPI:
         version="0.1.0",
         lifespan=lifespan,
     )
+    app.state.sessions = sessions
+    app.state.payment_gateway = gateway
     install(app, service="payments")
     install_security(app)
     app.include_router(health.router)
