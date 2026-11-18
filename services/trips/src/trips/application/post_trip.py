@@ -4,9 +4,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from trips.application.ports import RoutingService, TripEvents, TripRepository
+from trips.application.ports import (
+    ApprovedDrivers,
+    RoutingService,
+    TripEvents,
+    TripRepository,
+)
 from trips.domain.entities import Trip
-from trips.domain.errors import DepartureInPastError
+from trips.domain.errors import DepartureInPastError, DriverNotApprovedError
 from trips.domain.values import Direction, Location, trip_ends
 
 
@@ -16,11 +21,13 @@ class PostTrip:
         repository: TripRepository,
         routing: RoutingService,
         events: TripEvents,
+        approved_drivers: ApprovedDrivers,
         clock: Callable[[], datetime] | None = None,
     ) -> None:
         self.repository = repository
         self.routing = routing
         self.events = events
+        self.approved_drivers = approved_drivers
         self.clock = clock or (lambda: datetime.now(UTC))
 
     async def execute(
@@ -31,6 +38,10 @@ class PostTrip:
         departure_at: datetime,
         seats_total: int,
     ) -> Trip:
+        # First, so an unapproved driver doesn't wait for a route that won't be used (#11).
+        if not await self.approved_drivers.is_approved(driver_id):
+            raise DriverNotApprovedError()
+
         if (
             departure_at.tzinfo is None
             or departure_at.utcoffset() is None
@@ -46,6 +57,8 @@ class PostTrip:
             trip_id=trip_id,
             origin=origin,
             destination=destination,
+            driver_id=driver_id,
+            direction=direction,
         )
 
         trip = Trip.create(

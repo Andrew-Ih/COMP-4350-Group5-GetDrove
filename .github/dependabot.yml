@@ -1,0 +1,75 @@
+# Dependabot (#179): opens pull requests into develop when a dependency has an update.
+# Minor and patch updates are grouped into one PR per ecosystem each week, so they don't
+# flood the board; major updates get their own PR because they can break things.
+# Security fixes are opened as soon as they're published, whatever the schedule.
+# How to review them: docs/process/code-review.md#dependency-updates-and-security-scanning
+version: 2
+
+updates:
+  # Python: the uv workspace (every service and shared library, one uv.lock)
+  - package-ecosystem: uv
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Frontend (web/)
+  - package-ecosystem: npm
+    directory: /web
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      npm-minor-and-patch:
+        update-types: [minor, patch]
+
+  # Base images in the Dockerfiles. Dependabot only sees images written out in FROM lines,
+  # not ones set through an ARG, so the Python and Node images are written out. OSRM's
+  # version stays an ARG on purpose: a new OSRM can change the map format, so it's
+  # upgraded by hand (infra/osrm/README.md); only its Debian map stage is updated here.
+  - package-ecosystem: docker
+    directories:
+      - /infra/docker
+      - /infra/osrm
+      - /web
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(deps)"
+    # We develop and test on Python 3.13 and Node 24 (web/.nvmrc, CI). With tags like
+    # python:3.13-slim and node:24-alpine, the only updates Dependabot could propose are new
+    # versions (python:3.14-slim, node:25-alpine), which have to change together with
+    # pyproject.toml, .nvmrc and CI. So those are upgraded by hand, not here.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+
+  # Actions used by our workflows
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]

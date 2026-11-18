@@ -14,10 +14,13 @@ from sqlalchemy import (
     Integer,
     MetaData,
     PrimaryKeyConstraint,
+    String,
     Table,
     Uuid,
     func,
 )
+
+from events.consumer import consumer_tables
 
 SCHEMA = "routing"
 
@@ -44,11 +47,19 @@ routes = Table(
     Column("path", Geometry("LINESTRING", srid=SRID, spatial_index=False), nullable=False),
     Column("distance_meters", Integer, nullable=False),
     Column("duration_seconds", Integer, nullable=False),
+    # Who sees the whole route, and which end is theirs (#135). Null for routes stored
+    # before Sprint 2: then both ends are hidden from everyone.
+    Column("driver_id", Uuid, nullable=True),
+    Column("direction", String(20), nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "distance_meters >= 0 AND duration_seconds >= 0",
         name="valid_route_metrics",
+    ),
+    CheckConstraint(
+        "direction IS NULL OR direction IN ('to_campus', 'from_campus')",
+        name="valid_direction",
     ),
     Index("ix_routes_path", "path", postgresql_using="gist"),
 )
@@ -75,3 +86,6 @@ route_samples = Table(
     ),
     Index("ix_route_samples_point", "point", postgresql_using="gist"),
 )
+
+# Which events this service has handled, and the ones it gave up on (libs/events, #37).
+consumer = consumer_tables(metadata)

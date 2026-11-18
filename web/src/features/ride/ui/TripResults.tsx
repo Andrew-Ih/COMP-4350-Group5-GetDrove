@@ -25,11 +25,12 @@ import {
   sortResults,
 } from "../model/results";
 import { AREA_RADIUS_METERS, type SearchQuery, toQueryString } from "../model/search";
+import { tripDetailHref } from "../model/tripDetail";
 
 /**
  * Search results (#27) with the rider's share on each trip (#100), from GET /api/trips/search.
- * The selected trip's route comes from Routing. `query` is undefined when the URL is
- * missing a field or has a wrong one.
+ * The selected trip's route comes from Routing, and "See trip" opens it (#140). `query` is
+ * undefined when the URL is missing a field or has a wrong one.
  */
 export function TripResults({ query }: { query: SearchQuery | undefined }) {
   const me = useCurrentUser();
@@ -195,10 +196,15 @@ function Results({ query, status, error, onRetry, results, selected, onSelect, s
                 ))}
               </div>
               {selected && (
-                <p className="mt-4 text-sm text-ink-soft">
-                  Pickup at <span className="font-semibold text-ink">{selected.pickup.label}</span>
-                  {selected.cost ? ` · your share: ${selected.cost.explanation}` : ""}
-                </p>
+                <>
+                  <Link href={tripDetailHref(selected.trip.id, query)} className={cn(buttonStyles({ fullWidth: true }), "mt-6")}>
+                    See trip{selected.cost ? ` · ${formatMoney(selected.cost.amountCents)}` : ""}
+                  </Link>
+                  <p className="mt-3 text-sm text-ink-soft">
+                    Pickup at <span className="font-semibold text-ink">{selected.pickup.label}</span>
+                    {selected.cost ? ` · your share: ${selected.cost.explanation}` : ""}
+                  </p>
+                </>
               )}
             </>
           )}

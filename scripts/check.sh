@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Runs every check that CI runs: the backend's format, lint, types, architecture rules and
+# Runs every check that CI runs: the backend's format, lint, types, contracts, architecture rules and
 # tests, then the frontend's (API types, lint, types, tests).
 # Usage (from the repo root): bash scripts/check.sh
 set -euo pipefail
@@ -14,6 +14,9 @@ uv run ruff check .
 
 echo "== mypy (strict)"
 uv run mypy
+
+echo "== Contracts match the code"
+uv run python scripts/export_openapi.py --check
 
 echo "== Architecture rules (import-linter)"
 for service in services/*/; do

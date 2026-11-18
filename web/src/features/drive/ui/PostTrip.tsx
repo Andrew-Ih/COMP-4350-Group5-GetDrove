@@ -1,10 +1,11 @@
 "use client";
 
-import { CalendarDays, CheckCircle2, Clock, LocateFixed, Lock } from "lucide-react";
+import { CalendarDays, CheckCircle2, Clock, LocateFixed, Lock, Repeat as RepeatIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
+import { DRIVER_HREF } from "@/features/driver";
 import {
   AREA_RADIUS_METERS,
   type Direction,
@@ -13,28 +14,40 @@ import {
   today,
   useCurrentPosition,
 } from "@/features/ride";
-import type { ApiError } from "@/shared/api";
+import { type ApiError, NETWORK_ERROR } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 import { CAMPUS, type LngLat, type MapMarker, type MapRoute, MapView, WINNIPEG_VIEW } from "@/shared/map";
 import { AppHeader, Button, buttonStyles, MapLayout, PrivacyNote, Spinner } from "@/shared/ui";
 
-import { useMyDrivingTrips, usePostTrip, useTripRoute } from "../hooks/usePostTrip";
+import { useMyDrivingTrips, usePostTrip, usePostTripSeries, useTripRoute } from "../hooks/usePostTrip";
 import {
+  addDays,
   buildPostTrip,
+  buildPostTripSeries,
+  DEFAULT_REPEAT_WEEKS,
   DEFAULT_SEATS,
   defaultDeparture,
   ENDS,
   findOverlap,
   formatClock,
+  formatDate,
   formatDay,
   formatDistance,
   formatDuration,
   type FormProblem,
+  MAX_REPEAT_WEEKS,
   overlapMessage,
   placeLabel,
   SEAT_OPTIONS,
   type Trip,
+  type TripSeriesResult,
+  type Weekday,
+  weekdayList,
+  weekdayOf,
+  WEEKDAYS,
+  winnipegDate as winnipegDay,
 } from "../model/postTrip";
+import { tripRequestsHref } from "../model/requests";
 
 const CAMPUS_NAME = "U of M Fort Garry Campus";
 
@@ -45,8 +58,17 @@ const POSITION_ERRORS: Record<PositionError, string> = {
 };
 
 /** What went wrong when posting, in words, keyed on the contract's error codes. */
-function postProblem(error: ApiError): FormProblem | { field: "session"; message: string } {
+type PostProblem = FormProblem | { field: "session" | "approval"; message: string };
+
+function postProblem(error: ApiError): PostProblem {
   const departure = error.problem.errors?.find((e) => e.field === "departureAt");
+  // A repeating trip the API didn't accept: caught before posting, so rare (#315).
+  if (error.problem.errors?.some((e) => e.field === "weekdays")) {
+    return { field: "repeat", message: "Pick the day of your first trip as one of the days it repeats on." };
+  }
+  if (error.problem.errors?.some((e) => e.field === "endDate")) {
+    return { field: "repeat", message: `Choose a last day after your first trip and within ${MAX_REPEAT_WEEKS} weeks of it.` };
+  }
   if (error.code === "departure_in_past" || departure) {
     return { field: "departure", message: "Choose a departure time in the future." };
   }
@@ -62,17 +84,28 @@ function postProblem(error: ApiError): FormProblem | { field: "session"; message
   if (error.code === "unauthorized") {
     return { field: "session", message: "Your session has ended. Log in again to post your trip." };
   }
+  if (error.code === "driver_not_approved") {
+    return { field: "approval", message: "Only approved drivers can post trips." };
+  }
+  if (error.code === NETWORK_ERROR) {
+    return { field: "place", message: "We couldn't reach GetDrove, so the trip wasn't posted. Check your connection and try again." };
+  }
   return { field: "place", message: error.message };
 }
 
 /**
- * Post a one-off trip to or from campus (#96), with POST /api/trips/. The driver's end is
- * chosen on the map and saved as a neighbourhood label ("Wolseley area"), never an address.
- * The route is worked out when the trip is posted, so the estimate is shown afterwards.
+ * Post a trip to or from campus (#96), with POST /api/trips/. The driver's end is chosen on
+ * the map and saved as a neighbourhood label ("Wolseley area"), never an address. The route
+ * is worked out when the trip is posted, so the estimate is shown afterwards.
+ *
+ * "Repeat on weekdays" (#19) posts one trip per chosen weekday until a last day instead,
+ * with POST /api/trips/series. Days that clash with the driver's other trips are skipped
+ * by the API and listed afterwards.
  */
 export function PostTrip() {
   const me = useCurrentUser();
   const post = usePostTrip();
+  const postSeries = usePostTripSeries();
   const myDrivingTrips = useMyDrivingTrips();
   const [checking, setChecking] = useState(false);
 
@@ -81,7 +114,10 @@ export function PostTrip() {
   const [focus, setFocus] = useState<LngLat>();
   const [when, setWhen] = useState(() => defaultDeparture("to_campus"));
   const [seats, setSeats] = useState(DEFAULT_SEATS);
-  const [problem, setProblem] = useState<FormProblem | { field: "session"; message: string }>();
+  const [repeating, setRepeating] = useState(false);
+  const [weekdays, setWeekdays] = useState<Weekday[]>([]);
+  const [endDate, setEndDate] = useState("");
+  const [problem, setProblem] = useState<PostProblem>();
 
   const choose = useCallback((picked: LngLat, moveMap: boolean) => {
     if (!isInServiceArea(picked)) {
@@ -100,8 +136,48 @@ export function PostTrip() {
     setWhen((current) => ({ date: current.date, time: defaultDeparture(next).time }));
   }
 
+  /** Turning repeating on starts from the first trip's day, for 4 weeks. Without a date
+   * yet, nothing is suggested until one is chosen. */
+  function toggleRepeat() {
+    if (!repeating) {
+      const day = weekdayOf(when.date);
+      setWeekdays(day ? [day] : []);
+      setEndDate(addDays(when.date, DEFAULT_REPEAT_WEEKS * 7));
+    }
+    setRepeating(!repeating);
+    setProblem(undefined);
+  }
+
+  function changeDate(date: string) {
+    setWhen((current) => ({ ...current, date }));
+    // Repeating was turned on before there was a date: suggest from the first one chosen,
+    // keeping any days the driver already picked.
+    if (repeating && !endDate) {
+      const day = weekdayOf(date);
+      if (weekdays.length === 0 && day) setWeekdays([day]);
+      setEndDate(addDays(date, DEFAULT_REPEAT_WEEKS * 7));
+    }
+  }
+
+  function toggleWeekday(day: Weekday) {
+    setWeekdays((current) => (current.includes(day) ? current.filter((d) => d !== day) : [...current, day]));
+  }
+
   async function submit() {
-    const built = buildPostTrip({ direction, point, date: when.date, time: when.time, seats });
+    const form = { direction, point, date: when.date, time: when.time, seats };
+    if (repeating) {
+      // The API skips days that clash with the driver's other trips, so there's no warning first.
+      const series = buildPostTripSeries(form, { weekdays, endDate });
+      if ("problem" in series) {
+        setProblem(series.problem);
+        return;
+      }
+      setProblem(undefined);
+      postSeries.mutate(series.body, { onError: (error) => setProblem(postProblem(error)) });
+      return;
+    }
+
+    const built = buildPostTrip(form);
     if ("problem" in built) {
       setProblem(built.problem);
       return;
@@ -123,11 +199,16 @@ export function PostTrip() {
 
   function postAnother() {
     post.reset();
+    postSeries.reset();
     setProblem(undefined);
   }
 
-  const posted = post.data;
+  // The trip just posted: the one-off trip, or the first of a repeating one.
+  const series = postSeries.data;
+  const posted = post.data ?? series?.trips[0];
+  const done = Boolean(post.data ?? series);
   const route = useTripRoute(posted?.id);
+  const posting = checking || post.isPending || postSeries.isPending;
 
   const markers = useMemo<MapMarker[]>(() => {
     const list: MapMarker[] = [{ id: "campus", lngLat: CAMPUS, kind: "campus", label: "U of M Fort Garry" }];
@@ -140,7 +221,7 @@ export function PostTrip() {
     [route.data],
   );
 
-  const map = posted ? (
+  const map = done && posted ? (
     // A fresh map for the posted trip, fitted to its two ends; the route is drawn as it arrives.
     <MapView key={posted.id} markers={markers} routes={routes} />
   ) : (
@@ -160,7 +241,9 @@ export function PostTrip() {
       <MapLayout
         map={map}
         panel={
-          posted && point ? (
+          series && point ? (
+            <PostedSeries result={series} place={placeLabel(point)} onPostAnother={postAnother} />
+          ) : posted && point ? (
             <Posted trip={posted} place={placeLabel(point)} onPostAnother={postAnother} />
           ) : (
             <>
@@ -201,7 +284,7 @@ export function PostTrip() {
                       type="date"
                       min={today()}
                       value={when.date}
-                      onChange={(event) => setWhen((current) => ({ ...current, date: event.target.value }))}
+                      onChange={(event) => changeDate(event.target.value)}
                       className="w-full min-w-0 bg-transparent text-lg font-bold outline-none"
                     />
                   </span>
@@ -220,6 +303,17 @@ export function PostTrip() {
                   </span>
                 </label>
               </fieldset>
+
+              <RepeatChoice
+                on={repeating}
+                onToggle={toggleRepeat}
+                weekdays={weekdays}
+                onToggleWeekday={toggleWeekday}
+                firstDate={when.date}
+                time={when.time}
+                endDate={endDate}
+                onEndDate={setEndDate}
+              />
 
               <p id="seats-label" className="mt-6 font-bold">
                 Seats for riders
@@ -249,10 +343,15 @@ export function PostTrip() {
                     Log in
                   </Link>
                 )}
+                {problem?.field === "approval" && (
+                  <Link href={DRIVER_HREF} className="ml-1 underline">
+                    Apply to drive
+                  </Link>
+                )}
               </div>
 
-              <Button fullWidth className="mt-2" onClick={() => void submit()} loading={checking || post.isPending} disabled={!point}>
-                {checking || post.isPending ? "Posting…" : "Post trip"}
+              <Button fullWidth className="mt-2" onClick={() => void submit()} loading={posting} disabled={!point}>
+                {posting ? "Posting…" : repeating ? "Post repeating trip" : "Post trip"}
               </Button>
 
               <PrivacyNote className="mt-4">
@@ -263,6 +362,96 @@ export function PostTrip() {
         }
       />
     </>
+  );
+}
+
+/** "7:45 AM" for a "07:45" time input. */
+function clockOf(time: string): string {
+  const [hours = 0, minutes = 0] = time.split(":").map(Number);
+  return `${hours % 12 || 12}:${String(minutes).padStart(2, "0")} ${hours < 12 ? "AM" : "PM"}`;
+}
+
+/** "Repeat on weekdays": the days it repeats on and the last day (#19). */
+function RepeatChoice({
+  on,
+  onToggle,
+  weekdays,
+  onToggleWeekday,
+  firstDate,
+  time,
+  endDate,
+  onEndDate,
+}: {
+  on: boolean;
+  onToggle: () => void;
+  weekdays: Weekday[];
+  onToggleWeekday: (day: Weekday) => void;
+  firstDate: string;
+  time: string;
+  endDate: string;
+  onEndDate: (date: string) => void;
+}) {
+  return (
+    <div className="mt-4 rounded-lg bg-surface-muted px-4 py-3">
+      <div className="flex items-center justify-between gap-4">
+        <span id="repeat-label" className="flex items-center gap-3 font-bold">
+          <RepeatIcon aria-hidden="true" className="size-5 shrink-0" /> Repeat on weekdays
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={on}
+          aria-labelledby="repeat-label"
+          onClick={onToggle}
+          className={cn("relative h-7 w-12 shrink-0 rounded-full transition-colors", on ? "bg-ink" : "bg-line-strong")}
+        >
+          <span
+            aria-hidden="true"
+            className={cn("absolute top-1 left-1 size-5 rounded-full bg-white transition-transform", on && "translate-x-5")}
+          />
+        </button>
+      </div>
+      {on && (
+        <>
+          <div role="group" aria-label="Days it repeats on" className="mt-3 grid grid-cols-5 gap-2">
+            {WEEKDAYS.map(({ day, short, long }) => (
+              <button
+                key={day}
+                type="button"
+                aria-pressed={weekdays.includes(day)}
+                aria-label={long}
+                onClick={() => onToggleWeekday(day)}
+                className={cn(
+                  "h-11 rounded-md border-2 font-bold transition-colors",
+                  weekdays.includes(day) ? "border-ink bg-ink text-white" : "border-line bg-surface hover:border-line-strong",
+                )}
+              >
+                {short}
+              </button>
+            ))}
+          </div>
+          <label className="mt-3 flex items-center gap-3 rounded-lg bg-surface px-4 py-3">
+            <CalendarDays aria-hidden="true" className="size-5 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-semibold text-ink-soft">Last day</span>
+              <input
+                type="date"
+                min={firstDate ? addDays(firstDate, 1) : undefined}
+                max={firstDate ? addDays(firstDate, MAX_REPEAT_WEEKS * 7) : undefined}
+                value={endDate}
+                onChange={(event) => onEndDate(event.target.value)}
+                className="w-full min-w-0 bg-transparent text-lg font-bold outline-none"
+              />
+            </span>
+          </label>
+          {weekdays.length > 0 && endDate && (
+            <p className="mt-2 text-sm text-ink-soft">
+              Every {weekdayList(weekdays)} at {clockOf(time)}, until {formatDate(endDate)}. Up to {MAX_REPEAT_WEEKS} weeks.
+            </p>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 
@@ -340,12 +529,78 @@ function Posted({ trip, place, onPostAnother }: { trip: Trip; place: string; onP
       <p className="mt-4 text-ink-soft">Riders whose area is along your route can now find this trip when they search.</p>
 
       <div className="mt-6 flex flex-col gap-3">
-        <Button fullWidth onClick={onPostAnother}>
+        <Link href={tripRequestsHref(trip.id)} className={buttonStyles({ fullWidth: true })}>
+          See requests
+        </Link>
+        <Button variant="secondary" fullWidth onClick={onPostAnother}>
           Post another trip
         </Button>
         <Link href="/ride" className={buttonStyles({ variant: "secondary", fullWidth: true })}>
           Find a ride instead
         </Link>
+      </div>
+    </div>
+  );
+}
+
+/** After posting a repeating trip: how many trips were made, and any days skipped. */
+function PostedSeries({ result, place, onPostAnother }: { result: TripSeriesResult; place: string; onPostAnother: () => void }) {
+  const [first] = result.trips;
+  const count = result.trips.length;
+  const skipped = result.skippedDates;
+  const days = [...new Set(result.trips.map((trip) => weekdayOf(winnipegDay(trip.departureAt))))].filter(
+    (day): day is Weekday => day !== undefined,
+  );
+  return (
+    <div role="status">
+      <p className="flex items-center gap-2 font-bold text-brand">
+        <CheckCircle2 aria-hidden="true" className="size-5" /> {count > 0 ? "Trips posted" : "Nothing posted"}
+      </p>
+      <h1 className="mt-2 text-3xl leading-tight md:text-4xl">
+        {count === 1 ? "1 trip posted" : `${count} trips posted`}
+      </h1>
+
+      {first ? (
+        <>
+          <p className="mt-2 text-ink-soft">
+            Every {weekdayList(days)} at {formatClock(first.departureAt)}, from {formatDay(first.departureAt)} to{" "}
+            {formatDay(result.trips.at(-1)!.departureAt)}.
+          </p>
+          <dl className="mt-6 space-y-3 rounded-lg bg-surface-muted p-5">
+            <Row
+              term="Route"
+              value={first.direction === "to_campus" ? `${place} → ${CAMPUS_NAME}` : `${CAMPUS_NAME} → ${place}`}
+            />
+            <Row term="Arrives about" value={formatClock(first.estimatedArrivalAt)} />
+            <Row term="Driving" value={`${formatDuration(first.durationSeconds)} · ${formatDistance(first.distanceMeters)}`} />
+            <Row term="Seats for riders" value={String(first.seatsTotal)} />
+          </dl>
+        </>
+      ) : (
+        <p className="mt-2 text-ink-soft">Every day clashes with a trip you already have, so no trips were posted.</p>
+      )}
+
+      {skipped.length > 0 && (
+        <div className="mt-6 rounded-lg border-2 border-line p-5">
+          <p className="font-bold">
+            {skipped.length === 1 ? "1 day skipped" : `${skipped.length} days skipped`}
+          </p>
+          <p className="text-ink-soft">You already have a trip around then:</p>
+          <ul aria-label="Skipped days" className="mt-2 list-disc pl-5 font-semibold">
+            {skipped.map((date) => (
+              <li key={date}>{formatDate(date)}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-6 flex flex-col gap-3">
+        <Link href="/trips?role=driver" className={buttonStyles({ fullWidth: true })}>
+          See them in My trips
+        </Link>
+        <Button variant="secondary" fullWidth onClick={onPostAnother}>
+          Post another trip
+        </Button>
       </div>
     </div>
   );

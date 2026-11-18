@@ -1,0 +1,54 @@
+# CodeQL (#179): GitHub's static analysis for security problems in our Python and
+# TypeScript code, e.g. injection, unsafe deserialization, or secrets in logs.
+# Runs on pull requests into develop or main, and every Monday on main, the released code
+# (GitHub runs scheduled workflows on the default branch; new rules can find new problems in
+# old code). Results appear in the repository's Security tab and as annotations on pull
+# requests.
+# Advisory for now: it isn't a required check, so a finding doesn't block merging. It
+# becomes required in Sprint 3 together with Trivy image scanning (#188).
+name: CodeQL
+
+on:
+  pull_request:
+    branches: [develop, main]
+  schedule:
+    - cron: "17 7 * * 1" # Mondays, 07:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze ${{ matrix.language }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      security-events: write # to upload the results to the Security tab
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both are analyzed straight from the source; nothing needs building.
+        language: [python, javascript-typescript]
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          # The default rules plus the extended security queries.
+          queries: security-extended
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

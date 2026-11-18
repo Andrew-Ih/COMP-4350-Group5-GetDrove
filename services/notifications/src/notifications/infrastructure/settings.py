@@ -1,6 +1,6 @@
 """Configuration from environment variables (prefix ``NOTIFICATIONS_``), with local-dev defaults."""
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -20,10 +20,23 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_starttls: bool = False
     email_from: str = "GetDrove <no-reply@getdrove.local>"
+    # Addresses that never get an email (#415), as patterns: ``*`` is any text. Production
+    # lists the made-up demo accounts, so nothing bounces; they still get in-app
+    # notifications. Empty locally, where Mailpit catches everything anyway. As an
+    # environment variable, a JSON list: '["getdrove.demo.*@myumanitoba.ca"]'.
+    email_skip_patterns: list[str] = Field(default_factory=list)
 
     # The web app's address, for links in emails: the Next.js dev server locally, the live
     # site in production. Never hard-coded, so links always open the right site.
     web_base_url: str = "http://localhost:3000"
+
+    # How long before departure an accepted rider is reminded of their trip (#148).
+    reminder_lead_minutes: int = Field(default=30, ge=1, le=24 * 60)
+    # How often due reminders are looked for and sent (#149).
+    reminder_interval_seconds: float = Field(default=30, gt=0, le=600)
+    # Accounts, for the names and emails of the people a notification is for (#146). Inside
+    # Docker this is http://accounts:8000; its /internal paths aren't public.
+    accounts_url: str = "http://localhost:8001"
 
 
 def get_settings() -> Settings:
