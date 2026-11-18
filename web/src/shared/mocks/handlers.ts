@@ -3,9 +3,15 @@ import { delay, http, HttpResponse } from "msw";
 import type { components as Accounts } from "@/shared/api/generated/accounts";
 import type { components as Routing } from "@/shared/api/generated/routing";
 
-import { maya, myTrips, searchResultsFor } from "./data";
+import { autoAcceptHandlers } from "./autoAccept";
+import { adminUser, driverProfile, maya, myTrips, searchResultsFor, tripDetailFor } from "./data";
 import { driveHandlers } from "./drive";
+import { driverHandlers } from "./driver";
+import { myRidesHandlers } from "./myRides";
+import { notificationHandlers } from "./notifications";
+import { requestHandlers } from "./requests";
 import { MOCK_TOKEN, mockSessionState, sessionHandlers } from "./session";
+import { riderRequestHandlers, withMyRequest } from "./riderRequests";
 
 type Problem = Accounts["schemas"]["Problem"];
 
@@ -15,7 +21,7 @@ function problem(status: number, code: string, detail: string, instance: string,
 }
 
 /**
- * Fake responses for the Sprint 1 endpoints, matching contracts/openapi. Turned on with
+ * Fake responses for the endpoints the screens use, matching contracts/openapi. Turned on with
  * NEXT_PUBLIC_API_MOCKING=enabled, so pages can be built before the real endpoints exist.
  *
  * Special inputs to try the error states:
@@ -23,11 +29,15 @@ function problem(status: number, code: string, detail: string, instance: string,
  *   - signup with taken@myumanitoba.ca                    → 409 email_taken
  *   - login with password "wrong"                         → 401 invalid_credentials
  *   - login with unverified@myumanitoba.ca                → 403 email_not_verified
+ *   - login with admin@myumanitoba.ca                     → the admin, for /admin/drivers (#128)
  *   - /verify?token=expired                               → 410 token_expired
  *   - /verify?token=used                                  → 400 invalid_token
  *   - any other token                                     → verified
  *   - a search for a time ending in :05                   → no trips
  *   - a search for a time ending in :55                   → 503 routing_unavailable
+ *   - a trip that isn't one of the mock trips             → 404 trip_not_found
+ *     (e.g. /ride/trip/99999999-9999-4999-8999-999999999999)
+ *   - a trip opened without lat and lng                   → no pickup points
  *
  * Logging in is remembered for the browser tab, so a reload stays logged in until you
  * log out (session.ts).
@@ -35,9 +45,25 @@ function problem(status: number, code: string, detail: string, instance: string,
 
 // Routes of the trips from the latest search, for the map.
 const routes = new Map<string, Routing["schemas"]["RouteFeature"]>();
+// The direction and time of the latest search, so a trip opened from it has the same times.
+// After a reload (nothing searched yet), trips arrive by 8:30 AM tomorrow.
+let lastSearch: { direction: "to_campus" | "from_campus"; time: string } | undefined;
+
+function tomorrowAt830(): string {
+  const date = new Date();
+  date.setDate(date.getDate() + 1);
+  date.setHours(8, 30, 0, 0);
+  return date.toISOString();
+}
 export const handlers = [
-  ...driveHandlers, // posting a trip (#96): see drive.ts
+  ...autoAcceptHandlers, // the driver's auto-accept rules (#45): see autoAccept.ts
+  ...driveHandlers, // posting a trip (#96), and the driver's side of My trips: see drive.ts
+  ...driverHandlers, // applying to drive (#12, #126): see driver.ts
+  ...myRidesHandlers, // the rider's side of My trips (#131): see myRides.ts
+  ...notificationHandlers, // the notification bell (#147): see notifications.ts
+  ...requestHandlers, // the driver's requests on a trip (#142), with a demo trip: see requests.ts
   ...sessionHandlers, // staying logged in and logging out (#225): see session.ts
+  ...riderRequestHandlers, // a rider asking for a seat (#141): see riderRequests.ts
   http.post("*/api/accounts/auth/signup", async ({ request }) => {
     const body = (await request.json()) as Accounts["schemas"]["SignupRequest"];
     await delay(); // realistic in the browser, none in tests
@@ -86,11 +112,12 @@ export const handlers = [
     if (body.email.toLowerCase() === "unverified@myumanitoba.ca") {
       return problem(403, "email_not_verified", "Verify your email before logging in", instance);
     }
-    mockSessionState.logIn(); // so refreshing after a reload keeps you logged in (see session.ts)
+    // So refreshing after a reload keeps you logged in (see session.ts), as the admin for admin@.
+    mockSessionState.logIn(body.email.toLowerCase() === adminUser.email);
     return HttpResponse.json(MOCK_TOKEN);
   }),
 
-  http.get("*/api/accounts/me", () => HttpResponse.json(maya)),
+  http.get("*/api/accounts/me", () => HttpResponse.json(mockSessionState.isAdmin() ? adminUser : maya)),
 
   http.get("*/api/trips/search", async ({ request }) => {
     const params = new URL(request.url).searchParams;
@@ -112,6 +139,7 @@ export const handlers = [
     if (time.getUTCMinutes() === 5) {
       return HttpResponse.json([]);
     }
+    lastSearch = { direction: query.direction, time: query.time };
     const found = searchResultsFor(query);
     for (const [id, route] of found.routes) routes.set(id, route);
     return HttpResponse.json(found.results);
@@ -125,4 +153,33 @@ export const handlers = [
   }),
 
   http.get("*/api/trips/mine", () => HttpResponse.json(myTrips)),
+
+  http.get("*/api/accounts/users/:userId/profile", ({ params }) => {
+    const profile = driverProfile(String(params.userId));
+    return profile
+      ? HttpResponse.json(profile)
+      : problem(404, "user_not_found", "No user with this ID", `/api/accounts/users/${String(params.userId)}/profile`);
+  }),
+
+  // Last: /api/trips/{id} would otherwise also match /api/trips/mine and /api/trips/search.
+  http.get("*/api/trips/:tripId", async ({ params, request }) => {
+    const tripId = String(params.tripId);
+    const url = new URL(request.url);
+    const lat = url.searchParams.get("lat");
+    const lng = url.searchParams.get("lng");
+    await delay();
+    const instance = `/api/trips/${tripId}`;
+    if (Boolean(lat) !== Boolean(lng)) {
+      return problem(422, "invalid_input", "Invalid input", instance);
+    }
+    const rider = lat && lng ? { lat: Number(lat), lng: Number(lng) } : undefined;
+    const exclude = url.searchParams.getAll("exclude");
+    if (exclude.length > 20 || exclude.some((id) => id.length === 0 || id.length > 64)) {
+      return problem(422, "invalid_input", "Invalid input", instance);
+    }
+    const found = tripDetailFor(tripId, rider, lastSearch ?? { direction: "to_campus", time: tomorrowAt830() }, exclude);
+    if (!found) return problem(404, "trip_not_found", "No trip with this ID", instance);
+    routes.set(tripId, found.route); // so its route shows after a reload too
+    return HttpResponse.json(withMyRequest(found.detail)); // with the rider's own request, if any
+  }),
 ];

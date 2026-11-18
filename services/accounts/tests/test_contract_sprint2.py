@@ -1,6 +1,6 @@
 """The Sprint 2 Accounts contract (#262): driver applications, admin approval, profiles and
-the internal lookups exist, check who's calling, validate input, and return 501 until
-implemented."""
+the internal lookups exist, check who's calling and validate input. All of them are
+implemented now, so their behaviour is tested against the database in tests/integration/."""
 
 from typing import Any
 
@@ -70,16 +70,6 @@ def test_examples_are_valid() -> None:
     assert RejectDriverRequest.model_validate({"reason": "Blurry photo."}).reason
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs"), DRIVER_ENDPOINTS)
-async def test_driver_endpoints_reach_the_not_yet_implemented_handler(
-    auth: TestAuth, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    async with _client(auth) as client:
-        response = await client.request(method, path, **kwargs)
-
-    assert response.status_code == 501, response.text
-
-
 @pytest.mark.parametrize(("method", "path", "kwargs"), DRIVER_ENDPOINTS + ADMIN_ENDPOINTS)
 async def test_they_need_a_token(method: str, path: str, kwargs: dict[str, Any]) -> None:
     async with AsyncClient(
@@ -96,12 +86,9 @@ async def test_admin_endpoints_need_the_admin_role(
 ) -> None:
     async with _client(auth, roles=["user"]) as student:
         refused = await student.request(method, path, **kwargs)
-    async with _client(auth, roles=["user", "admin"]) as admin:
-        allowed = await admin.request(method, path, **kwargs)
 
     assert refused.status_code == 403
     assert refused.json()["code"] == "forbidden"
-    assert allowed.status_code == 501, allowed.text
 
 
 @pytest.mark.parametrize(
@@ -144,15 +131,15 @@ async def test_reject_needs_a_reason(auth: TestAuth) -> None:
 
 @pytest.mark.parametrize("path", ["/internal/users", "/internal/contacts"])
 async def test_internal_lookups_take_1_to_50_ids(path: str) -> None:
+    """Invalid input is rejected before the database is touched. (The contacts lookup
+    itself is tested against PostgreSQL in integration/test_contacts_api.py.)"""
     async with AsyncClient(
         transport=ASGITransport(app=create_app()), base_url="http://test"
     ) as client:
-        one = await client.get(path, params={"ids": [ID]})
         none = await client.get(path)
         too_many = await client.get(path, params={"ids": [ID] * 51})
         not_uuid = await client.get(path, params={"ids": ["nope"]})
 
-    assert one.status_code == 501
     assert none.status_code == 422
     assert too_many.status_code == 422
     assert not_uuid.status_code == 422

@@ -12,19 +12,24 @@ The live site tracks **`main`**, so it only changes when we release ([Git workfl
 
 ```text
 release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflows/deploy.yml)
-                                 1. build   eight images → GitHub Container Registry, tagged with the commit
-                                 2. deploy  copy files to the server, write .env, pull, restart
-                                 3. smoke   home page + every /health over HTTPS, http redirects
+                                 1. images  reuse the images Delivery built for develop, tagged with this commit
+                                 2. build   only if there's nothing to reuse: eight images → GitHub Container Registry
+                                 3. deploy  copy files to the server, write .env, pull, restart
+                                 4. smoke   home page + every /health over HTTPS, http redirects,
+                                            then a browser test: a demo rider logs in and searches
+                                 5. alert   a message on Discord if any step failed
 ```
 
-1. **Build.** GitHub Actions builds one image per service, one for the web app, and two for OSRM (car and foot, with the Winnipeg map built in; see [Routing engine](#routing-engine-osrm)), for `linux/amd64`, and pushes them to GitHub Container Registry as `ghcr.io/andrew-ih/getdrove-<name>:<commit SHA>`. Builds are cached, so unchanged images take seconds.
-2. **Deploy.** Actions connects to the server over SSH with the deploy key and:
+1. **Images.** A release merges `develop` into `main`, so the release commit has exactly the files of a `develop` commit whose images the [Delivery workflow](#continuous-delivery-on-develop) already built and tested. The first job checks that (same files as the merge's `develop` parent, and all eight images published for it) and adds the release commit's tag to those same images in the registry, which takes seconds and doesn't download anything. What goes live is then exactly what was tested on `develop` (#177).
+2. **Build, only when there's nothing to reuse:** a hotfix committed to `main` directly, a release merged before Delivery finished publishing `develop`'s images, or a run with **refresh_map** ticked. GitHub Actions builds one image per service, one for the web app, and two for OSRM (car and foot, with the Winnipeg map built in; see [Routing engine](#routing-engine-osrm)), for `linux/amd64`, and pushes them to GitHub Container Registry as `ghcr.io/andrew-ih/getdrove-<name>:<commit SHA>`. Builds are cached, so unchanged images take seconds. The run's summary says which of the two happened.
+3. **Deploy.** Actions connects to the server over SSH with the deploy key and:
    - copies `infra/docker-compose.prod.yml` and the database setup script to `/opt/getdrove`
    - writes `/opt/getdrove/.env` from GitHub Secrets (readable only by the server user)
    - logs in to the registry for the pull only, then runs `docker compose pull` and `docker compose up -d --wait`, which restarts only the containers whose image changed and waits until every container is healthy
    - checks from inside the Routing container that both OSRM instances return a realistic Osborne Village → University Centre route
    - removes images older than a week, so the disk doesn't fill up
-3. **Smoke test.** Actions calls the live site from outside over HTTPS (which also checks the certificate is valid): the home page, every service's `/health`, and Accounts' public key (`/.well-known/jwks.json`). It checks that plain `http://` redirects to HTTPS and that `/api/<service>/internal/...` is **not** reachable.
+4. **Smoke test.** Actions calls the live site from outside over HTTPS (which also checks the certificate is valid): the home page, every service's `/health`, and Accounts' public key (`/.well-known/jwks.json`). It checks that plain `http://` redirects to HTTPS and that `/api/<service>/internal/...` is **not** reachable. Then a browser test ([`e2e/`](../../e2e/README.md), Playwright in Chromium) does what a student does: logs in as the demo rider Priya and searches for a ride from Osborne Village to campus on the next weekday morning. It passes when the results heading shows ("3 trips tomorrow" or "No trips tomorrow"); whether trips come back depends on when the demo seed last ran. A failed browser test keeps a screenshot and trace as the run's `smoke-test-report` artifact.
+5. **Alert.** If the build, deploy or smoke test fails, a last job posts the commit and a link to the run in our Discord channel (`DISCORD_WEBHOOK_URL`), so a broken release is noticed without anyone watching Actions.
 
 Database migrations run automatically: each service container applies its migrations when it starts.
 
@@ -83,9 +88,12 @@ All secrets live in **GitHub → Settings → Secrets and variables → Actions*
 | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` | Server address, user and the deploy key ([Server setup](server-setup.md#8-deploy-key-for-github-actions)) |
 | `POSTGRES_PASSWORD` | Database admin password |
 | `ACCOUNTS_DB_PASSWORD`, `TRIPS_DB_PASSWORD`, `ROUTING_DB_PASSWORD`, `PAYMENTS_DB_PASSWORD`, `NOTIFICATIONS_DB_PASSWORD` | One database password per service |
+| `PAYMENTS_STRIPE_SECRET_KEY` | Stripe test secret key (`sk_test_...`); see [Payments setup](../../services/payments/README.md#stripe-test-mode) |
 | `ACCOUNTS_JWT_PRIVATE_KEY` | Accounts' private key for signing access tokens (PEM, RSA 2048) |
 | `NOTIFICATIONS_SMTP_USERNAME`, `NOTIFICATIONS_SMTP_PASSWORD` | Brevo's SMTP login and SMTP key (see [Email](#email-brevo)) |
 | `NOTIFICATIONS_EMAIL_FROM` | The From address, a sender verified in Brevo, e.g. `GetDrove <team@example.com>` |
+| `DISCORD_WEBHOOK_URL` | Repository secret. The webhook the failure alert posts to: in Discord, **channel settings → Integrations → Webhooks → New Webhook → Copy Webhook URL**. Without it the alert job only shows a warning. |
+| `DEMO_ACCOUNT_PASSWORD` | In the **production** environment. The demo accounts' password, used by Seed demo data and by the browser smoke test |
 
 The registry login uses the workflow's own temporary `GITHUB_TOKEN`; no registry secret is needed. Links in emails use `SITE_URL` from the top of `deploy.yml`, which isn't a secret.
 
@@ -129,7 +137,7 @@ The Routing service needs OSRM for driving routes and walking times ([ADR 0008](
 
 ## 4. Did the deploy work?
 
-- **Actions tab → Deploy:** all three jobs green means the site is up and the smoke test passed. The deploy job also prints `docker compose ps`.
+- **Actions tab → Deploy:** a green run means the site is up and the smoke test passed (the build job shows as skipped when the images were reused, and the alert job is skipped when nothing failed). The deploy job also prints `docker compose ps`. A red run has also been posted to Discord.
 - **If the deploy job fails,** its last step prints the last 50 log lines of every container. The usual causes:
 
 | What you see | Cause |
@@ -140,7 +148,9 @@ The Routing service needs OSRM for driving routes and walking times ([ADR 0008](
 | Accounts exits with an error about `ACCOUNTS_JWT_PRIVATE_KEY` | The secret isn't a valid PEM private key; create it again (section 3) |
 | `OSRM car returned …` / `OSRM foot returned …` | OSRM is running but its map is wrong or empty: check the `osrm-car` / `osrm-foot` build logs in the build job |
 
-- **If the smoke test fails,** the containers are running but the site doesn't answer from outside: check the VM's HTTP/HTTPS firewall settings and the Traefik logs. A certificate error means Traefik couldn't get one from Let's Encrypt ([Server setup](server-setup.md#troubleshooting)).
+- **If the smoke test's HTTPS checks fail,** the containers are running but the site doesn't answer from outside: check the VM's HTTP/HTTPS firewall settings and the Traefik logs. A certificate error means Traefik couldn't get one from Let's Encrypt ([Server setup](server-setup.md#troubleshooting)).
+- **If the browser test fails,** download the run's `smoke-test-report` artifact and open the trace (`npx playwright show-trace <trace.zip>`) to see each step and screenshot. "Wrong email or password" means the demo accounts aren't on the site (run **Seed demo data**) or `DEMO_ACCOUNT_PASSWORD` doesn't match them. A search error means a service behind search (Trips, Routing, Payments) is down. The same test runs from your machine against the live site: see [e2e/README.md](../../e2e/README.md).
+- **Checking the alert:** **Actions → Deploy → Run workflow** from `main` with **test_alert** ticked. Nothing is deployed; the browser test runs with a wrong password, fails on purpose, and the alert posts "Test alert" to Discord.
 - **If sign-up works but no email arrives,** check the Notifications logs (`logs notifications`, below). `Authentication failed` means the Brevo login or key is wrong; a refusal about the sender means `NOTIFICATIONS_EMAIL_FROM` isn't a confirmed sender in Brevo. Brevo's **Transactional → Logs** page shows what it received and whether it was delivered. Failed emails are retried, then kept in the `notifications.failed_events` table after 5 tries. Also check the student's junk folder.
 
 On the server, from `/opt/getdrove`:
@@ -155,8 +165,8 @@ docker compose -f docker-compose.prod.yml logs traefik       # certificates and 
 
 Every deploy is tagged with its commit SHA, so an earlier version can be put back in about a minute:
 
-1. Find the last good deploy: **Actions → Deploy**, open its run, and copy the commit SHA (the full 40 characters).
-2. **Actions → Deploy → Run workflow**, branch `main`, paste the SHA into **image_tag**, and run it. This skips the build and redeploys those images.
+1. Find the last good deploy: **Actions → Deploy**, open its run, and copy the commit SHA (the full 40 characters). Reused images are tagged with the release commit too, so every deploy's SHA works.
+2. **Actions → Deploy → Run workflow**, branch `main`, paste the SHA into **image_tag**, and run it. This skips reusing and building, redeploys those images, and runs the smoke test (and the alert, if it fails) as usual.
 3. Fix the problem with a hotfix ([Git workflow](../process/git-workflow.md#hotfixes)); its release deploys normally.
 
 Rolling back to a deploy from before OSRM was added (#233) isn't possible: those commits have no OSRM images, and the Compose file needs them.
@@ -169,4 +179,6 @@ A rollback doesn't undo database migrations. Migrations should only add things (
 - **One environment, deployed from `main`,** so the live site the instructor sees only changes with releases ([ADR 0016](../architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md)). A separate staging environment would double the server cost and work.
 - **`docker compose up -d --wait`** restarts only the containers that changed and fails the deploy if any container doesn't become healthy, so a broken release shows up as a red workflow instead of a silently broken site.
 
-Coming next: in Sprint 2, images published on every merge to `develop` and a Discord alert when a deploy fails.
+- **Releases reuse `develop`'s images** instead of building again, so what goes live is byte for byte what passed every check on `develop`, and a release deploys in a few minutes.
+- **A browser smoke test, not only health checks,** because every service can be healthy while logging in or searching is broken. It's one short test on purpose: it runs against the live site after every release, so it has to be quick and must never change real data (searching doesn't).
+- **Failures go to Discord,** where the team already talks, so nobody has to watch Actions to notice a broken release.
