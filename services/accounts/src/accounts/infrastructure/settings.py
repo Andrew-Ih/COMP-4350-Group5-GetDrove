@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     # PEM-encoded RSA private key for signing access tokens. Required in production
     # (from GitHub Secrets); locally a temporary key is generated if it's missing.
     jwt_private_key: str | None = None
+    # Where driver documents are stored (#9, ADR 0011). In Docker it's the
+    # driver-documents volume; locally, a folder in the repo (gitignored).
+    documents_dir: str = "data/driver-documents"
 
 
 def get_settings() -> Settings:

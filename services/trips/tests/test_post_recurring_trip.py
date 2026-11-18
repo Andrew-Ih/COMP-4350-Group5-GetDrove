@@ -11,7 +11,7 @@ import pytest
 from trips.application.ports import RouteEstimate
 from trips.application.post_recurring_trip import PostRecurringTrip
 from trips.domain.entities import WINNIPEG_TZ, Trip, TripSeries
-from trips.domain.errors import DepartureInPastError
+from trips.domain.errors import DepartureInPastError, DriverNotApprovedError
 from trips.domain.recurrence import expand_trip_series
 from trips.domain.values import Direction, Location
 
@@ -94,8 +94,17 @@ def make_series(
     )
 
 
+class FakeApprovedDrivers:
+    def __init__(self, approved: bool) -> None:
+        self.approved = approved
+
+    async def is_approved(self, driver_id: UUID) -> bool:
+        return self.approved
+
+
 def setup_use_case(
     existing: list[Trip] | None = None,
+    approved: bool = True,
 ):
     trips = FakeTripRepository(existing)
     series_repo = FakeSeriesRepository()
@@ -107,6 +116,7 @@ def setup_use_case(
         series_repository=series_repo,
         routing=routing,
         events=events,
+        approved_drivers=FakeApprovedDrivers(approved),
         clock=lambda: NOW,
     )
 
@@ -241,4 +251,17 @@ async def test_rejects_past_departure() -> None:
     assert trips.saved == []
     assert series_repo.saved == []
     assert routing.trip_ids == []
+    assert events.posted == []
+
+
+async def test_an_unapproved_driver_cant_post_a_series() -> None:
+    """#8, #11: refused before any route is worked out, and nothing is saved."""
+    use_case, trips, series_repo, routing, events = setup_use_case(approved=False)
+
+    with pytest.raises(DriverNotApprovedError):
+        await use_case.prepare(make_series())
+
+    assert routing.trip_ids == []
+    assert trips.saved == []
+    assert series_repo.saved == []
     assert events.posted == []

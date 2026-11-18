@@ -24,6 +24,7 @@ from sqlalchemy import (
     text,
 )
 
+from events.consumer import consumer_tables
 from events.outbox import outbox_table
 
 SCHEMA = "trips"
@@ -41,6 +42,18 @@ metadata = MetaData(
 
 outbox = outbox_table(metadata)
 
+# Events Trips has handled from other services, and ones that kept failing (libs/events):
+# each event changes Trips' data once, even if it's delivered twice.
+consumer = consumer_tables(metadata)
+
+# Students approved to drive (#11): Trips' copy of Accounts' decisions, filled from the
+# DriverApproved event and emptied by DriverRejected. Posting a trip checks it.
+approved_drivers = Table(
+    "approved_drivers",
+    metadata,
+    Column("driver_id", Uuid, primary_key=True),
+    Column("approved_at", DateTime(timezone=True), nullable=False),
+)
 
 trip_series = Table(
     "trip_series",
