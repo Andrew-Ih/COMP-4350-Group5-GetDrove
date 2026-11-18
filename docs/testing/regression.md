@@ -127,7 +127,11 @@ deployed and the smoke test fails on purpose.
 
 **Flaky tests** are treated as failures, not rerun until they pass. When a frontend test for
 a driver's posted-trip requests failed only sometimes, it was fixed rather than retried
-([#399](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/pull/399)).
+([#399](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/pull/399)). The one exception
+is the browser smoke test after a deploy, which Playwright retries once (`retries: 1` in
+[`e2e/playwright.config.ts`](../../e2e/playwright.config.ts)): the first page load right after
+the containers restart can be slow, and that isn't a bug in our code. A second failure fails
+the deploy and alerts Discord, and the retry shows up in the test report.
 
 ## 7. Example: a regression test for a past risk
 
