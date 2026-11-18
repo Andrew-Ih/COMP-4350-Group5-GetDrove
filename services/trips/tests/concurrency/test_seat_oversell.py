@@ -268,7 +268,6 @@ async def test_twenty_riders_three_seats_exactly_three_are_accepted(api: API) ->
     assert await pickup_orders(api, trip) == [1, 2, 3]
 
 
-@pytest.mark.parametrize("attempt", range(3))
 async def after(delay: float, call: Awaitable[httpx.Response]) -> httpx.Response:
     await asyncio.sleep(delay)
     return await call
