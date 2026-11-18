@@ -138,7 +138,8 @@ describe("AutoAcceptSettings", () => {
     await userEvent.click(await screen.findByRole("switch", { name: "Accept requests automatically" }));
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    expect(await screen.findByText(/We couldn't save your rules/)).toBeInTheDocument();
+    // fetch's TypeError reaches the screen as network_error (#336).
+    expect(await screen.findByText(/We couldn't save your rules. Check your connection and try again./)).toBeInTheDocument();
     expect(screen.getByRole("switch", { name: "Accept requests automatically" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
@@ -148,6 +149,7 @@ describe("AutoAcceptSettings", () => {
     renderWithProviders(<AutoAcceptSettings />);
 
     expect(await screen.findByText("We couldn't load your rules")).toBeInTheDocument();
+    expect(screen.getByText("Check your connection and try again.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Try again" })).toBeInTheDocument();
   });
 
