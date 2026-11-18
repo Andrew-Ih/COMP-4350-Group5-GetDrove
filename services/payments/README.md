@@ -125,3 +125,16 @@ holds and failure handling are implemented. See [stripe-mock](https://github.com
 
 References: [manual capture](https://docs.stripe.com/payments/place-a-hold-on-a-payment-method),
 [save cards for later](https://docs.stripe.com/payments/save-and-reuse).
+
+
+### Saved-card holds (#428)
+
+The hold worker resolves saved cards from the customer mappings created by card setup
+and refreshes the card selection from Stripe using #151's default rule. Handwritten
+per-rider references are no longer supported. Lookups run without database locks or
+transactions; committed authorization snapshots remain stable across retries.
+
+Local processing remains opt-in with `PAYMENTS_HOLD_PROCESSING_ENABLED=true`. Production
+Compose enables it and requires the existing Stripe test secret. See
+[hold flow](../../docs/api/payment-holds.md) and
+[rollout](../../docs/deployment/deployment.md#saved-card-payment-holds-428).

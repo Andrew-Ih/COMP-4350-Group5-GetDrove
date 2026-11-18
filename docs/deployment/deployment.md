@@ -33,6 +33,33 @@ release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflow
 
 Database migrations run automatically: each service container applies its migrations when it starts.
 
+### Saved-card payment holds (#428)
+
+Production Compose enables `PAYMENTS_HOLD_PROCESSING_ENABLED=true` and sets
+`PAYMENTS_REDIS_URL=redis://redis:6379/0`. The normal lookup uses the `payments.customers`
+table and Stripe, so a per-rider reference map is no longer needed. Local Compose still
+defaults to disabled.
+
+Before releasing story #150 to main:
+
+- Merge the card setup and hold integration together. The Payments startup migration must
+  include the customer table (`a15100000001`) and joined head (`a15115400001`), including
+  the hold migrations. Containers apply these automatically before serving requests.
+- Set GitHub Actions secret `PAYMENTS_STRIPE_SECRET_KEY` to an `sk_test_` key. The existing
+  deployment secrets check and production Compose requirement remain in place; missing
+  keys block deployment and live keys are rejected. The browser's publishable test key
+  must belong to the same Stripe sandbox, using the existing frontend build configuration.
+- Riders add their card through Stripe Elements. New authorizations resolve their current
+  saved card only when due. No saved card produces the existing `PaymentFailed/no_card`
+  flow; lookup outages retry without falsely returning seats. Already prepared retries
+  keep their committed card references and idempotency key.
+
+Enabling the consumer can replay historical acceptance events. Past departures and
+zero-cent shares are acknowledged without authorizing; eligible future requests follow
+the saved-card and scheduling rules. This change places uncaptured test-mode holds only;
+final trip capture and no-show charging remain #71 and #155.
+
+
 ### Continuous delivery on develop
 
 `develop` is our main development branch, so every merged pull request goes through the **Delivery** workflow ([`.github/workflows/delivery.yml`](../../.github/workflows/delivery.yml), [runs](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/workflows/delivery.yml)):
