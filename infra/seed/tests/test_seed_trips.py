@@ -237,10 +237,10 @@ def test_it_posts_each_drivers_trips_as_that_driver() -> None:
 def test_only_the_missing_departures_are_posted() -> None:
     """Running it again tops up the two weeks without posting the same trip twice."""
     maya = driver("Maya", plan(("mon", "wed"), time(8, 0)))
-    already = [  # how /trips/mine returns them
-        {"id": "a", "direction": "to_campus", "departureAt": "2025-10-27T13:00:00Z"},
-        {"id": "b", "direction": "to_campus", "departureAt": "2025-10-29T13:00:00Z"},
-        {"id": "c", "direction": "from_campus", "departureAt": "2025-11-03T14:00:00Z"},
+    already = [
+        trip("a", "to_campus", "2025-10-27T13:00:00Z"),
+        trip("b", "to_campus", "2025-10-29T13:00:00Z"),
+        trip("c", "from_campus", "2025-11-03T14:00:00Z"),
     ]
     api = FakeApi(existing_trips={maya.email: already})
 
@@ -399,6 +399,49 @@ def test_a_series_already_there_isnt_posted_again() -> None:
 
     assert api.series == []
     assert (report.drivers[0].posted, report.drivers[0].already_there) == (0, 2)
+
+
+def test_a_cancelled_series_is_posted_again() -> None:
+    """After a demo cancels the whole series, running the seed again puts it back."""
+    aisha = driver("Aisha", plan(("mon",), time(8, 0), repeat=True))
+    cancelled = [
+        trip("a", "to_campus", "2025-10-27T13:00:00Z", seriesId="s", status="cancelled"),
+        trip("b", "to_campus", "2025-11-03T14:00:00Z", seriesId="s", status="cancelled"),
+    ]
+    api = FakeApi(existing_trips={aisha.email: cancelled})
+
+    report = run(api, aisha)
+
+    assert len(api.series) == 1
+    assert (report.drivers[0].series, report.drivers[0].already_there) == (1, 0)
+
+
+def test_a_series_with_one_day_cancelled_isnt_posted_again() -> None:
+    aisha = driver("Aisha", plan(("mon",), time(8, 0), repeat=True))
+    already = [
+        trip("a", "to_campus", "2025-10-27T13:00:00Z", seriesId="s", status="cancelled"),
+        trip("b", "to_campus", "2025-11-03T14:00:00Z", seriesId="s"),
+    ]
+    api = FakeApi(existing_trips={aisha.email: already})
+
+    report = run(api, aisha)
+
+    assert api.series == []
+    assert report.drivers[0].already_there == 1
+
+
+def test_a_cancelled_trip_is_posted_again() -> None:
+    maya = driver("Maya", plan(("mon",), time(8, 0)))
+    already = [
+        trip("a", "to_campus", "2025-10-27T13:00:00Z", status="cancelled"),
+        trip("b", "to_campus", "2025-11-03T14:00:00Z"),
+    ]
+    api = FakeApi(existing_trips={maya.email: already})
+
+    report = run(api, maya)
+
+    assert [body["departureAt"] for _, body in api.posted] == ["2025-10-27T13:00:00Z"]
+    assert (report.drivers[0].posted, report.drivers[0].already_there) == (1, 1)
 
 
 def test_it_waits_for_trips_to_hear_the_driver_was_approved() -> None:

@@ -236,7 +236,9 @@ def _seed_driver(
     mine = client.get("/api/trips/mine", params={"role": "driver"}, headers=auth)
     if mine.status_code != 200:
         raise SeedError(f"couldn't list their trips ({_problem(mine)})")
-    trips = mine.json()
+    # Cancelled trips don't count: after a demo cancels a trip or a whole series, running
+    # the seed again puts them back. (Trips' own clash check ignores cancelled trips too.)
+    trips = [trip for trip in mine.json() if trip["status"] != "cancelled"]
     # What they already have, by direction and departure time, so only the gaps get posted.
     existing = {(trip["direction"], datetime.fromisoformat(trip["departureAt"])) for trip in trips}
     place = {"label": driver.home.label, "lat": driver.home.lat, "lng": driver.home.lng}
@@ -273,7 +275,8 @@ def _seed_series(
     wait: Wait,
 ) -> None:
     """One recurring series (#15) for this commute, four weeks long. Posted once: while the
-    driver has an upcoming trip from a series that way, nothing more is posted."""
+    driver has an upcoming trip from a series that way that isn't cancelled, nothing more is
+    posted. ``trips`` has no cancelled trips, so a cancelled series is posted again."""
     in_series = [t for t in trips if t.get("seriesId") and t["direction"] == plan.direction]
     if in_series:
         result.already_there += len(in_series)
