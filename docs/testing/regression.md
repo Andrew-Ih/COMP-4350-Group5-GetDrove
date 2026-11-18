@@ -133,7 +133,8 @@ a driver's posted-trip requests failed only sometimes, it was fixed rather than 
 
 Selling the same seat twice was one of our biggest risks: two drivers' clicks, or a driver's
 accept racing an auto-accept rule, could both take the last seat. Story #46 fixed that with
-row locks in PostgreSQL, and #50 added
+one guarded database update ([ADR 0024](../architecture/adr/0024-seat-counting.md)), and #50
+added
 [`services/trips/tests/concurrency/test_seat_oversell.py`](../../services/trips/tests/concurrency/test_seat_oversell.py)
 so it stays fixed. It runs on real PostgreSQL with every pull request:
 
