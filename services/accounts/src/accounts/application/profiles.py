@@ -52,7 +52,7 @@ class LookUpUsers:
 async def _summaries(uow: UnitOfWork, user_ids: Sequence[UUID]) -> list[UserSummary]:
     # One query per table, however many users, so a list of 20 riders isn't 20 queries.
     wanted = list(dict.fromkeys(user_ids))  # keeps the order, drops repeats
-    users = await uow.users.get_many(wanted)
+    users = {user.id: user for user in await uow.users.get_many(wanted)}
     drivers = await uow.drivers.get_many(users.keys())
     reputations = await uow.reputation.get_many(users.keys())
 

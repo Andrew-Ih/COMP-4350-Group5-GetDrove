@@ -1,6 +1,6 @@
 """The Sprint 2 Accounts contract (#262): driver applications, admin approval, profiles and
-the internal lookups exist, check who's calling, validate input, and return 501 until
-implemented."""
+the internal lookups exist, check who's calling and validate input. All of them are
+implemented now, so their behaviour is tested against the database in tests/integration/."""
 
 from typing import Any
 
@@ -32,17 +32,6 @@ ADMIN_ENDPOINTS: list[tuple[str, str, dict[str, Any]]] = [
     ("POST", f"/admin/drivers/{ID}/approve", {}),
     ("POST", f"/admin/drivers/{ID}/reject", {"json": {"reason": "Expired insurance."}}),
 ]
-# Implemented endpoints need the database, so they're tested in tests/integration/
-# (status #10, documents #9, vehicle #125, every admin endpoint #127, and profiles and the
-# internal user lookup #143). The rest still return 501.
-IMPLEMENTED = {
-    "/me/driver",
-    "/me/driver/documents",
-    "/me/driver/documents/licence",
-    "/me/driver/vehicle",
-    f"/users/{ID}/profile",
-}
-NOT_YET_DRIVER = [endpoint for endpoint in DRIVER_ENDPOINTS if endpoint[1] not in IMPLEMENTED]
 
 
 @pytest.fixture
@@ -79,16 +68,6 @@ def test_spec_documents_the_sprint_2_endpoints() -> None:
 def test_examples_are_valid() -> None:
     assert Vehicle.model_validate(VEHICLE).plate == "ABC123"
     assert RejectDriverRequest.model_validate({"reason": "Blurry photo."}).reason
-
-
-@pytest.mark.parametrize(("method", "path", "kwargs"), NOT_YET_DRIVER)
-async def test_driver_endpoints_reach_the_not_yet_implemented_handler(
-    auth: TestAuth, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    async with _client(auth) as client:
-        response = await client.request(method, path, **kwargs)
-
-    assert response.status_code == 501, response.text
 
 
 @pytest.mark.parametrize(("method", "path", "kwargs"), DRIVER_ENDPOINTS + ADMIN_ENDPOINTS)
@@ -152,6 +131,8 @@ async def test_reject_needs_a_reason(auth: TestAuth) -> None:
 
 @pytest.mark.parametrize("path", ["/internal/users", "/internal/contacts"])
 async def test_internal_lookups_take_1_to_50_ids(path: str) -> None:
+    """Invalid input is rejected before the database is touched. (The contacts lookup
+    itself is tested against PostgreSQL in integration/test_contacts_api.py.)"""
     async with AsyncClient(
         transport=ASGITransport(app=create_app()), base_url="http://test"
     ) as client:
@@ -175,17 +156,6 @@ def test_approving_documents_a_missing_vehicle() -> None:
     approve = create_app().openapi()["paths"]["/admin/drivers/{user_id}/approve"]["post"]
 
     assert "vehicle_missing" in approve["responses"]["409"]["description"]
-
-
-async def test_internal_contacts_is_not_implemented_yet() -> None:
-    """#146. Valid IDs for /internal/users reach the database, so that one is tested in
-    tests/integration/test_profiles_api.py."""
-    async with AsyncClient(
-        transport=ASGITransport(app=create_app()), base_url="http://test"
-    ) as client:
-        response = await client.get("/internal/contacts", params={"ids": [ID]})
-
-    assert response.status_code == 501
 
 
 def test_internal_users_include_the_drivers_vehicle() -> None:

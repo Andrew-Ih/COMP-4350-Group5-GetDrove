@@ -8,7 +8,7 @@ Like ``common_security.testing``: for tests only, never used by the running serv
 """
 
 import hashlib
-from collections.abc import Collection
+from collections.abc import Collection, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from typing import Self
@@ -82,8 +82,8 @@ class FakeUsers:
         found = [user for user in self.rows.values() if user.email == email]
         return replace(found[0]) if found else None
 
-    async def get_many(self, user_ids: Collection[UUID]) -> dict[UUID, User]:
-        return {i: replace(self.rows[i]) for i in user_ids if i in self.rows}
+    async def get_many(self, user_ids: Sequence[UUID]) -> list[User]:
+        return [replace(self.rows[i]) for i in dict.fromkeys(user_ids) if i in self.rows]
 
     async def save(self, user: User) -> None:
         self.rows[user.id] = replace(user)

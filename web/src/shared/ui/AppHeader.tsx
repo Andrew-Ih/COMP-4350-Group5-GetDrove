@@ -1,15 +1,16 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, Car, LogOut, Menu, X } from "lucide-react";
+import { Bell, Car, LogOut, Menu, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 
 import { logOut } from "@/shared/api";
 import { cn } from "@/shared/lib/cn";
 
 import { Avatar } from "./Avatar";
+import { HeaderBellContext } from "./HeaderBell";
 import { Logo } from "./Logo";
 
 const NAV = [
@@ -31,6 +32,7 @@ export function AppHeader({ userName }: { userName: string }) {
   const [accountOpen, setAccountOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const accountMenu = useRef<HTMLDivElement>(null);
+  const bell = useContext(HeaderBellContext);
 
   // Close the account menu when clicking anywhere else.
   useEffect(() => {
@@ -81,17 +83,21 @@ export function AppHeader({ userName }: { userName: string }) {
         </nav>
 
         <div className="ml-auto flex items-center gap-3 md:gap-6">
-          <Link
-            href="/notifications"
-            aria-label="Notifications"
-            aria-current={onNotifications ? "page" : undefined}
-            className={cn(
-              "hidden rounded-full p-2 transition-colors hover:bg-surface-muted hover:text-ink md:block",
-              onNotifications ? "text-ink" : "text-muted",
-            )}
-          >
-            <Bell className="size-6" />
-          </Link>
+          {bell ? (
+            <div className="hidden md:block">{bell}</div>
+          ) : (
+            <Link
+              href="/notifications"
+              aria-label="Notifications"
+              aria-current={onNotifications ? "page" : undefined}
+              className={cn(
+                "hidden rounded-full p-2 transition-colors hover:bg-surface-muted hover:text-ink md:block",
+                onNotifications ? "text-ink" : "text-muted",
+              )}
+            >
+              <Bell className="size-6" />
+            </Link>
+          )}
           <div ref={accountMenu} className="relative">
             <button
               type="button"
@@ -113,6 +119,14 @@ export function AppHeader({ userName }: { userName: string }) {
                   className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
                 >
                   <Car aria-hidden="true" className="size-4" /> Driver status
+                </Link>
+                <Link
+                  href="/account/auto-accept"
+                  role="menuitem"
+                  onClick={() => setAccountOpen(false)}
+                  className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
+                >
+                  <Zap aria-hidden="true" className="size-4" /> Auto-accept
                 </Link>
                 <button
                   type="button"
@@ -171,6 +185,13 @@ export function AppHeader({ userName }: { userName: string }) {
             className="block border-b border-line py-4 text-lg font-semibold text-muted"
           >
             Driver status
+          </Link>
+          <Link
+            href="/account/auto-accept"
+            onClick={() => setMenuOpen(false)}
+            className="block border-b border-line py-4 text-lg font-semibold text-muted"
+          >
+            Auto-accept
           </Link>
           <button
             type="button"
