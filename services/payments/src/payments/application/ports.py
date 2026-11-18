@@ -91,8 +91,7 @@ class SavedCardLookup(Protocol):
     async def for_rider(self, rider_id: UUID) -> SavedPaymentCard | None:
         """Return the saved references, None for no card; raise on lookup failure.
 
-        Production integration follows #151. Configuration failures must not be
-        reported as a rider having no card.
+        Database/provider failures must propagate, never be reported as no_card.
         """
         ...
 

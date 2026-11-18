@@ -42,7 +42,6 @@ class HoldWorker:
     def use_case(self, session: AsyncSession, correlation_id: str | None) -> HoldPayments:
         return HoldPayments(
             SQLAlchemyHolds(session),
-            self.cards,
             self.gateway,
             OutboxHoldEvents(
                 OutboxPublisher(session, outbox, producer="payments", correlation_id=correlation_id)
@@ -50,14 +49,34 @@ class HoldWorker:
         )
 
     async def process(self, request_id: UUID, now: datetime | None = None) -> None:
-        now = now or self.clock()
+        current_time = now or self.clock()
+        async with self.sessions() as session:
+            candidate = await SQLAlchemyHolds(session).get(request_id)
+        if candidate is None:
+            return
+        card = None
+        if candidate.needs_card(current_time):
+            # Customer discovery/Stripe paging must not hold a transaction, pooled
+            # connection, or hold row lock. A failed lookup is never proof of no card.
+            card = await self.cards.for_rider(candidate.rider_id)
+        elif (
+            candidate.card is None
+            and not candidate.release_requested
+            and current_time < candidate.departure_at
+        ):
+            return
+        current_time = now or self.clock()
         async with self.sessions() as session, session.begin():
-            hold = await SQLAlchemyHolds(session).lock(request_id)
+            hold = await SQLAlchemyHolds(session).lock(request_id, skip_locked=True)
             if hold is None:
                 return
             if not hold.release_requested:
-                await self.use_case(session, hold.correlation_id).prepare(request_id, now)
-        await self._finish(request_id, now)
+                # Reload under the lock: cancellation or another worker's committed
+                # snapshot takes priority over the discovery result above.
+                await self.use_case(session, hold.correlation_id).prepare(
+                    request_id, current_time, card
+                )
+        await self._finish(request_id, now or self.clock())
 
     async def _finish(self, request_id: UUID, now: datetime) -> None:
         # Credentials and first-attempt time are committed before any authorization call.
@@ -105,8 +124,9 @@ class HoldWorker:
     async def run_once(self, limit: int = 20) -> int:
         """Claim due work without waiting for rows another worker is processing.
 
-        Prepare under the claim lock, commit the card snapshot, then authorize in a
-        second transaction. Another worker can finish a prepared hold after a crash.
+        Release the short claim transaction before card discovery. Concurrent
+        discovery is harmless: the prepare lock chooses one immutable snapshot and
+        the authorization lock/idempotency key protect the provider operation.
         """
         attempted: set[UUID] = set()
         while len(attempted) < limit:
@@ -119,12 +139,7 @@ class HoldWorker:
                         break
                     request_id = due[0]
                     attempted.add(request_id)
-                    hold = await repository.lock(request_id)
-                    if hold is not None and not hold.release_requested:
-                        await self.use_case(session, hold.correlation_id).prepare(
-                            request_id, self.clock()
-                        )
-                await self._finish(request_id, self.clock())
+                await self.process(request_id)
             except Exception:
                 if request_id is None:
                     raise

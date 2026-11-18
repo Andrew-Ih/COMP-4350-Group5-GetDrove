@@ -22,10 +22,10 @@ from events.consumer import StreamConsumer
 from events.outbox import OutboxRelay
 from payments.adapters.api import health, payments_router
 from payments.adapters.api.payments_router import PricingConfig, get_pricing_config
-from payments.adapters.configured_cards import ConfiguredSavedCardLookup
 from payments.adapters.hold_events import register_hold_handlers
 from payments.adapters.persistence.tables import consumer as consumer_tables
 from payments.adapters.persistence.tables import outbox
+from payments.adapters.saved_cards import CustomerSavedCardLookup
 from payments.application.ports import SavedCardLookup
 from payments.infrastructure.gateway import create_payment_gateway
 from payments.infrastructure.hold_worker import HoldWorker
@@ -49,13 +49,9 @@ def create_app(saved_cards: SavedCardLookup | None = None) -> FastAPI:
         tasks: list[asyncio.Task[None]] = []
         try:
             if settings.hold_processing_enabled:
-                lookup = saved_cards
-                if lookup is None and settings.saved_card_references:
-                    lookup = ConfiguredSavedCardLookup(settings.saved_card_references)
-                if lookup is None or gateway is None:
-                    raise RuntimeError(
-                        "Hold processing requires a saved-card lookup and Stripe test key"
-                    )
+                if gateway is None:
+                    raise RuntimeError("Hold processing requires a Stripe test key")
+                lookup = saved_cards or CustomerSavedCardLookup(sessions, gateway)
                 redis = Redis.from_url(settings.redis_url, socket_timeout=10)
                 worker = HoldWorker(sessions, lookup, gateway)
                 consumer = StreamConsumer(
