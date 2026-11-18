@@ -5,6 +5,7 @@
       "firstName": "Maya",
       "lastName": "Chen",
       "home": { "label": "Osborne Village", "lat": 49.8806, "lng": -97.143 },
+      "vehicle": { "make": "Toyota", "model": "Corolla", "colour": "Blue", "plate": "GDMAYA1" },
       "trips": [
         { "direction": "to_campus", "weekdays": ["mon", "wed", "fri"], "departAt": "07:45", "seats": 3 },
         { "direction": "from_campus", "weekdays": ["mon", "wed", "fri"], "departAt": "16:30", "seats": 3 }
@@ -15,6 +16,7 @@
       "firstName": "Tomas",
       "lastName": "Rivera",
       "home": { "label": "St. Vital", "lat": 49.842, "lng": -97.108 },
+      "vehicle": { "make": "Honda", "model": "Civic", "colour": "Grey", "plate": "GDTOM02" },
       "trips": [
         { "direction": "to_campus", "weekdays": ["mon", "tue", "wed", "thu", "fri"], "departAt": "08:00", "seats": 2 },
         { "direction": "from_campus", "weekdays": ["mon", "tue", "wed", "thu", "fri"], "departAt": "17:00", "seats": 2 }
@@ -25,8 +27,9 @@
       "firstName": "Aisha",
       "lastName": "Okafor",
       "home": { "label": "Transcona", "lat": 49.8955, "lng": -96.985 },
+      "vehicle": { "make": "Kia", "model": "Sorento", "colour": "White", "plate": "GDAIS03" },
       "trips": [
-        { "direction": "to_campus", "weekdays": ["tue", "thu"], "departAt": "07:30", "seats": 4 },
+        { "direction": "to_campus", "weekdays": ["tue", "thu"], "departAt": "07:30", "seats": 4, "repeat": true },
         { "direction": "from_campus", "weekdays": ["tue", "thu"], "departAt": "15:45", "seats": 4 }
       ]
     },
@@ -35,10 +38,19 @@
       "firstName": "Liam",
       "lastName": "Fraser",
       "home": { "label": "River Heights", "lat": 49.863, "lng": -97.18 },
+      "vehicle": { "make": "Mazda", "model": "3", "colour": "Red", "plate": "GDLIA04" },
       "trips": [
         { "direction": "to_campus", "weekdays": ["mon", "tue", "wed", "thu", "fri"], "departAt": "08:15", "seats": 3 },
         { "direction": "from_campus", "weekdays": ["tue", "thu"], "departAt": "16:00", "seats": 3 }
       ]
+    },
+    {
+      "email": "getdrove.demo.sam@myumanitoba.ca",
+      "firstName": "Sam",
+      "lastName": "Patel",
+      "home": { "label": "Fort Garry", "lat": 49.81, "lng": -97.15 },
+      "approval": "pending",
+      "vehicle": { "make": "Ford", "model": "Escape", "colour": "Black", "plate": "GDSAM05" }
     }
   ],
   "riders": [
@@ -46,19 +58,22 @@
       "email": "getdrove.demo.priya@myumanitoba.ca",
       "firstName": "Priya",
       "lastName": "Sharma",
-      "home": { "label": "Pembina Hwy, Fort Rouge", "lat": 49.87, "lng": -97.146 }
+      "home": { "label": "Pembina Hwy, Fort Rouge", "lat": 49.87, "lng": -97.146 },
+      "card": true
     },
     {
       "email": "getdrove.demo.noah@myumanitoba.ca",
       "firstName": "Noah",
       "lastName": "Bergen",
-      "home": { "label": "Pembina Hwy & Grant Ave", "lat": 49.855, "lng": -97.146 }
+      "home": { "label": "Pembina Hwy & Grant Ave", "lat": 49.855, "lng": -97.146 },
+      "card": true
     },
     {
       "email": "getdrove.demo.emma@myumanitoba.ca",
       "firstName": "Emma",
       "lastName": "Tran",
-      "home": { "label": "St. Vital Centre", "lat": 49.829, "lng": -97.102 }
+      "home": { "label": "St. Vital Centre", "lat": 49.829, "lng": -97.102 },
+      "card": true
     },
     {
       "email": "getdrove.demo.owen@myumanitoba.ca",
@@ -66,5 +81,15 @@
       "lastName": "Campbell",
       "home": { "label": "Garden City (no trips nearby)", "lat": 49.958, "lng": -97.143 }
     }
+  ],
+  "admin": {
+    "email": "getdrove.demo.admin@myumanitoba.ca",
+    "firstName": "Alex",
+    "lastName": "Morgan"
+  },
+  "requests": [
+    { "rider": "getdrove.demo.priya@myumanitoba.ca", "driver": "getdrove.demo.maya@myumanitoba.ca", "direction": "to_campus", "status": "accepted" },
+    { "rider": "getdrove.demo.noah@myumanitoba.ca", "driver": "getdrove.demo.maya@myumanitoba.ca", "direction": "to_campus", "status": "pending" },
+    { "rider": "getdrove.demo.emma@myumanitoba.ca", "driver": "getdrove.demo.tomas@myumanitoba.ca", "direction": "to_campus", "status": "accepted" }
   ]
 }
