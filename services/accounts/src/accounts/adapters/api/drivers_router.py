@@ -8,10 +8,10 @@ Paths are relative to the gateway prefix /api/accounts; /internal/... is only re
 inside Docker (http://accounts:8000/internal/...).
 """
 
-from typing import Annotated, Any, Literal, NoReturn
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 
 from accounts.adapters.api.dependencies import AppClock, Documents, Uow
 from accounts.adapters.api.schemas import (
@@ -121,10 +121,6 @@ def admin_driver_out(application: Application) -> AdminDriver:
         reviewed_at=profile.reviewed_at,
         rejection_reason=profile.rejection_reason,
     )
-
-
-def _not_implemented() -> NoReturn:
-    raise HTTPException(status_code=501, detail="Not implemented yet: this is a contract (#262).")
 
 
 UNAUTHORIZED: Responses = {401: _problem("Missing or invalid access token", "unauthorized")}
