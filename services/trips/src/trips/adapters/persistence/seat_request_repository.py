@@ -204,6 +204,7 @@ class SQLAlchemySeatRequestRepository:
                 status=request.status.value,
                 decided_at=request.decided_at,
                 pickup_order=request.pickup_order,
+                auto_accepted=request.auto_accepted,
             )
             .returning(seat_requests.c.id)
         )

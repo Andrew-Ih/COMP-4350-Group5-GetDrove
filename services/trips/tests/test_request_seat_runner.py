@@ -74,6 +74,7 @@ async def test_unique_index_violation_becomes_already_requested(monkeypatch) -> 
         routing=None,  # type: ignore[arg-type]
         pricing=None,  # type: ignore[arg-type]
         cards=None,  # type: ignore[arg-type]
+        riders=None,  # type: ignore[arg-type]
     )
 
     try:

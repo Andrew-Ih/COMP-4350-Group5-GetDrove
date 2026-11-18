@@ -64,6 +64,20 @@ class PricingUnavailableError(Exception):
     so this never becomes an HTTP error."""
 
 
+class DriverNotApprovedError(ForbiddenError):
+    """Only approved drivers can post trips (#11). Approval is in Accounts: the driver
+    uploads their documents, and an admin approves them (403)."""
+
+    code = "driver_not_approved"
+    title = "Not approved to drive"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "You need to be approved to drive before posting a trip. Upload your licence and "
+            "insurance on your driver page; an admin will review them."
+        )
+
+
 class TripNotFoundError(NotFoundError):
     code = "trip_not_found"
     title = "Trip not found"

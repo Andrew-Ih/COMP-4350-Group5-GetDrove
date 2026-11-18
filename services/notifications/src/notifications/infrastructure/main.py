@@ -21,6 +21,7 @@ from events import stream_name
 from events.consumer import StreamConsumer
 from notifications.adapters.accounts import HTTPContactDirectory
 from notifications.adapters.api import health, notifications_router
+from notifications.adapters.email.skip_addresses import skip_addresses
 from notifications.adapters.email.smtp_sender import SmtpEmailSender, SmtpSettings
 from notifications.adapters.events.handlers import register_handlers
 from notifications.adapters.events.notification_handlers import notification_handlers
@@ -73,15 +74,22 @@ def create_app() -> FastAPI:
     # One connection pool for the whole service; it only connects when first used.
     engine = create_async_engine(settings.database_url, pool_pre_ping=True)
     sessions = async_sessionmaker(engine, expire_on_commit=False)
-    sender = SmtpEmailSender(
-        SmtpSettings(
-            host=settings.smtp_host,
-            port=settings.smtp_port,
-            sender=settings.email_from,
-            username=settings.smtp_username,
-            password=settings.smtp_password.get_secret_value() if settings.smtp_password else None,
-            starttls=settings.smtp_starttls,
-        )
+    # Every email goes through this one sender, minus the addresses it's told to skip
+    # (the demo accounts in production, #415).
+    sender = skip_addresses(
+        SmtpEmailSender(
+            SmtpSettings(
+                host=settings.smtp_host,
+                port=settings.smtp_port,
+                sender=settings.email_from,
+                username=settings.smtp_username,
+                password=(
+                    settings.smtp_password.get_secret_value() if settings.smtp_password else None
+                ),
+                starttls=settings.smtp_starttls,
+            )
+        ),
+        settings.email_skip_patterns,
     )
     send_email = SendVerificationEmail(sender, settings.web_base_url)
 

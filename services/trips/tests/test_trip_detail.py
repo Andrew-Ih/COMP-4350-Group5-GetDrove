@@ -12,6 +12,7 @@ import httpx
 import pytest
 
 from trips.adapters.routing import HTTPRoutingService
+from trips.application.ports import DriverVehicle
 from trips.application.trip_detail import PICKUPS_PER_TRIP, GetTripDetail
 from trips.domain.entities import Trip
 from trips.domain.errors import (
@@ -19,6 +20,7 @@ from trips.domain.errors import (
     RoutingUnavailableError,
     TripNotFoundError,
 )
+from trips.domain.request_errors import AccountsUnavailableError
 from trips.domain.seat_request import RequestStatus, SeatRequest
 from trips.domain.values import Direction, Location, PickupOffer, Point, Quote, TripStatus
 
@@ -117,14 +119,37 @@ def seat_request(
     return replace(request, status=status, decided_at=request.created_at)
 
 
+CIVIC = DriverVehicle("Honda", "Civic", "Blue", "ABC123")
+
+
+class FakeVehicles:
+    """Accounts' answer about the driver's vehicle (#361); ``down`` makes it unavailable."""
+
+    def __init__(self, vehicle: DriverVehicle | None = CIVIC, *, down: bool = False) -> None:
+        self.vehicle = vehicle
+        self.down = down
+        self.asked: list[UUID] = []
+
+    async def get_vehicle(self, driver_id: UUID) -> DriverVehicle | None:
+        self.asked.append(driver_id)
+        if self.down:
+            raise AccountsUnavailableError()
+        return self.vehicle
+
+
 def detail(
     the_trip: Trip,
     routing: FakeRouting,
     pricing: FakePricing | None = None,
     requests: FakeRequests | None = None,
+    vehicles: FakeVehicles | None = None,
 ) -> GetTripDetail:
     return GetTripDetail(
-        FakeRepository(the_trip), routing, pricing or FakePricing(), requests or FakeRequests()
+        FakeRepository(the_trip),
+        routing,
+        pricing or FakePricing(),
+        requests or FakeRequests(),
+        vehicles or FakeVehicles(),
     )
 
 
@@ -426,3 +451,62 @@ async def test_pickup_points_timeout_is_routing_unavailable() -> None:
 
     with pytest.raises(RoutingUnavailableError):
         await pickup_points(handler)
+
+
+# ---------------------------------------------------------------- the vehicle (#361)
+
+
+async def test_the_driver_sees_their_vehicle() -> None:
+    the_trip, vehicles = trip(), FakeVehicles()
+
+    result = await detail(the_trip, FakeRouting([]), vehicles=vehicles).execute(
+        the_trip.id, the_trip.driver_id
+    )
+
+    assert result.vehicle == CIVIC
+    assert vehicles.asked == [the_trip.driver_id]
+
+
+async def test_an_accepted_rider_sees_the_vehicle_with_its_plate() -> None:
+    the_trip = trip()
+    requests = FakeRequests(seat_request(the_trip, status=RequestStatus.ACCEPTED))
+
+    result = await detail(the_trip, FakeRouting([]), requests=requests).execute(
+        the_trip.id, RIDER_ID
+    )
+
+    assert result.vehicle == CIVIC
+
+
+async def test_a_pending_rider_gets_no_vehicle_and_accounts_isnt_asked() -> None:
+    the_trip, vehicles = trip(), FakeVehicles()
+    requests = FakeRequests(seat_request(the_trip, status=RequestStatus.PENDING))
+
+    result = await detail(the_trip, FakeRouting([]), requests=requests, vehicles=vehicles).execute(
+        the_trip.id, RIDER_ID
+    )
+
+    assert result.vehicle is None
+    assert vehicles.asked == []
+
+
+async def test_anyone_else_gets_no_vehicle_and_accounts_isnt_asked() -> None:
+    the_trip, vehicles = trip(), FakeVehicles()
+
+    result = await detail(the_trip, FakeRouting([]), vehicles=vehicles).execute(
+        the_trip.id, uuid4()
+    )
+
+    assert result.vehicle is None
+    assert vehicles.asked == []
+
+
+async def test_if_accounts_is_down_the_trip_still_loads_without_the_vehicle() -> None:
+    the_trip = trip()
+
+    result = await detail(the_trip, FakeRouting([]), vehicles=FakeVehicles(down=True)).execute(
+        the_trip.id, the_trip.driver_id
+    )
+
+    assert result.trip == the_trip
+    assert result.vehicle is None

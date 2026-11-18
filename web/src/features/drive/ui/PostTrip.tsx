@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
+import { DRIVER_HREF } from "@/features/driver";
 import {
   AREA_RADIUS_METERS,
   type Direction,
@@ -57,7 +58,9 @@ const POSITION_ERRORS: Record<PositionError, string> = {
 };
 
 /** What went wrong when posting, in words, keyed on the contract's error codes. */
-function postProblem(error: ApiError): FormProblem | { field: "session"; message: string } {
+type PostProblem = FormProblem | { field: "session" | "approval"; message: string };
+
+function postProblem(error: ApiError): PostProblem {
   const departure = error.problem.errors?.find((e) => e.field === "departureAt");
   // A repeating trip the API didn't accept: caught before posting, so rare (#315).
   if (error.problem.errors?.some((e) => e.field === "weekdays")) {
@@ -80,6 +83,9 @@ function postProblem(error: ApiError): FormProblem | { field: "session"; message
   }
   if (error.code === "unauthorized") {
     return { field: "session", message: "Your session has ended. Log in again to post your trip." };
+  }
+  if (error.code === "driver_not_approved") {
+    return { field: "approval", message: "Only approved drivers can post trips." };
   }
   if (error.code === NETWORK_ERROR) {
     return { field: "place", message: "We couldn't reach GetDrove, so the trip wasn't posted. Check your connection and try again." };
@@ -111,7 +117,7 @@ export function PostTrip() {
   const [repeating, setRepeating] = useState(false);
   const [weekdays, setWeekdays] = useState<Weekday[]>([]);
   const [endDate, setEndDate] = useState("");
-  const [problem, setProblem] = useState<FormProblem | { field: "session"; message: string }>();
+  const [problem, setProblem] = useState<PostProblem>();
 
   const choose = useCallback((picked: LngLat, moveMap: boolean) => {
     if (!isInServiceArea(picked)) {
@@ -335,6 +341,11 @@ export function PostTrip() {
                 {problem?.field === "session" && (
                   <Link href="/login?next=%2Fdrive%2Fnew" className="ml-1 underline">
                     Log in
+                  </Link>
+                )}
+                {problem?.field === "approval" && (
+                  <Link href={DRIVER_HREF} className="ml-1 underline">
+                    Apply to drive
                   </Link>
                 )}
               </div>

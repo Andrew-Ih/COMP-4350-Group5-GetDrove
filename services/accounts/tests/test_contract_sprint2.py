@@ -1,6 +1,6 @@
 """The Sprint 2 Accounts contract (#262): driver applications, admin approval, profiles and
-the internal lookups exist, check who's calling, validate input, and return 501 until
-implemented."""
+the internal lookups exist, check who's calling and validate input. All of them are
+implemented now, so their behaviour is tested against the database in tests/integration/."""
 
 from typing import Any
 
@@ -70,16 +70,6 @@ def test_examples_are_valid() -> None:
     assert RejectDriverRequest.model_validate({"reason": "Blurry photo."}).reason
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs"), DRIVER_ENDPOINTS)
-async def test_driver_endpoints_reach_the_not_yet_implemented_handler(
-    auth: TestAuth, method: str, path: str, kwargs: dict[str, Any]
-) -> None:
-    async with _client(auth) as client:
-        response = await client.request(method, path, **kwargs)
-
-    assert response.status_code == 501, response.text
-
-
 @pytest.mark.parametrize(("method", "path", "kwargs"), DRIVER_ENDPOINTS + ADMIN_ENDPOINTS)
 async def test_they_need_a_token(method: str, path: str, kwargs: dict[str, Any]) -> None:
     async with AsyncClient(
@@ -96,12 +86,9 @@ async def test_admin_endpoints_need_the_admin_role(
 ) -> None:
     async with _client(auth, roles=["user"]) as student:
         refused = await student.request(method, path, **kwargs)
-    async with _client(auth, roles=["user", "admin"]) as admin:
-        allowed = await admin.request(method, path, **kwargs)
 
     assert refused.status_code == 403
     assert refused.json()["code"] == "forbidden"
-    assert allowed.status_code == 501, allowed.text
 
 
 @pytest.mark.parametrize(
@@ -176,12 +163,3 @@ def test_internal_users_include_the_drivers_vehicle() -> None:
 
     assert "vehicle" in schemas["InternalUser"]["properties"]
     assert "email" not in schemas["InternalUser"]["properties"]
-
-
-async def test_internal_users_is_not_implemented_yet() -> None:
-    async with AsyncClient(
-        transport=ASGITransport(app=create_app()), base_url="http://test"
-    ) as client:
-        response = await client.get("/internal/users", params={"ids": [ID]})
-
-    assert response.status_code == 501

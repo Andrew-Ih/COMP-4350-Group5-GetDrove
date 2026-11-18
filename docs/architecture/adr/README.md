@@ -34,3 +34,4 @@ An Architecture Decision Record (ADR) is a short document that records one signi
 | [0020](0020-password-hashing.md) | Argon2id (`argon2-cffi`) for password hashing | Accepted |
 | [0021](0021-verification-email-requested-event.md) | A separate `VerificationEmailRequested` event for resends | Accepted |
 | [0022](0022-login-sessions.md) | Login sessions: 15-minute access token in memory, rotating HttpOnly refresh cookie with reuse detection | Proposed |
+| [0023](0023-approved-drivers-read-model.md) | Trips keeps its own list of approved drivers, updated from Accounts' events | Proposed |

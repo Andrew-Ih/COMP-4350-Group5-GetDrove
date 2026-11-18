@@ -8,7 +8,8 @@ also checks them. Without Docker these tests are skipped with a message.
 
 import asyncio
 import os
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -18,7 +19,13 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
+from accounts.adapters.persistence.user_repository import SqlUserRepository
+from accounts.adapters.security.password_hasher import Argon2PasswordHasher
+from accounts.domain.email import Email
+from accounts.domain.user import User
 from accounts.infrastructure.main import create_app
+
+PASSWORD = "correct horse battery"  # noqa: S105 (a test password)
 
 ACCOUNTS_DIR = Path(__file__).resolve().parents[2]
 
@@ -109,13 +116,45 @@ async def session(database_url: str) -> AsyncIterator[AsyncSession]:
 
 
 @pytest.fixture
-async def api(session: AsyncSession) -> AsyncIterator[AsyncClient]:
+async def api(
+    session: AsyncSession, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> AsyncIterator[AsyncClient]:
     """The real Accounts app on the test database, called over HTTP (no server needed).
 
     Its startup (the outbox relay) doesn't run here, so events stay in the outbox where
     tests can check them.
     """
+    # Uploaded driver documents go to a folder that's deleted after the test.
+    monkeypatch.setenv("ACCOUNTS_DOCUMENTS_DIR", str(tmp_path / "documents"))
     app = create_app()  # ACCOUNTS_DATABASE_URL points at the test database
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as client:
         yield client
     await app.state.engine.dispose()
+
+
+LogIn = Callable[..., Awaitable[tuple[User, dict[str, str]]]]
+
+
+@pytest.fixture
+def log_in(api: AsyncClient, session: AsyncSession) -> LogIn:
+    """Creates a verified student and logs them in through the API. Returns the user and
+    the Authorization header to send::
+
+        ada, headers = await log_in("ada")
+        admin, admin_headers = await log_in("root", admin=True)
+    """
+
+    async def _log_in(name: str, *, admin: bool = False) -> tuple[User, dict[str, str]]:
+        email = f"{name}@myumanitoba.ca"
+        user = User.register(
+            Email.parse(email), Argon2PasswordHasher().hash(PASSWORD), name.title(), "Test"
+        )
+        user.email_verified_at = datetime.now(UTC)
+        user.is_admin = admin
+        await SqlUserRepository(session).add(user)
+        await session.commit()
+        login = await api.post("/auth/login", json={"email": email, "password": PASSWORD})
+        assert login.status_code == 200, login.text
+        return user, {"Authorization": f"Bearer {login.json()['accessToken']}"}
+
+    return _log_in
