@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from accounts.adapters.persistence.driver_profile_repository import SqlDriverProfileRepository
 from accounts.adapters.persistence.refresh_token_repository import SqlRefreshTokenRepository
+from accounts.adapters.persistence.reputation_repository import SqlReputationRepository
 from accounts.adapters.persistence.tables import outbox
 from accounts.adapters.persistence.user_repository import SqlUserRepository
 from accounts.adapters.persistence.verification_token_repository import (
@@ -23,6 +24,7 @@ class SqlUnitOfWork:
     verification_tokens: SqlVerificationTokenRepository
     refresh_tokens: SqlRefreshTokenRepository
     drivers: SqlDriverProfileRepository
+    reputation: SqlReputationRepository
     events: OutboxPublisher
 
     def __init__(self, sessions: async_sessionmaker[AsyncSession]) -> None:
@@ -34,6 +36,7 @@ class SqlUnitOfWork:
         self.verification_tokens = SqlVerificationTokenRepository(self._session)
         self.refresh_tokens = SqlRefreshTokenRepository(self._session)
         self.drivers = SqlDriverProfileRepository(self._session)
+        self.reputation = SqlReputationRepository(self._session)
         # The request ID travels with the event, so one action can be traced across services.
         self.events = OutboxPublisher(
             self._session, outbox, producer="accounts", correlation_id=current_request_id()

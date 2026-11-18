@@ -37,6 +37,7 @@ Tables live in the `accounts` Postgres schema:
 | `verification_tokens` | Email verification links (SHA-256 hashes only). Used ones are kept so a used link (400) can be told apart from an expired one (410). |
 | `refresh_tokens` | "Stay logged in" tokens (SHA-256 hashes only), with `replaced_by_id` to detect a stolen token being reused. |
 | `driver_profiles` | One row per student who has applied to drive or saved a vehicle (#8): status (`pending`, `approved`, `rejected`), vehicle, who decided and why. No row means status `none`. The documents themselves are in document storage; only their keys are here. |
+| `reputation` | Ratings (as a sum and a count), completed trips and no-shows, for public profiles and Trips' lookup (#143). No row means all zeros. Recorded from Sprint 3. |
 | `outbox` | Events waiting to be sent to Redis ([libs/events](../../libs/events/README.md)). |
 
 After changing `adapters/persistence/tables.py`, with the database running and `ACCOUNTS_DATABASE_URL` set:
