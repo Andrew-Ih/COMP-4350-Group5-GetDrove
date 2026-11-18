@@ -2,6 +2,8 @@
 
 How GetDrove is tested: the tools, what each kind of test checks, how we replace the parts we don't want in a test, and how to run everything. The tool choices are in [ADR 0013](../architecture/adr/0013-testing.md) (frontend and contracts) and [ADR 0017](../architecture/adr/0017-python-fastapi-backend.md) (backend).
 
+When the tests run, how long they take and what happens when they fail is in [Regression testing](regression.md).
+
 ## Tools
 
 | Area | Tool | Used for |
@@ -16,6 +18,8 @@ How GetDrove is tested: the tools, what each kind of test checks, how we replace
 | Frontend coverage | **Vitest coverage** (`@vitest/coverage-v8`) | Line, branch and function coverage of `web/src/` |
 | Frontend static checks | **ESLint** (with folder rules), **TypeScript** | Style, imports between features, type errors |
 | Contracts | **openapi-typescript** (`npm run api:check`) and contract tests | Frontend types match the contracts; each service's routes match its contract |
+| Smoke test after deploy | **Playwright** (`e2e/`) | A demo rider logs in and searches on the live site after every deploy (#177) |
+| Payments against Stripe | **stripe-mock** (testcontainers), and opt-in tests against our Stripe sandbox | The Stripe calls Payments makes, without real keys in CI |
 
 ## Kinds of tests
 
@@ -110,9 +114,8 @@ These are planned in the ADRs but not set up yet. They're listed so nobody assum
 
 | Tool | For | When |
 |---|---|---|
-| Playwright | End-to-end tests in a real browser against the full stack | When the main rider and driver flows work end to end |
+| Playwright, beyond the smoke test | End-to-end tests of the main rider and driver flows in CI, against the full stack | Final release (see the coverage gaps) |
 | respx | Mocking HTTP calls between services | When Trips starts calling Routing and Payments |
-| stripe-mock | Payments tests | With the payments work |
 | Hypothesis | Property-based tests (for example, pricing and route corridors) | Where a rule has many edge cases |
 | JMeter, CodeQL, Trivy | Load testing and security scanning | Sprint 3 (#191, #188) |
 
