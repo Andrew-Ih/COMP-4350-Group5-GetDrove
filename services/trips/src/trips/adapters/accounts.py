@@ -1,4 +1,5 @@
-"""HTTP adapter for the Accounts microservice: riders' names, ratings and no-shows (#143)."""
+"""HTTP adapter for the Accounts microservice: riders' names, ratings and no-shows (#143),
+and drivers' vehicles (#361)."""
 
 from collections.abc import Sequence
 from uuid import UUID
@@ -6,11 +7,18 @@ from uuid import UUID
 import httpx
 from pydantic import BaseModel, Field, ValidationError
 
-from trips.application.ports import RiderProfile
+from trips.application.ports import DriverVehicle, RiderProfile
 from trips.domain.request_errors import AccountsUnavailableError
 
 # Accounts accepts 1 to 50 ids per call.
 BATCH_SIZE = 50
+
+
+class _Vehicle(BaseModel):
+    make: str
+    model: str
+    colour: str
+    plate: str
 
 
 class _User(BaseModel):
@@ -19,6 +27,7 @@ class _User(BaseModel):
     rating: float | None = Field(ge=1, le=5)
     rating_count: int = Field(alias="ratingCount", strict=True, ge=0)
     no_show_count: int = Field(alias="noShowCount", strict=True, ge=0)
+    vehicle: _Vehicle | None = None  # approved drivers only, with the plate
 
 
 class _UsersResponse(BaseModel):
@@ -59,3 +68,25 @@ class HTTPRiderProfileService:
                     )
 
         return profiles
+
+
+class HTTPDriverVehicleService:
+    """A driver's vehicle from GET /internal/users (#361)."""
+
+    def __init__(self, client: httpx.AsyncClient) -> None:
+        self.client = client
+
+    async def get_vehicle(self, driver_id: UUID) -> DriverVehicle | None:
+        try:
+            response = await self.client.get("/internal/users", params={"ids": [str(driver_id)]})
+            if response.status_code != 200:
+                raise AccountsUnavailableError("Accounts did not return the driver.")
+            data = _UsersResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError) as exc:
+            raise AccountsUnavailableError("Could not load the driver's vehicle.") from exc
+
+        for user in data.users:
+            if user.id == driver_id and user.vehicle is not None:
+                v = user.vehicle
+                return DriverVehicle(make=v.make, model=v.model, colour=v.colour, plate=v.plate)
+        return None

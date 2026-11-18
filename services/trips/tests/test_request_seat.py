@@ -437,6 +437,9 @@ async def test_choosing_another_suggested_pickup_saves_its_displayed_quote(
             routing=routing,
             pricing=pricing,
             requests=harness.requests,
+            vehicles=AsyncMock(
+                get_vehicle=AsyncMock(return_value=None)
+            ),  # not about the car (#361)
         ).execute(trip.id, viewer_id=command.rider_id, rider=command.rider)
         first, selected = detail.pickups
         assert first.cost is not None and selected.cost is not None

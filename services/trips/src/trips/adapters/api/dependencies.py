@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from common_web import current_request_id
 from events.outbox import OutboxPublisher
-from trips.adapters.accounts import HTTPRiderProfileService
+from trips.adapters.accounts import HTTPDriverVehicleService, HTTPRiderProfileService
 from trips.adapters.events import OutboxTripEvents
 from trips.adapters.payments import HTTPPricingService, HTTPRiderCardService
 from trips.adapters.persistence.approved_drivers import SQLAlchemyApprovedDrivers
@@ -271,10 +271,12 @@ class TripDetailQuery:
         session_factory: async_sessionmaker[AsyncSession],
         routing: HTTPRoutingService,
         pricing: HTTPPricingService,
+        vehicles: HTTPDriverVehicleService,
     ) -> None:
         self.session_factory = session_factory
         self.routing = routing
         self.pricing = pricing
+        self.vehicles = vehicles
 
     async def execute(
         self, *, trip_id: UUID, viewer_id: UUID, rider: Point | None, exclude: Sequence[str]
@@ -285,6 +287,7 @@ class TripDetailQuery:
                 self.routing,
                 self.pricing,
                 SQLAlchemySeatRequestRepository(session),
+                self.vehicles,
             )
             return await use_case.execute(trip_id, viewer_id, rider, exclude)
 
@@ -294,6 +297,7 @@ def get_trip_detail(request: Request) -> TripDetailQuery:
         session_factory=request.app.state.session_factory,
         routing=HTTPRoutingService(request.app.state.routing_client),
         pricing=HTTPPricingService(request.app.state.payments_client),
+        vehicles=HTTPDriverVehicleService(request.app.state.accounts_client),
     )
 
 

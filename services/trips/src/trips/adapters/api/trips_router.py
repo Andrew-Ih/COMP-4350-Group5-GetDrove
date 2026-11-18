@@ -52,6 +52,7 @@ from trips.adapters.api.schemas import (
     Trip,
     TripDetail,
     TripSeriesResult,
+    TripVehicle,
 )
 from trips.application.decide_request import RequestActionCommand
 from trips.application.list_trip_requests import (
@@ -562,8 +563,15 @@ async def get_trip(
     return TripDetail(
         # The driver sees their own end; everyone else, only the campus end.
         trip=_to_response(detail.trip) if detail.viewer_is_driver else _for_rider(detail.trip),
-        # The driver's vehicle needs Accounts' /internal/users (#143).
-        vehicle=None,
+        # Only the driver and accepted riders get it (#361); null for everyone else.
+        vehicle=TripVehicle(
+            make=detail.vehicle.make,
+            model=detail.vehicle.model,
+            colour=detail.vehicle.colour,
+            plate=detail.vehicle.plate,
+        )
+        if detail.vehicle
+        else None,
         pickups=[
             PickupOption(
                 id=priced.offer.id,

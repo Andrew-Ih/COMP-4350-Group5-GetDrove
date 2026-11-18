@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 
-from trips.adapters.accounts import HTTPRiderProfileService
-from trips.application.ports import RiderProfile
+from trips.adapters.accounts import HTTPDriverVehicleService, HTTPRiderProfileService
+from trips.application.ports import DriverVehicle, RiderProfile
 from trips.domain.request_errors import AccountsUnavailableError
 
 type Handler = Callable[[httpx.Request], httpx.Response]
@@ -127,3 +127,53 @@ async def test_accounts_failures_are_reported(failure: str) -> None:
 
     with pytest.raises(AccountsUnavailableError):
         await lookup(handler, [uuid4()])
+
+
+# ---------------------------------------------------------------- drivers' vehicles (#361)
+
+CIVIC = {"make": "Honda", "model": "Civic", "colour": "Blue", "plate": "ABC123"}
+
+
+async def vehicle_of(driver: UUID, handler: Handler) -> DriverVehicle | None:
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="http://accounts:8000"
+    ) as client:
+        return await HTTPDriverVehicleService(client).get_vehicle(driver)
+
+
+async def test_a_drivers_vehicle_comes_with_its_plate() -> None:
+    driver, asked = uuid4(), []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        asked.append(request.url.params.get_list("ids"))
+        return httpx.Response(200, json={"users": [user(driver, vehicle=CIVIC)]})
+
+    assert await vehicle_of(driver, handler) == DriverVehicle("Honda", "Civic", "Blue", "ABC123")
+    assert asked == [[str(driver)]]
+
+
+@pytest.mark.parametrize("users", [[], "no vehicle"])
+async def test_no_vehicle_or_unknown_driver_is_none(users: Any) -> None:
+    driver = uuid4()
+    body = {"users": [user(driver)] if users == "no vehicle" else users}
+
+    assert await vehicle_of(driver, lambda request: httpx.Response(200, json=body)) is None
+
+
+def down(request: httpx.Request) -> httpx.Response:
+    raise httpx.ConnectError("Accounts is down", request=request)
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        lambda request: httpx.Response(501),  # what Accounts answers until #143 is deployed
+        lambda request: httpx.Response(503),
+        lambda request: httpx.Response(200, content=b"not JSON"),
+        down,
+    ],
+    ids=["501", "503", "invalid-json", "connect-error"],
+)
+async def test_accounts_not_answering_about_a_vehicle_is_reported(handler: Handler) -> None:
+    with pytest.raises(AccountsUnavailableError):
+        await vehicle_of(uuid4(), handler)

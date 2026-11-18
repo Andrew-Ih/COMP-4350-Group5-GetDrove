@@ -112,6 +112,25 @@ class RiderProfile:
     no_show_count: int
 
 
+@dataclass(frozen=True)
+class DriverVehicle:
+    """The driver's vehicle, with its plate (#361): only for the driver and their accepted
+    riders."""
+
+    make: str
+    model: str
+    colour: str
+    plate: str
+
+
+class DriverVehicleLookup(Protocol):
+    async def get_vehicle(self, driver_id: UUID) -> DriverVehicle | None:
+        """The driver's vehicle from Accounts (#143), or None if they have none (only approved
+        drivers do) or Accounts doesn't know them. Raise AccountsUnavailableError if Accounts
+        can't answer."""
+        ...
+
+
 class RiderProfileService(Protocol):
     async def get_many(self, rider_ids: Sequence[UUID]) -> dict[UUID, RiderProfile]:
         """Names, ratings and no-shows for these riders in as few calls as possible.
