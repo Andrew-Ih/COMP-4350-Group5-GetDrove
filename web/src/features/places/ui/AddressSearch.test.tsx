@@ -92,6 +92,17 @@ describe("AddressSearch", () => {
     expect(await screen.findByText("Check your connection and try again.")).toBeInTheDocument();
   });
 
+  it("hides the old matches when the student types again", async () => {
+    mockFetch({ status: 200, body: { places: [osborne, forks] } });
+    renderWithProviders(<AddressSearch onPick={vi.fn()} />);
+
+    await search("750 Osborne");
+    await screen.findByRole("list", { name: "Matching places" });
+    await userEvent.type(screen.getByRole("searchbox", { name: "Address or place" }), " St");
+
+    expect(screen.queryByRole("list", { name: "Matching places" })).not.toBeInTheDocument();
+  });
+
   it("clears the message when the student types again", async () => {
     mockFetch({ status: 200, body: { places: [] } });
     renderWithProviders(<AddressSearch onPick={vi.fn()} />);

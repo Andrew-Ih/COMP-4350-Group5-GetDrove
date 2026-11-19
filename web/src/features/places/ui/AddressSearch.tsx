@@ -14,7 +14,8 @@ import { MIN_QUERY_LENGTH, NOT_FOUND_MESSAGE, placeErrorMessage, placePoint, TOO
  * map or sharing your location. The user types, presses Search and picks one of the matches;
  * picking one calls `onPick` with its point, exactly like tapping the map there.
  *
- * What was typed is sent once per search and kept nowhere: not in the URL, not in storage.
+ * What was typed is sent once per search, never in the URL or browser storage. It's held in
+ * memory only while the matches are on screen: picking one, or typing again, drops it.
  */
 export function AddressSearch({ onPick, className }: { onPick: (point: LngLat) => void; className?: string }) {
   const id = useId();
@@ -64,6 +65,10 @@ export function AddressSearch({ onPick, className }: { onPick: (point: LngLat) =
             onChange={(event) => {
               setQuery(event.target.value);
               setMessage(undefined);
+              // Old matches, or a search still running, are for what was typed before: drop
+              // them, so a late answer never shows matches for text that has since changed.
+              setShowMatches(false);
+              search.reset();
             }}
             className="h-10 min-w-0 flex-1 bg-transparent font-semibold outline-none placeholder:text-subtle"
           />
@@ -83,6 +88,7 @@ export function AddressSearch({ onPick, className }: { onPick: (point: LngLat) =
                   onPick(placePoint(place));
                   setShowMatches(false);
                   setQuery("");
+                  search.reset(); // drops what was typed and the matches
                 }}
                 className="flex w-full items-center gap-3 px-3 py-2.5 text-left font-semibold hover:bg-surface-muted"
               >
