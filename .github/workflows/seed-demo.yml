@@ -48,7 +48,7 @@ jobs:
       SEED_PASSWORD: ${{ secrets.DEMO_ACCOUNT_PASSWORD }}
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Check the demo password is set
         run: |
@@ -85,7 +85,7 @@ jobs:
                 python -m accounts.infrastructure.seed"
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@v7
 
       - name: Add the cards, trips and seat requests
         # Only needs httpx, and tzdata for Winnipeg time (2026.5 is IANA 2026e, which keeps
