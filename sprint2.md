@@ -125,8 +125,6 @@ All the demo people, their commutes and cars are in [infra/seed/README.md](infra
 
 ## Cross-team testing
 
-<!-- TODO(#183): fill in the feedback we received once it arrives -->
-
 **Our review of another team:** we black-box tested **BisonRides** on their live site (https://bisonrides.vercel.app, desktop Chrome, Nov 18) and filed three issues on their repo, each with steps to reproduce, expected and actual behaviour, and a suggestion:
 
 | Issue | Type · severity | What we found |
@@ -135,12 +133,7 @@ All the demo people, their commutes and cars are in [infra/seed/README.md](infra
 | [#97 No way to reset a forgotten password](https://github.com/BisonRIdes/Comp4350Project/issues/97) | Missing feature · Medium | There's no "Forgot password?" link, so a student who forgets their password is locked out; we suggested reusing their verification-email flow for a time-limited reset link. |
 | [#98 Some rides on Find Ride show no price](https://github.com/BisonRIdes/Comp4350Project/issues/98) | Bug · Medium | Some rides show a price and others none, so riders can't tell whether a ride is free or the price is missing; we suggested always showing a price, or a clear "Free" / "Price not set" label. |
 
-**Feedback we received** is filed as issues labelled [`feedback`](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Afeedback), each classified **Accepted**, **Deferred** or **Rejected** with a reason. Two of them:
-
-| Feedback | Category | Decision and why |
-|---|---|---|
-| <!-- #issue: what they reported --> | <!-- e.g. usability --> | <!-- Accepted: fixed in #... / Deferred to Sprint 3 because ... / Rejected because ... --> |
-| <!-- #issue --> | <!-- a different category --> | <!-- --> |
+**Feedback we received:** the other team's feedback on GetDrove hadn't arrived by the Sprint 2 deadline. The instructor told us cross-team testing isn't required for this iteration, so we kept our review above and will respond to their feedback when it arrives: we'll file each item as an issue labelled [`feedback`](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Afeedback) and mark it Accepted, Deferred or Rejected with a reason. The instructor's feedback from this sprint, that verifying your email should log you in, is accepted and planned for Sprint 3 (the design is ready as ADR 0028).
 
 ## API and architecture
 
