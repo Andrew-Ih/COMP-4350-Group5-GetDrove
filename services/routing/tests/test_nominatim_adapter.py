@@ -1,6 +1,8 @@
 """Nominatim (#257, ADR 0027): what Routing asks, how it reads the answer, and how it keeps
 to the usage policy (1 request a second, cached, identified)."""
 
+import asyncio
+import itertools
 from collections.abc import Callable
 from typing import Any
 
@@ -13,6 +15,7 @@ from routing.adapters.nominatim import (
     Throttle,
     _Result,
     label_for,
+    purge_periodically,
 )
 from routing.domain.errors import GeocodingUnavailableError
 from routing.domain.places import MAP_AREA, Area, Place
@@ -180,19 +183,58 @@ async def test_calls_are_spaced_one_second_apart() -> None:
     assert time.slept == [1.0]
 
 
+class LateTime(FakeTime):
+    """A clock whose sleeps yield to other tasks and can wake up late, like a busy server."""
+
+    def __init__(self, late_by: float = 0.0) -> None:
+        super().__init__()
+        self.late_by = late_by
+
+    async def sleep(self, seconds: float) -> None:
+        self.slept.append(seconds)
+        await asyncio.sleep(0)  # let the other callers run, as a real sleep does
+        self.now += seconds + self.late_by
+
+
+async def let_through(throttle: Throttle, time: FakeTime, starts: list[float]) -> None:
+    await throttle.wait_turn()
+    starts.append(time.now)  # when this caller may send its request
+
+
+async def test_callers_arriving_together_go_one_second_apart() -> None:
+    time = LateTime()
+    throttle = Throttle(min_interval=1.0, max_wait=5.0, clock=time.clock, sleep=time.sleep)
+    starts: list[float] = []
+
+    await asyncio.gather(*(let_through(throttle, time, starts) for _ in range(3)))
+
+    assert starts == [100.0, 101.0, 102.0]
+
+
+async def test_late_wakeups_never_let_two_through_together() -> None:
+    """Chimdi's case: sleeps that wake 1.5 s late released callers at the same moment."""
+    time = LateTime(late_by=1.5)
+    throttle = Throttle(min_interval=1.0, max_wait=10.0, clock=time.clock, sleep=time.sleep)
+    starts: list[float] = []
+
+    await asyncio.gather(*(let_through(throttle, time, starts) for _ in range(3)))
+
+    assert len(starts) == 3
+    gaps = [later - earlier for earlier, later in itertools.pairwise(starts)]
+    assert all(gap >= 1.0 for gap in gaps), starts
+
+
 async def test_a_long_queue_is_turned_away_rather_than_kept_waiting() -> None:
-    time = FakeTime()
+    time = LateTime()
+    throttle = Throttle(min_interval=1.0, max_wait=2.0, clock=time.clock, sleep=time.sleep)
+    starts: list[float] = []
 
-    async def no_sleep(seconds: float) -> None:  # callers all arrive at the same moment
-        time.slept.append(seconds)
+    results = await asyncio.gather(
+        *(let_through(throttle, time, starts) for _ in range(4)), return_exceptions=True
+    )
 
-    throttle = Throttle(min_interval=1.0, max_wait=2.0, clock=time.clock, sleep=no_sleep)
-    for _ in range(3):  # waits of 0, 1 and 2 seconds
-        await throttle.wait_turn()
-
-    with pytest.raises(GeocodingUnavailableError):
-        await throttle.wait_turn()  # would wait 3 seconds
-    assert time.slept == [1.0, 2.0]
+    assert starts == [100.0, 101.0, 102.0]  # waits of 0, 1 and 2 seconds
+    assert [type(r) for r in results].count(GeocodingUnavailableError) == 1  # 3 would be too long
 
 
 # ---------------------------------------------------------------- the cache
@@ -246,6 +288,43 @@ async def test_the_cache_keeps_only_the_latest_searches() -> None:
         await places.find(query, MAP_AREA, 5)
 
     assert inner.calls == ["one", "two", "three", "one"]  # "one" was pushed out
+
+
+async def test_expired_searches_are_removed_from_memory_on_the_next_search() -> None:
+    inner, time = CountingFinder(), FakeTime()
+    places = polite(inner, time)
+    await places.find("750 Osborne St", MAP_AREA, 5)
+    time.now += 2 * 3600
+
+    await places.find("Polo Park", MAP_AREA, 5)
+
+    assert [key[0] for key in places._cache] == ["polo park"]  # the address is gone
+
+
+async def test_expired_searches_are_removed_while_no_one_searches() -> None:
+    inner, time = CountingFinder(), FakeTime()
+    places = polite(inner, time)
+    await places.find("750 Osborne St", MAP_AREA, 5)
+    await places.find("Polo Park", MAP_AREA, 5)
+    time.now += 61
+
+    assert places.purge_expired() == 2
+    assert places._cache == {}
+
+
+async def test_the_timer_purges_until_stopped() -> None:
+    inner, time = CountingFinder(), FakeTime()
+    places = polite(inner, time)
+    await places.find("750 Osborne St", MAP_AREA, 5)
+    time.now += 61
+    stop = asyncio.Event()
+
+    task = asyncio.create_task(purge_periodically(places, stop, interval_seconds=0.01))
+    await asyncio.sleep(0.05)
+    stop.set()
+    await asyncio.wait_for(task, timeout=1)
+
+    assert places._cache == {}
 
 
 async def test_failures_arent_cached() -> None:

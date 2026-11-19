@@ -20,7 +20,12 @@ from events import stream_name
 from events.consumer import StreamConsumer
 from routing.adapters.api import health, routing_router
 from routing.adapters.events.handlers import register_handlers
-from routing.adapters.nominatim import NominatimPlaceFinder, PoliteFinder, Throttle
+from routing.adapters.nominatim import (
+    NominatimPlaceFinder,
+    PoliteFinder,
+    Throttle,
+    purge_periodically,
+)
 from routing.adapters.persistence.tables import consumer as consumer_tables
 from routing.adapters.redis_plans import RedisDetourPlans
 from routing.domain.values import Corridor
@@ -92,7 +97,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     ):
         app.state.osrm_car_client = osrm_car_client
         app.state.osrm_foot_client = osrm_foot_client
-        app.state.place_finder = PoliteFinder(
+        place_finder = PoliteFinder(
             NominatimPlaceFinder(geocoder_client),
             Throttle(
                 min_interval=settings.geocoder_min_interval_seconds,
@@ -101,16 +106,22 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             ttl_seconds=settings.places_cache_ttl_seconds,
             max_entries=settings.places_cache_max_entries,
         )
+        app.state.place_finder = place_finder
         stop = asyncio.Event()
         consumer_task = asyncio.create_task(consumer.run(stop))
         consumer_task.add_done_callback(_log_if_consumer_stopped)
+        # Typed addresses are dropped from memory when their hour is up, searches or not.
+        purge_task = asyncio.create_task(purge_periodically(place_finder, stop))
         try:
             yield
         finally:
             stop.set()
             consumer_task.cancel()
+            purge_task.cancel()
             with contextlib.suppress(asyncio.CancelledError):
                 await consumer_task
+            with contextlib.suppress(asyncio.CancelledError):
+                await purge_task
             await cache_redis.aclose()
             await events_redis.aclose()
             await engine.dispose()

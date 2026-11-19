@@ -137,8 +137,8 @@ It needs a logged-in user (401 otherwise), returns 404 `route_not_found` for a t
 It asks OpenStreetMap's public geocoder, [Nominatim](https://nominatim.org/release-docs/latest/api/Search/), keeping to its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) (`adapters/nominatim.py`):
 
 - **Bounded to Winnipeg:** `viewbox` with `bounded=1`, Canada only, and the use case drops anything outside the map anyway.
-- **At most 1 request a second** for the whole service (`ROUTING_GEOCODER_MIN_INTERVAL_SECONDS`). A search that would wait longer than `ROUTING_GEOCODER_MAX_WAIT_SECONDS` (3) is answered 503 instead.
-- **Cached:** the same search again (spaces and case ignored) is answered from memory for an hour, up to 500 searches (`ROUTING_PLACES_CACHE_TTL_SECONDS`, `ROUTING_PLACES_CACHE_MAX_ENTRIES`). Failures aren't cached.
+- **At most 1 request a second** for the whole service (`ROUTING_GEOCODER_MIN_INTERVAL_SECONDS`), measured between the moments requests are sent: callers go through one at a time and the clock is read again after every wait, so a late wakeup never lets two through together. A search that would wait longer than `ROUTING_GEOCODER_MAX_WAIT_SECONDS` (3) is answered 503 instead.
+- **Cached:** the same search again (spaces and case ignored) is answered from memory for an hour, up to 500 searches (`ROUTING_PLACES_CACHE_TTL_SECONDS`, `ROUTING_PLACES_CACHE_MAX_ENTRIES`). Expired searches are removed on every search and once a minute, so a typed address doesn't stay in memory past its hour while no one searches. Failures aren't cached.
 - **Identified:** every request sends `ROUTING_GEOCODER_USER_AGENT`.
 - **Private:** a POST, so the address is never in one of our URLs, and nothing logs it. The cache lives only in the process's memory.
 
