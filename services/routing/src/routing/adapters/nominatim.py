@@ -10,6 +10,7 @@ httpx's request URLs (common_web), and nothing here logs the query.
 """
 
 import asyncio
+import contextlib
 import time
 from collections import OrderedDict
 from collections.abc import Awaitable, Callable
@@ -102,9 +103,14 @@ Sleep = Callable[[float], Awaitable[None]]
 
 
 class Throttle:
-    """Spaces calls ``min_interval`` seconds apart for the whole service. A caller that would
-    have to wait longer than ``max_wait`` is turned away (GeocodingUnavailableError) instead
-    of keeping someone waiting."""
+    """Spaces calls at least ``min_interval`` seconds apart for the whole service, measured
+    between the moments callers are let through. A caller that would have to wait longer than
+    ``max_wait`` is turned away (GeocodingUnavailableError) instead of keeping someone waiting.
+
+    Callers go through one at a time, holding a lock while they wait, and the clock is read
+    again after every sleep: a sleep can wake late, and late wakeups must never let two
+    callers through together (Nominatim's limit is an absolute maximum).
+    """
 
     def __init__(
         self,
@@ -117,18 +123,29 @@ class Throttle:
         self.max_wait = max_wait
         self.clock = clock
         self.sleep = sleep
-        self._next_start = float("-inf")
+        self._lock = asyncio.Lock()
+        self._last_start = float("-inf")
+        self._queued = 0  # callers waiting for their turn, including the one holding the lock
+
+    def _wait_now(self) -> float:
+        return max(0.0, self._last_start + self.min_interval - self.clock())
 
     async def wait_turn(self) -> None:
-        now = self.clock()
-        start = max(now, self._next_start)
-        if start - now > self.max_wait:
+        # Turned away at once if the callers already waiting would take us past max_wait.
+        if self._queued * self.min_interval + self._wait_now() > self.max_wait:
             raise GeocodingUnavailableError()
-        # Reserved before waiting, with no await in between, so concurrent callers each get
-        # their own slot.
-        self._next_start = start + self.min_interval
-        if start > now:
-            await self.sleep(start - now)
+        deadline = self.clock() + self.max_wait
+        self._queued += 1
+        try:
+            async with self._lock:
+                while (wait := self._wait_now()) > 0:
+                    if self.clock() + wait > deadline:
+                        raise GeocodingUnavailableError()
+                    await self.sleep(wait)
+                # No await between the check above and this: the next caller measures from here.
+                self._last_start = self.clock()
+        finally:
+            self._queued -= 1
 
 
 class PoliteFinder:
@@ -136,7 +153,9 @@ class PoliteFinder:
     spaced out by ``throttle``.
 
     The cache holds what was typed only in this process's memory, for ``ttl_seconds`` at most,
-    and at most ``max_entries`` searches; it's never written anywhere. Failures aren't cached.
+    and at most ``max_entries`` searches; it's never written anywhere. Expired searches are
+    removed on every search, and by ``purge_expired``, which the service also runs on a timer
+    so nothing outlives its hour while no one is searching. Failures aren't cached.
     """
 
     def __init__(
@@ -154,10 +173,19 @@ class PoliteFinder:
         self.clock = clock
         self._cache: OrderedDict[tuple[str, Area, int], tuple[float, list[Place]]] = OrderedDict()
 
+    def purge_expired(self) -> int:
+        """Removes every expired search from memory. Returns how many were removed."""
+        now = self.clock()
+        expired = [key for key, (expires, _) in self._cache.items() if expires <= now]
+        for key in expired:
+            del self._cache[key]
+        return len(expired)
+
     async def find(self, query: str, area: Area, limit: int) -> list[Place]:
+        self.purge_expired()
         key = (normalize_query(query), area, limit)
         cached = self._cache.get(key)
-        if cached is not None and self.clock() < cached[0]:
+        if cached is not None:
             self._cache.move_to_end(key)
             return list(cached[1])
         await self.throttle.wait_turn()
@@ -167,3 +195,14 @@ class PoliteFinder:
         while len(self._cache) > self.max_entries:
             self._cache.popitem(last=False)
         return list(places)
+
+
+async def purge_periodically(
+    finder: PoliteFinder, stop: asyncio.Event, interval_seconds: float = 60.0
+) -> None:
+    """Removes expired searches every ``interval_seconds`` until ``stop`` is set, so a typed
+    address never stays in memory much past its hour, even when no one searches again."""
+    while not stop.is_set():
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(stop.wait(), timeout=interval_seconds)
+        finder.purge_expired()
