@@ -2,20 +2,20 @@
 
 > Part of the [team process docs](../../CONTRIBUTING.md). Back to [README](../../README.md).
 
-Every change reaches `develop` or `main` through a reviewed pull request. Branch rules are in the [Git workflow](git-workflow.md).
+Every change reaches a feature branch, `develop` or `main` through a reviewed pull request. Branch rules are in the [Git workflow](git-workflow.md).
 
 ## Pull requests
 
 - Open a pull request as soon as the work is ready for review. Use a **draft** pull request if you want early feedback.
 - Keep pull requests small, ideally one task each. Large pull requests are slow to review and more likely to hide bugs.
-- Work branches (`feature/*`, `fix/*`, etc.) target `develop`. Release and hotfix branches target `main`, followed by a second pull request into `develop`, as described in the [Git workflow](git-workflow.md).
-- **Check the base branch.** `main` is the default branch, so GitHub suggests `main` for every new pull request. For work branches, change the base to `develop` before creating the pull request. Reviewers: if a work-branch pull request targets `main`, ask the author to change the base (use **Edit** next to the title) before approving.
-- Fill in the pull request template, including `Closes #<issue-number>`. GitHub only closes the issue automatically when the change reaches the default branch (`main`), which happens at the next release. After merging into `develop`, close the issue yourself.
+- Work branches (`task/*`, `fix/*`, etc.) target the story's feature branch they came from, or `develop` for work outside a story. A finished story's feature branch targets `develop`. Release and hotfix branches target `main`, followed by a second pull request into `develop`, as described in the [Git workflow](git-workflow.md).
+- **Check the base branch.** `main` is the default branch, so GitHub suggests `main` for every new pull request. For work branches, change the base to the story's feature branch (or `develop`) before creating the pull request. Reviewers: if a pull request targets the wrong branch, ask the author to change the base (use **Edit** next to the title) before approving.
+- Fill in the pull request template, including `Closes #<issue-number>`. GitHub only closes the issue automatically when the change reaches the default branch (`main`), which happens at the next release. After merging, close the issue yourself.
 - All automated checks (build, tests, linting) must pass.
 - At least **one approval** from another team member is required before merging.
-- The **author** merges their own work-branch pull request into `develop` after approval, then deletes the branch. Release and hotfix pull requests into `main` are merged by the GitHub Manager (Andrew); because merging into `main` deploys the live site, check the deploy workflow passes afterwards.
+- The **author** merges their own pull request after approval, then deletes the branch. That includes a finished story's pull request into `develop`, opened by anyone who worked on the story; the GitHub Manager (Andrew) deletes the feature branch afterwards, since feature branches are protected. Release and hotfix pull requests into `main` are merged by the GitHub Manager; because merging into `main` deploys the live site, check the deploy workflow passes afterwards.
 - Changes that affect other services (a new or changed API, a new event format) or the overall architecture also need approval from the Technical Lead (Rayan), and should be discussed with the team before the pull request is opened.
-- Merge method: **Squash and merge** for work branches into `develop`, so each task becomes one clean commit. **Create a merge commit** for release and hotfix branches, so `main` and `develop` keep a shared history.
+- Merge method: **Squash and merge** for work branches, so each task becomes one clean commit. **Create a merge commit** for everything else: a feature branch into `develop` (so each task's commit stays visible), `develop` into a feature branch, and release and hotfix branches (so `main` and `develop` keep a shared history).
 
 ## Reviewing
 
@@ -41,6 +41,17 @@ Comment conventions:
 ## Use of AI in reviews
 
 In line with our [working agreement](working-agreement.md), pull requests are reviewed by people. AI tools may not be used to review pull requests. GitHub Copilot may be used by the author as a secondary check on their own code before requesting review.
+
+## Dependency updates and security scanning
+
+**Dependabot** opens pull requests into `develop` every Monday when a dependency has an update (configured in `.github/dependabot.yml`): one grouped PR per ecosystem for minor and patch updates (Python, npm, GitHub Actions), and a separate PR for each major update or Docker base image. Security fixes arrive straight away.
+
+- The GitHub manager triages them each week. A green CI run on a minor or patch PR is enough to merge it.
+- **Security update PRs open against `main`**, because GitHub sends them to the default branch whatever `.github/dependabot.yml` says. Never merge one into `main`: change its base to `develop` first (Edit, next to the PR title), or close it and let the weekly update bring the fix into `develop`. It reaches `main` with the next release, like every other change.
+- A **major** update can break things: read its changelog, and ask the owner of the affected service to review it.
+- Don't let them pile up: close a PR with a comment if we're deliberately staying on a version.
+
+**CodeQL** (`.github/workflows/codeql.yml`) checks the Python and TypeScript code for security problems on every pull request. In Sprint 2 it's advisory: findings show as annotations on the PR and in the **Security** tab, but don't block merging. If it flags code you changed, fix it or explain in the PR why it's a false positive. It becomes a required check in Sprint 3 (#188).
 
 ## Tone
 

@@ -10,10 +10,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from routing.adapters.osrm import OSRMRoutingEngine, OSRMWalkingEngine
 from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.application.compute_route import ComputeRoute
+from routing.application.detour import Detour, DetourCost
+from routing.application.find_places import FindPlaces
 from routing.application.get_route import GetRoute
 from routing.application.match_rider import MatchRider
+from routing.application.ports import DetourPlanCache
+from routing.application.suggest_pickups import SuggestPickups
 from routing.domain.entities import Route
-from routing.domain.values import Corridor, LatLng, RiderMatch
+from routing.domain.values import Corridor, Direction, LatLng, PickupCandidate, RiderMatch
 
 
 class ComputeRouteCommand:
@@ -27,7 +31,15 @@ class ComputeRouteCommand:
         self.session_factory = session_factory
         self.engine = engine
 
-    async def execute(self, *, trip_id: UUID, origin: LatLng, destination: LatLng) -> Route:
+    async def execute(
+        self,
+        *,
+        trip_id: UUID,
+        origin: LatLng,
+        destination: LatLng,
+        driver_id: UUID | None,
+        direction: Direction | None,
+    ) -> Route:
         async with self.session_factory() as session:
             use_case = ComputeRoute(self.engine, SQLAlchemyRouteRepository(session))
 
@@ -36,6 +48,8 @@ class ComputeRouteCommand:
                     trip_id=trip_id,
                     origin=origin,
                     destination=destination,
+                    driver_id=driver_id,
+                    direction=direction,
                 )
 
 
@@ -55,9 +69,9 @@ class GetRouteQuery:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         self.session_factory = session_factory
 
-    async def execute(self, trip_id: UUID) -> Route:
+    async def execute(self, trip_id: UUID, viewer_id: UUID) -> Route:
         async with self.session_factory() as session:
-            return await GetRoute(SQLAlchemyRouteRepository(session)).execute(trip_id)
+            return await GetRoute(SQLAlchemyRouteRepository(session)).execute(trip_id, viewer_id)
 
 
 def get_get_route(request: Request) -> GetRouteQuery:
@@ -108,3 +122,90 @@ def get_match_rider(request: Request) -> MatchRiderQuery:
 
 
 MatchRiderService = Annotated[MatchRiderQuery, Depends(get_match_rider)]
+
+
+class SuggestPickupsQuery:
+    """Finds a rider's pickup points on one trip, reading its route in its own session."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        walking: OSRMWalkingEngine,
+        driving: OSRMRoutingEngine,
+        corridor: Corridor,
+        max_walk_seconds: int,
+    ) -> None:
+        self.session_factory = session_factory
+        self.walking = walking
+        self.driving = driving
+        self.corridor = corridor
+        self.max_walk_seconds = max_walk_seconds
+
+    async def execute(
+        self, *, trip_id: UUID, rider: LatLng, limit: int, exclude: Sequence[str]
+    ) -> list[PickupCandidate]:
+        async with self.session_factory() as session:
+            use_case = SuggestPickups(
+                SQLAlchemyRouteRepository(session),
+                self.walking,
+                self.driving,
+                self.corridor,
+                self.max_walk_seconds,
+            )
+            return await use_case.execute(trip_id, rider, limit, exclude)
+
+
+def get_suggest_pickups(request: Request) -> SuggestPickupsQuery:
+    state = request.app.state
+    return SuggestPickupsQuery(
+        session_factory=state.session_factory,
+        walking=OSRMWalkingEngine(state.osrm_foot_client),
+        driving=OSRMRoutingEngine(state.osrm_car_client),
+        corridor=state.corridor,
+        max_walk_seconds=state.max_walk_seconds,
+    )
+
+
+SuggestPickupsService = Annotated[SuggestPickupsQuery, Depends(get_suggest_pickups)]
+
+
+class DetourQuery:
+    """Works out a new pickup's detour, reading the route in its own database session."""
+
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        driving: OSRMRoutingEngine,
+        plans: DetourPlanCache,
+    ) -> None:
+        self.session_factory = session_factory
+        self.driving = driving
+        self.plans = plans
+
+    async def execute(
+        self, *, trip_id: UUID, accepted_pickups: Sequence[LatLng], new_pickup: LatLng
+    ) -> Detour:
+        async with self.session_factory() as session:
+            use_case = DetourCost(SQLAlchemyRouteRepository(session), self.driving, self.plans)
+            return await use_case.execute(trip_id, accepted_pickups, new_pickup)
+
+
+def get_detour(request: Request) -> DetourQuery:
+    state = request.app.state
+    return DetourQuery(
+        session_factory=state.session_factory,
+        driving=OSRMRoutingEngine(
+            state.osrm_car_client, detour_timeout_seconds=state.detour_timeout_seconds
+        ),
+        plans=state.detour_plans,
+    )
+
+
+DetourService = Annotated[DetourQuery, Depends(get_detour)]
+
+
+def get_find_places(request: Request) -> FindPlaces:
+    return FindPlaces(request.app.state.place_finder)
+
+
+FindPlacesService = Annotated[FindPlaces, Depends(get_find_places)]

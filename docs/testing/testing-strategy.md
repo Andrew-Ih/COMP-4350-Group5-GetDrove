@@ -2,6 +2,8 @@
 
 How GetDrove is tested: the tools, what each kind of test checks, how we replace the parts we don't want in a test, and how to run everything. The tool choices are in [ADR 0013](../architecture/adr/0013-testing.md) (frontend and contracts) and [ADR 0017](../architecture/adr/0017-python-fastapi-backend.md) (backend).
 
+When the tests run, how long they take and what happens when they fail is in [Regression testing](regression.md).
+
 ## Tools
 
 | Area | Tool | Used for |
@@ -16,6 +18,8 @@ How GetDrove is tested: the tools, what each kind of test checks, how we replace
 | Frontend coverage | **Vitest coverage** (`@vitest/coverage-v8`) | Line, branch and function coverage of `web/src/` |
 | Frontend static checks | **ESLint** (with folder rules), **TypeScript** | Style, imports between features, type errors |
 | Contracts | **openapi-typescript** (`npm run api:check`) and contract tests | Frontend types match the contracts; each service's routes match its contract |
+| Smoke test after deploy | **Playwright** (`e2e/`) | A demo rider logs in and searches on the live site after every deploy (#177) |
+| Payments against Stripe | **stripe-mock** (testcontainers), and opt-in tests against our Stripe sandbox | The Stripe calls Payments makes, without real keys in CI |
 
 ## Kinds of tests
 
@@ -94,7 +98,7 @@ npm run test:watch                             # rerun on save
 npm run test:coverage                          # with coverage; open web/coverage/index.html
 ```
 
-In CI, every pull request into `develop` or `main` runs both with coverage. The totals appear on the run's summary page, and the full HTML reports are downloadable from the run as `backend-coverage-report` and `frontend-coverage-report`.
+In CI, every pull request into a feature branch, `develop` or `main` runs both with coverage. The totals appear on the run's summary page, and the full HTML reports are downloadable from the run as `backend-coverage-report` and `frontend-coverage-report`.
 
 ## What a pull request needs
 
@@ -110,9 +114,8 @@ These are planned in the ADRs but not set up yet. They're listed so nobody assum
 
 | Tool | For | When |
 |---|---|---|
-| Playwright | End-to-end tests in a real browser against the full stack | When the main rider and driver flows work end to end |
+| Playwright, beyond the smoke test | End-to-end tests of the main rider and driver flows in CI, against the full stack | Final release (see the coverage gaps) |
 | respx | Mocking HTTP calls between services | When Trips starts calling Routing and Payments |
-| stripe-mock | Payments tests | With the payments work |
 | Hypothesis | Property-based tests (for example, pricing and route corridors) | Where a rule has many edge cases |
 | JMeter, CodeQL, Trivy | Load testing and security scanning | Sprint 3 (#191, #188) |
 
@@ -120,53 +123,64 @@ These are planned in the ADRs but not set up yet. They're listed so nobody assum
 
 Coverage is measured on every pull request. To see the current numbers:
 
-- **On GitHub:** open the CI run for any pull request. The summary page shows the backend and frontend totals, and the full reports can be downloaded as `backend-coverage-report` and `frontend-coverage-report`.
+- **On GitHub:** open the CI run for any pull request. The summary page shows the backend and frontend totals, and the full reports can be downloaded as `backend-coverage-report` and `frontend-coverage-report` (kept for 14 days).
 - **Locally:** `uv run pytest --cov --cov-report=html` and `cd web && npm run test:coverage`, then open `htmlcov/index.html` and `web/coverage/index.html`.
 
 Coverage counts the code that runs during tests. It leaves out the tests themselves, migrations, test helpers, the frontend's mock API and the types generated from the contracts, since counting those would make the numbers look better than they are.
 
-### Sprint 1 report
+### Sprint 2 report
 
-Measured on `develop` at the end of Sprint 1, with every test running (596 backend tests, including the integration tests against real PostgreSQL, Redis and Mailpit, and 178 frontend tests). All passed.
+Measured on `develop` at the end of Sprint 2 (commit `d586b8b`, 18 November 2026) by the [Delivery run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44354061351), with every test running: **1,838 backend tests** (4 opt-in Stripe sandbox tests skipped; see [regression testing](regression.md#1-which-tests-are-in-the-regression-suite)) and **482 frontend tests**. All passed. The full per-file reports from that run are kept as PDFs: [backend](backend-coverage-sprint2.pdf), [frontend](frontend-coverage-sprint2.pdf).
 
-**Backend: 98%** (statements and branches together; 98.5% of statements)
+**Backend: 97%** (statements and branches together; 98.1% of statements). Sprint 1: 98%, with 2.6 times less code.
 
-| Package | Statements | Statements covered | Branches partly covered |
-|---|---|---|---|
-| Accounts | 701 | 99.9% | 1 of 48 |
-| Notifications | 165 | 100% | 0 of 8 |
-| Trips | 527 | 99.1% | 5 of 40 |
-| Routing | 504 | 97.8% | 1 of 46 |
-| Payments | 95 | 97.9% | 1 of 6 |
-| `libs/common-security` | 147 | 98.6% | 2 of 18 |
-| `libs/common-web` | 270 | 97.8% | 6 of 62 |
-| `libs/events` | 277 | 94.9% | 6 of 42 |
+| Package | Statements | Statements covered | Branches partly covered | Sprint 1 |
+|---|---|---|---|---|
+| Accounts | 1,409 | 99.7% | 5 of 122 | 99.9% of 701 |
+| Trips | 2,117 | 99.1% | 21 of 284 | 99.1% of 527 |
+| Notifications | 895 | 98.3% | 3 of 66 | 100% of 165 |
+| Payments | 812 | 96.1% | 23 of 160 | 97.9% of 95 |
+| Routing | 908 | 96.0% | 1 of 112 | 97.8% of 504 |
+| `libs/common-security` | 147 | 98.6% | 2 of 18 | 98.6% |
+| `libs/common-web` | 290 | 97.6% | 5 of 66 | 97.8% |
+| `libs/events` | 367 | 96.5% | 5 of 42 | 94.9% |
+| **Total** | **6,945** | **98.1%** | **65 of 870** | 98.5% of 2,686 |
 
-**Frontend: 79%** of lines (79% of statements, 80% of branches, 75% of functions)
+**Frontend: 86.5%** of lines (86.2% of statements, 86.9% of branches, 85.2% of functions). Sprint 1: 79%.
 
 | Area | Lines covered |
 |---|---|
-| Feature logic (`features/*/model`, `api`, `hooks`) | 92–100% |
-| Screens (`features/*/ui`) | 86–94% |
-| Shared API and login session (`shared/api`) | 100% (69% of branches in `session.ts`) |
-| Shared components (`shared/ui`) | 89% |
+| Feature logic (`features/*/model`, `api`, `hooks`) | 85–100% |
+| Screens (`features/*/ui`) | 90–98%, except payments (63%, below) |
+| Shared API and login session (`shared/api`) | 100% (75% of branches in `session.ts`) |
+| Shared components (`shared/ui`) | 86% |
 | Map (`shared/map`) | 29% |
-| Next.js pages (`app/`) | 0% |
+| Next.js pages (`app/`) | 0% (one page, `app/page.tsx`, at 100%) |
 
-### What's under-tested, and why
+### What the numbers mean
 
-**Backend.** Almost everything is covered, because each use case has unit tests with fakes and each adapter has integration tests against the real database, Redis or SMTP server. The gaps:
+**Where we're strong.** The rules that matter most are the best covered: seat requests, accepting and declining, auto-accept, cancellations and recurring trips in Trips (99%), and driver approval and documents in Accounts (99.7%). Each use case has unit tests with fakes, and each database, Redis and SMTP adapter has integration tests against the real thing. The seat-overselling risk has its own concurrency tests on real PostgreSQL (#50). On the frontend, the new Sprint 2 screens (posting a trip and a series, trip requests, auto-accept, driver approval, notifications, my trips) are 90–98% covered, which is why the total went from 79% to 86.5%.
 
-- **Routing's startup wiring** (`routing/infrastructure/main.py`, 66%): the tests give the app its database and OSRM clients directly instead of starting it, so the code that creates them at startup never runs in a test. It's checked when the service actually starts, and the deploy now checks a real OSRM route from inside the Routing container after every release.
-- **A few validation rules on a trip** (`trips/domain/entities.py`): the checks for more free seats than seats, a time without a timezone, and an arrival before the departure aren't tested on their own. The API and `Trip.create` never produce those, but the rules should still have their own tests.
-- **Rare error paths in the event library** (`libs/events`, 95%): the consumer loop recovering after Redis drops mid-read, an event that can't be parsed, and an entry deleted from the stream. The main paths (retry, park after 5 tries, handle each event once) are tested against real Redis.
-- **Calls between services are tested with fake HTTP**: Trips' calls to Routing and Payments, and Routing's calls to OSRM, run against fake responses (every failure mode is tested that way). Nothing yet runs the services together in a test. Real OSRM is checked by `infra/osrm/check.sh` and the deploy's route check, not by the test suite.
+**Where we're weak, and why.** The low numbers are in three places, and they share a cause: code that only runs when the real app starts, or in a real browser.
 
-**Frontend.** Feature logic and screens are well covered. The total is pulled down by code that can't run in the simulated browser tests use, or that isn't worth testing on its own:
+- **Startup and wiring.** Routing's startup (`routing/infrastructure/main.py`, 53%), the Routing event handler that frees cached detour plans when a request changes (`routing/adapters/events/handlers.py`, 54%), and Notifications' database-backed bell (`notifications/adapters/api/dependencies.py`, 64%). The tests give each app its dependencies directly, so the code that builds them at startup never runs in a test. The parts they connect are tested on their own.
+- **Payments' hold edge cases** (`payments/application/holds.py` 89%, `payments/adapters/persistence/holds.py` 87%, 23 partly covered branches). The main paths (place a hold, release it three ways, a declined card) are tested; some rare ones aren't (below).
+- **The browser.** Next.js pages, the map and Stripe's card field (below).
 
-- **Next.js pages** (`app/`, 0%): each page only reads the URL and renders a feature component, which has its own tests. What's untested is the wiring between pages (redirects after login, the search going to the results page). That needs end-to-end tests in a real browser (Playwright), which aren't set up yet. The `app/design` pages are a developer-only showcase of the design system.
-- **The map** (`MapView.client.tsx`, 0%): MapLibre needs WebGL, which jsdom doesn't have. The map's logic (fitting the view, drawing routes and pickups) is kept in `shared/map/geo.ts`, which is 100% covered; what's left is drawing.
-- **The service status page** (`features/status`, mostly 0%): a developer page that shows each service's `/health`. Only its API call is tested.
-- **Cross-tab login session branches** (`shared/api/session.ts`, 69% of branches): the code that shares a refresh between tabs (`navigator.locks`, `BroadcastChannel`) has fallbacks for browsers without those APIs, and jsdom only exercises one side of each.
+Dropping from 98% to 97% on the backend is from Payments and Routing growing faster than their tests; the other packages held steady or went up.
 
-**Next sprint:** tests for the trip validation rules, and Playwright for the main rider and driver flows (which would also cover the pages and the map).
+### Gaps
+
+The gaps we know about, why they exist, and what we'll do. Each one points at the code.
+
+**1. Pages, the map and the Stripe card field are never tested in a browser.** The Next.js pages (`web/src/app/`, 0%), the map (`shared/map/MapView.client.tsx`, 0%: MapLibre needs WebGL, which jsdom doesn't have) and Stripe's card field (`features/payments/ui/StripeCardField.tsx`, 7%: Stripe's iframe only loads in a real browser) are what a student actually sees, but our component tests run in jsdom. The only browser test is the post-deploy smoke test (#177), which logs in and searches. So a broken redirect between pages, a map that doesn't draw, or a card form that doesn't load would only be caught by hand. **Plan: before the final release**, Playwright tests in CI against the Docker stack for the main flow: a rider requests a seat with a saved test card, the driver accepts, and the rider sees the hold and the notification (#435).
+
+**2. Stripe itself is only tested by hand.** In CI, Payments runs against fakes and `stripe-mock`, which checks our requests' shape but not Stripe's behaviour. The tests against our real Stripe sandbox (a hold, its three kinds of release, a declined card) are opt-in and skipped in CI, because they need a test key. Some hold paths aren't tested at all (`payments/application/holds.py` lines 69, 101, 120, 148–151, 188–195): a card that needs 3-D Secure when the hold is placed (Stripe's `requires_action`, which should fail the hold), releasing a hold that was already captured, Stripe declining while a hold is being released, and two "not yet" early returns. These are rare, but they're about money. **Plan: before the final release**, unit tests for those paths with the fake gateway, and a scheduled workflow that runs the sandbox tests weekly with the test key (#436).
+
+**3. Background work is tested one pass at a time.** Ride reminders (Notifications), placing holds before departure (Payments' hold worker) and freeing detour plans (Routing) all run in the background. Each is tested by calling one pass directly with a fake clock against a real database (for example `ReminderScheduler.run_once`), not by starting the service and waiting. What's untested is the loop around it (`reminder_scheduler.py` lines 106–110, `hold_worker.py` 91%) and the startup wiring above. A reminder that's never scheduled because the loop didn't start would only show up in the logs. **Plan:** the wiring tests (startup, Routing's handler, the bell) are small and **will be done before the final release** (#437). Running the real loops at real times in a test would be slow and flaky, so we **accept** that gap: the deploy's `/health` checks confirm each service starts, and the loops log every failed pass.
+
+**Carried over from Sprint 1.** We said we'd add tests for the trip validation rules in `trips/domain/entities.py` (more free seats than seats, a time without a timezone, an arrival before the departure). They're still missing (lines 36, 45, 51, 54). They're added with the wiring tests (#437). The other Sprint 1 plan, Playwright, is partly done: the post-deploy smoke test exists, the flow tests are gap 1.
+
+### Sprint 1 report
+
+Measured on `develop` at the end of Sprint 1, with 596 backend tests and 178 frontend tests. Backend 98% (98.5% of statements, 2,686 statements); frontend 79% of lines. The per-file reports are kept as PDFs: [backend](backend-coverage-sprint1.pdf), [frontend](frontend-coverage-sprint1.pdf). The per-package numbers are in the Sprint 2 table above for comparison.

@@ -552,10 +552,1318 @@
           }
         }
       }
+    },
+    "/me/driver": {
+      "get": {
+        "tags": [
+          "drivers"
+        ],
+        "summary": "My driver status",
+        "description": "Whether the logged-in user has applied to drive, and where it stands: `none`, `pending`, `approved` or `rejected` (with the reason).",
+        "operationId": "my_driver_profile_me_driver_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/me/driver",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/me/driver/documents": {
+      "put": {
+        "tags": [
+          "drivers"
+        ],
+        "summary": "Upload my licence and insurance",
+        "description": "Both files, PDF, JPEG or PNG, up to 5 MB each. Uploading (again, after a rejection) sets the status to `pending`. Only the driver and admins can open them.",
+        "operationId": "upload_documents_me_driver_documents_put",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_documents_me_driver_documents_put"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/me/driver/documents",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already approved (code `driver_already_approved`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "Already approved",
+                  "instance": "/me/driver/documents",
+                  "code": "driver_already_approved",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input, a file that isn't PDF, JPEG or PNG, or one over 5 MB (code `invalid_input / unsupported_file_type / file_too_large`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/me/driver/documents",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/me/driver/documents/{kind}": {
+      "get": {
+        "tags": [
+          "drivers"
+        ],
+        "summary": "Open one of my documents",
+        "operationId": "my_document_me_driver_documents__kind__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file as uploaded.",
+            "content": {
+              "application/pdf": {},
+              "image/jpeg": {},
+              "image/png": {}
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/me/driver/documents/{kind}",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/me/driver/documents/{kind}",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No document of this kind uploaded (code `document_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No document of this kind uploaded",
+                  "instance": "/me/driver/documents/{kind}",
+                  "code": "document_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/me/driver/vehicle": {
+      "put": {
+        "tags": [
+          "drivers"
+        ],
+        "summary": "Save my vehicle",
+        "description": "Make, model, colour and plate. The plate is stored in uppercase.",
+        "operationId": "save_vehicle_me_driver_vehicle_put",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Vehicle"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriverProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/me/driver/vehicle",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/me/driver/vehicle",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/admin/drivers": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Driver applications",
+        "description": "Applications with the given status, oldest first (default: pending). Students who never applied aren't applications, so `none` isn't accepted.",
+        "operationId": "list_drivers_admin_drivers_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "pending",
+                "approved",
+                "rejected"
+              ],
+              "type": "string",
+              "default": "pending",
+              "title": "Status"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/AdminDriver"
+                  },
+                  "title": "Response List Drivers Admin Drivers Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/admin/drivers",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only admins can do this (code `forbidden`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only admins can do this",
+                  "instance": "/admin/drivers",
+                  "code": "forbidden",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/admin/drivers",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/drivers/{user_id}/documents/{kind}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Open a driver's document",
+        "operationId": "driver_document_admin_drivers__user_id__documents__kind__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/DocumentKind"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file as uploaded.",
+            "content": {
+              "application/pdf": {},
+              "image/jpeg": {},
+              "image/png": {}
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/admin/drivers/{user_id}/documents/{kind}",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only admins can do this (code `forbidden`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only admins can do this",
+                  "instance": "/admin/drivers/{user_id}/documents/{kind}",
+                  "code": "forbidden",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/admin/drivers/{user_id}/documents/{kind}",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No document of this kind uploaded (code `document_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No document of this kind uploaded",
+                  "instance": "/admin/drivers/{user_id}/documents/{kind}",
+                  "code": "document_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/drivers/{user_id}/approve": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Approve a driver",
+        "description": "They can post trips straight away, without logging in again. Only an application with both documents and a saved vehicle can be approved, since riders need the vehicle to find their driver. Publishes `DriverApproved`.",
+        "operationId": "approve_driver_admin_drivers__user_id__approve_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminDriver"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/admin/drivers/{user_id}/approve",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only admins can do this (code `forbidden`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only admins can do this",
+                  "instance": "/admin/drivers/{user_id}/approve",
+                  "code": "forbidden",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/admin/drivers/{user_id}/approve",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No driver application for this user (code `driver_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No driver application for this user",
+                  "instance": "/admin/drivers/{user_id}/approve",
+                  "code": "driver_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The application isn't pending, or the driver hasn't saved a vehicle yet (code `driver_not_pending / vehicle_missing`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "The application isn't pending, or the driver hasn't saved a vehicle yet",
+                  "instance": "/admin/drivers/{user_id}/approve",
+                  "code": "driver_not_pending",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/drivers/{user_id}/reject": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Reject a driver",
+        "description": "The reason is shown to the driver, who can upload new documents. Publishes `DriverRejected`.",
+        "operationId": "reject_driver_admin_drivers__user_id__reject_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectDriverRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminDriver"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/admin/drivers/{user_id}/reject",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Only admins can do this (code `forbidden`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Forbidden",
+                  "status": 403,
+                  "detail": "Only admins can do this",
+                  "instance": "/admin/drivers/{user_id}/reject",
+                  "code": "forbidden",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/admin/drivers/{user_id}/reject",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No driver application for this user (code `driver_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No driver application for this user",
+                  "instance": "/admin/drivers/{user_id}/reject",
+                  "code": "driver_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The application isn't pending (code `driver_not_pending`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Conflict",
+                  "status": 409,
+                  "detail": "The application isn't pending",
+                  "instance": "/admin/drivers/{user_id}/reject",
+                  "code": "driver_not_pending",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/users/{user_id}/profile": {
+      "get": {
+        "tags": [
+          "users"
+        ],
+        "summary": "A user's public profile",
+        "description": "First name, rating, completed trips, and (for approved drivers) their vehicle without its plate. Never their email or last name.",
+        "operationId": "public_profile_users__user_id__profile_get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/users/{user_id}/profile",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/users/{user_id}/profile",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No user with this ID (code `user_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No user with this ID",
+                  "instance": "/users/{user_id}/profile",
+                  "code": "user_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/users": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Names, ratings and no-shows",
+        "description": "For Trips (the driver's list of requests, auto-accept). No email.",
+        "operationId": "internal_users_internal_users_get",
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Repeat for each user: `?ids=...&ids=...`.",
+              "title": "Ids"
+            },
+            "description": "Repeat for each user: `?ids=...&ids=...`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalUsers"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/internal/users",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/contacts": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Names and emails",
+        "description": "For Notifications only: where to send emails.",
+        "operationId": "internal_contacts_internal_contacts_get",
+        "parameters": [
+          {
+            "name": "ids",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "minItems": 1,
+              "maxItems": 50,
+              "description": "Repeat for each user: `?ids=...&ids=...`.",
+              "title": "Ids"
+            },
+            "description": "Repeat for each user: `?ids=...&ids=...`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InternalContacts"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/internal/contacts",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "password",
+                      "message": "String should have at least 10 characters"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
     "schemas": {
+      "AdminDriver": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "firstName": {
+            "type": "string",
+            "title": "Firstname",
+            "examples": [
+              "Ada"
+            ]
+          },
+          "lastName": {
+            "type": "string",
+            "title": "Lastname",
+            "examples": [
+              "Lovelace"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "title": "Email",
+            "examples": [
+              "ada.lovelace@myumanitoba.ca"
+            ]
+          },
+          "status": {
+            "$ref": "#/components/schemas/DriverStatus"
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Vehicle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "documents": {
+            "$ref": "#/components/schemas/DocumentsUploaded"
+          },
+          "submittedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submittedat"
+          },
+          "reviewedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewedat"
+          },
+          "rejectionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectionreason"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "firstName",
+          "lastName",
+          "email",
+          "status",
+          "vehicle",
+          "documents",
+          "submittedAt",
+          "reviewedAt",
+          "rejectionReason"
+        ],
+        "title": "AdminDriver",
+        "description": "A driver application, as an admin sees it."
+      },
+      "Body_upload_documents_me_driver_documents_put": {
+        "properties": {
+          "licence": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Licence",
+            "description": "Driver's licence."
+          },
+          "insurance": {
+            "type": "string",
+            "contentMediaType": "application/octet-stream",
+            "title": "Insurance",
+            "description": "Proof of insurance."
+          }
+        },
+        "type": "object",
+        "required": [
+          "licence",
+          "insurance"
+        ],
+        "title": "Body_upload_documents_me_driver_documents_put"
+      },
+      "DocumentKind": {
+        "type": "string",
+        "enum": [
+          "licence",
+          "insurance"
+        ],
+        "title": "DocumentKind"
+      },
+      "DocumentsUploaded": {
+        "properties": {
+          "licence": {
+            "type": "boolean",
+            "title": "Licence"
+          },
+          "insurance": {
+            "type": "boolean",
+            "title": "Insurance"
+          }
+        },
+        "type": "object",
+        "required": [
+          "licence",
+          "insurance"
+        ],
+        "title": "DocumentsUploaded"
+      },
+      "DriverProfile": {
+        "properties": {
+          "status": {
+            "$ref": "#/components/schemas/DriverStatus"
+          },
+          "rejectionReason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejectionreason",
+            "description": "Set when `status` is `rejected`."
+          },
+          "documents": {
+            "$ref": "#/components/schemas/DocumentsUploaded"
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Vehicle"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "submittedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Submittedat",
+            "description": "When documents were last uploaded."
+          },
+          "reviewedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reviewedat",
+            "description": "When an admin last decided."
+          }
+        },
+        "type": "object",
+        "required": [
+          "status",
+          "rejectionReason",
+          "documents",
+          "vehicle",
+          "submittedAt",
+          "reviewedAt"
+        ],
+        "title": "DriverProfile",
+        "description": "The logged-in user's own driver status."
+      },
+      "DriverStatus": {
+        "type": "string",
+        "enum": [
+          "none",
+          "pending",
+          "approved",
+          "rejected"
+        ],
+        "title": "DriverStatus"
+      },
       "HealthOut": {
         "properties": {
           "status": {
@@ -574,6 +1882,129 @@
           "service"
         ],
         "title": "HealthOut"
+      },
+      "InternalContact": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "firstName": {
+            "type": "string",
+            "title": "Firstname"
+          },
+          "email": {
+            "type": "string",
+            "title": "Email"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "firstName",
+          "email"
+        ],
+        "title": "InternalContact",
+        "description": "For Notifications only: where to send emails."
+      },
+      "InternalContacts": {
+        "properties": {
+          "contacts": {
+            "items": {
+              "$ref": "#/components/schemas/InternalContact"
+            },
+            "type": "array",
+            "title": "Contacts",
+            "description": "Unknown IDs are left out."
+          }
+        },
+        "type": "object",
+        "required": [
+          "contacts"
+        ],
+        "title": "InternalContacts"
+      },
+      "InternalUser": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "firstName": {
+            "type": "string",
+            "title": "Firstname"
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating"
+          },
+          "ratingCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ratingcount"
+          },
+          "tripCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tripcount"
+          },
+          "noShowCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Noshowcount"
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Vehicle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Approved drivers only, with the plate: Trips shows it to the riders accepted on their trips."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "firstName",
+          "rating",
+          "ratingCount",
+          "tripCount",
+          "noShowCount",
+          "vehicle"
+        ],
+        "title": "InternalUser",
+        "description": "For Trips: names, ratings, no-shows and drivers' vehicles. No email."
+      },
+      "InternalUsers": {
+        "properties": {
+          "users": {
+            "items": {
+              "$ref": "#/components/schemas/InternalUser"
+            },
+            "type": "array",
+            "title": "Users",
+            "description": "Unknown IDs are left out."
+          }
+        },
+        "type": "object",
+        "required": [
+          "users"
+        ],
+        "title": "InternalUsers"
       },
       "InvalidFieldOut": {
         "properties": {
@@ -757,6 +2188,127 @@
         ],
         "title": "Problem",
         "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
+      },
+      "PublicProfile": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "firstName": {
+            "type": "string",
+            "title": "Firstname",
+            "examples": [
+              "Ada"
+            ]
+          },
+          "rating": {
+            "anyOf": [
+              {
+                "type": "number",
+                "maximum": 5.0,
+                "minimum": 1.0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rating",
+            "description": "Average rating; null if they have no ratings yet."
+          },
+          "ratingCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Ratingcount"
+          },
+          "tripCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Tripcount",
+            "description": "Completed trips, as a driver or rider."
+          },
+          "isDriver": {
+            "type": "boolean",
+            "title": "Isdriver",
+            "description": "An approved driver."
+          },
+          "vehicle": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicVehicle"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Approved drivers only."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "firstName",
+          "rating",
+          "ratingCount",
+          "tripCount",
+          "isDriver",
+          "vehicle"
+        ],
+        "title": "PublicProfile",
+        "description": "What any logged-in student can see about another."
+      },
+      "PublicVehicle": {
+        "properties": {
+          "make": {
+            "type": "string",
+            "title": "Make",
+            "examples": [
+              "Honda"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "examples": [
+              "Civic"
+            ]
+          },
+          "colour": {
+            "type": "string",
+            "title": "Colour",
+            "examples": [
+              "Blue"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "make",
+          "model",
+          "colour"
+        ],
+        "title": "PublicVehicle",
+        "description": "A vehicle without its plate."
+      },
+      "RejectDriverRequest": {
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Reason",
+            "description": "Shown to the driver, so they know what to fix.",
+            "examples": [
+              "The insurance document has expired."
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "reason"
+        ],
+        "title": "RejectDriverRequest"
       },
       "ResendVerificationRequest": {
         "properties": {
@@ -944,6 +2496,54 @@
           "roles"
         ],
         "title": "User"
+      },
+      "Vehicle": {
+        "properties": {
+          "make": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Make",
+            "examples": [
+              "Honda"
+            ]
+          },
+          "model": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Model",
+            "examples": [
+              "Civic"
+            ]
+          },
+          "colour": {
+            "type": "string",
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Colour",
+            "examples": [
+              "Blue"
+            ]
+          },
+          "plate": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9]{2,8}$",
+            "title": "Plate",
+            "description": "2 to 8 letters and digits, no spaces. Stored and returned in uppercase. Only shown to the driver, admins, and riders accepted on their trips.",
+            "examples": [
+              "ABC123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "make",
+          "model",
+          "colour",
+          "plate"
+        ],
+        "title": "Vehicle"
       },
       "VerifyEmailRequest": {
         "properties": {

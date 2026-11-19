@@ -1,31 +1,69 @@
-"""Trips API (Sprint 1): post a trip, my trips, trip detail and search.
+"""Trips API: post a trip, my trips and search (Sprint 1), and the Sprint 2 contract (#262):
+recurring trips, cancelling, trip detail with pickup points, seat requests, and auto-accept.
 
-POST, my trips, and search are implemented. Trip detail remains a contract stub.
-Paths here are relative to the gateway prefix /api/trips.
+Paths here are relative to the gateway prefix /api/trips. Fixed paths (/mine, /search,
+/series, /requests/..., /auto-accept) are declared before /{trip_id}, so they aren't read as
+a trip ID.
 """
 
-from typing import Annotated, Any, Literal, NoReturn
+from datetime import UTC, datetime
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 from pydantic import AwareDatetime
 
 from common_security.dependencies import AuthenticatedUser
+from common_web import InvalidField, InvalidInputError
 from trips.adapters.api.dependencies import (
+    AutoAcceptRulesService,
+    CancelSeriesService,
+    CancelTripService,
+    DecideRequestService,
+    PostRecurringTripService,
     PostTripService,
+    RequestSeatService,
+    RiderTripsService,
     SearchTripsService,
+    TripDetailService,
+    TripRequestsService,
     UpcomingTripsService,
 )
 from trips.adapters.api.schemas import (
+    MAX_EXCLUDED_PICKUPS,
+    AutoAcceptRules,
     Cost,
+    DriverPickup,
+    DriverRequestView,
     Pickup,
+    PickupOption,
+    PickupPointId,
     Place,
     PostTripRequest,
+    PostTripSeriesRequest,
     Problem,
+    RequestPickup,
+    RequestStatus,
+    RiderSummary,
+    RiderTrip,
     SearchResult,
+    SeatRequest,
+    SeatRequestBody,
     Trip,
+    TripDetail,
+    TripSeriesResult,
+    TripVehicle,
 )
+from trips.application.decide_request import RequestActionCommand
+from trips.application.list_trip_requests import (
+    DriverRequest,
+    ListTripRequestsCommand,
+)
+from trips.application.request_seat import RequestSeatCommand
+from trips.domain import auto_accept
+from trips.domain.entities import WINNIPEG_TZ, TripSeries
 from trips.domain.entities import Trip as TripEntity
+from trips.domain.seat_request import SeatRequest as SeatRequestEntity
 from trips.domain.values import Direction, Location, Point
 
 router = APIRouter(tags=["trips"])
@@ -42,12 +80,18 @@ UNAUTHORIZED: Responses = {401: _problem("Missing or invalid access token", "una
 
 INVALID: Responses = {422: _problem("Invalid input; `errors` lists the fields", "invalid_input")}
 
+TRIP_NOT_FOUND: Responses = {404: _problem("No trip with this ID", "trip_not_found")}
 
-def _not_implemented() -> NoReturn:
-    raise HTTPException(
-        status_code=501,
-        detail="Not implemented yet: this is a contract (#108).",
-    )
+REQUEST_NOT_FOUND: Responses = {404: _problem("No request with this ID", "request_not_found")}
+
+NOT_APPROVED: Responses = {
+    403: _problem("Only approved drivers can post trips", "driver_not_approved")
+}
+
+When = Annotated[
+    Literal["upcoming", "past"],
+    Query(description="Upcoming (soonest first) or past (most recent first)."),
+]
 
 
 @router.post(
@@ -58,6 +102,7 @@ def _not_implemented() -> NoReturn:
     "computed when the trip is posted; if it can't be, nothing is saved.",
     responses={
         **UNAUTHORIZED,
+        **NOT_APPROVED,
         422: _problem(
             "Invalid input, including seats outside 1-6, an unroutable place, "
             "or a departure in the past",
@@ -89,23 +134,132 @@ async def post_trip(
     return _to_response(trip)
 
 
+@router.post(
+    "/series",
+    status_code=201,
+    summary="Post a recurring weekday trip",
+    description="Creates one trip per matching weekday from the first departure up to "
+    "`endDate`, all at the same Winnipeg time. Each is its own trip that riders request "
+    "separately. Days that clash with the driver's other trips are skipped and listed in "
+    "`skippedDates`.",
+    responses={
+        **UNAUTHORIZED,
+        **NOT_APPROVED,
+        422: _problem(
+            "Invalid input, including a weekday listed twice, a first departure that isn't "
+            "on one of the weekdays, an end date before the first departure or more than 16 "
+            "weeks after it, or a departure in the past",
+            "invalid_input / departure_in_past",
+        ),
+        503: _problem("The route couldn't be computed right now", "routing_unavailable"),
+    },
+)
+async def post_trip_series(
+    body: PostTripSeriesRequest,
+    user: AuthenticatedUser,
+    service: PostRecurringTripService,
+) -> TripSeriesResult:
+    series = TripSeries.create(
+        driver_id=user.id,
+        direction=body.direction,
+        place=Location(
+            label=body.place.label,
+            lat=body.place.lat,
+            lng=body.place.lng,
+        ),
+        departure_at=body.departure_at,
+        seats_total=body.seats_total,
+        weekdays=list[str](body.weekdays),
+        end_date=body.end_date,
+    )
+
+    result = await service.execute(series=series)
+
+    return TripSeriesResult(
+        series_id=result.series.id,
+        trips=[_to_response(trip) for trip in result.created_trips],
+        skipped_dates=[
+            departure.astimezone(WINNIPEG_TZ).date() for departure in result.skipped_departures
+        ],
+    )
+
+
 @router.get(
     "/mine",
-    summary="My upcoming trips",
-    description="The logged-in user's upcoming trips, soonest first. `role=driver` lists trips "
-    "they've posted. `role=rider` (trips they've requested) arrives in Sprint 2.",
+    summary="My trips as a driver",
+    description="Trips the logged-in user has posted, including cancelled ones. A rider's "
+    "trips are at `GET /requests/mine`.",
     responses={**UNAUTHORIZED, **INVALID},
 )
 async def my_trips(
     user: AuthenticatedUser,
     service: UpcomingTripsService,
-    role: Annotated[Literal["driver", "rider"], Query()] = "driver",
+    role: Annotated[
+        Literal["driver"], Query(description="Kept for older clients; always `driver`.")
+    ] = "driver",
+    when: When = "upcoming",
 ) -> list[Trip]:
-    if role == "rider":
-        _not_implemented()
-
-    trips = await service.execute(driver_id=user.id)
+    trips = await service.execute(driver_id=user.id, past=when == "past")
     return [_to_response(trip) for trip in trips]
+
+
+@router.get(
+    "/requests/mine",
+    summary="My trips as a rider",
+    description="Trips the logged-in user has requested a seat on, each with their request "
+    "and its status (pending, accepted, declined, cancelled, expired, payment failed). "
+    "Cancelled trips are included, not removed.",
+    responses={**UNAUTHORIZED, **INVALID},
+)
+async def my_requests(
+    user: AuthenticatedUser, service: RiderTripsService, when: When = "upcoming"
+) -> list[RiderTrip]:
+    rows = await service.execute(rider_id=user.id, past=when == "past")
+    return [
+        RiderTrip(trip=_for_rider(trip), request=_seat_request_response(request))
+        for trip, request in rows
+    ]
+
+
+@router.get(
+    "/auto-accept",
+    summary="My auto-accept rules",
+    description="The driver's rules. If they've never set any: off, 5 minutes, no minimum rating.",
+    responses=UNAUTHORIZED,
+)
+async def get_auto_accept(
+    user: AuthenticatedUser, service: AutoAcceptRulesService
+) -> AutoAcceptRules:
+    return _auto_accept_out(await service.get(driver_id=user.id))
+
+
+@router.put(
+    "/auto-accept",
+    summary="Set my auto-accept rules",
+    description="A request is accepted automatically when auto-accept is on, its pickup adds "
+    "at most `maxDetourMinutes` (`detourSeconds <= maxDetourMinutes * 60`), the rider is "
+    "rated at least `minRating` (riders with no "
+    "ratings yet pass), and a seat is free. Otherwise it waits for the driver. Changes apply "
+    "to new requests only.",
+    responses={**UNAUTHORIZED, **INVALID},
+)
+async def put_auto_accept(
+    body: AutoAcceptRules, user: AuthenticatedUser, service: AutoAcceptRulesService
+) -> AutoAcceptRules:
+    rules = auto_accept.AutoAcceptRules(
+        enabled=body.enabled,
+        max_detour_minutes=body.max_detour_minutes,
+        min_rating=body.min_rating,
+    )
+    return _auto_accept_out(await service.set(driver_id=user.id, rules=rules))
+
+
+def _auto_accept_out(rules: auto_accept.AutoAcceptRules) -> AutoAcceptRules:
+    return AutoAcceptRules(
+        enabled=rules.enabled,
+        max_detour_minutes=rules.max_detour_minutes,
+        min_rating=rules.min_rating,
+    )
 
 
 @router.get(
@@ -161,8 +315,166 @@ async def search_trips(
     ]
 
 
+@router.get(
+    "/requests/{request_id}",
+    summary="One seat request",
+    description="For the rider who made it or the trip's driver, e.g. to see whether a "
+    "pending request was accepted.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Not your request or your trip", "forbidden"),
+        **REQUEST_NOT_FOUND,
+    },
+)
+async def get_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    return _seat_request_response(await service.get(request_id, user.id))
+
+
+@router.post(
+    "/requests/{request_id}/accept",
+    summary="Accept a request",
+    description="The trip's driver gives the rider a seat. Taking the seat is atomic: when "
+    "two requests race for the last seat, exactly one wins and the other gets `seat_taken`.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Only the trip's driver can accept", "not_trip_driver"),
+        **REQUEST_NOT_FOUND,
+        409: _problem(
+            "No seat left, or the request isn't pending",
+            "seat_taken / request_not_pending",
+        ),
+    },
+)
+async def accept_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.accept(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
+
+
+@router.post(
+    "/requests/{request_id}/decline",
+    summary="Decline a request",
+    description="The trip's driver turns down a pending request, or removes an accepted "
+    "rider before the trip starts. An accepted rider's seat is freed straight away.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Only the trip's driver can decline", "not_trip_driver"),
+        **REQUEST_NOT_FOUND,
+        409: _problem(
+            "Only pending or accepted requests on a trip that hasn't started can be declined",
+            "request_not_decidable",
+        ),
+    },
+)
+async def decline_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.decline(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
+
+
+@router.post(
+    "/requests/{request_id}/cancel",
+    summary="Cancel my request",
+    description="The rider withdraws a pending or accepted request before the trip starts. "
+    "An accepted seat is freed straight away and any hold on their card is released.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Only the rider who made it can cancel it", "not_your_request"),
+        **REQUEST_NOT_FOUND,
+        409: _problem(
+            "Only pending or accepted requests on a trip that hasn't started can be cancelled",
+            "request_not_cancellable",
+        ),
+    },
+)
+async def cancel_request(
+    request_id: UUID, user: AuthenticatedUser, service: DecideRequestService
+) -> SeatRequest:
+    request = await service.cancel(
+        RequestActionCommand(request_id=request_id, user_id=user.id, now=datetime.now(UTC))
+    )
+    return _seat_request_response(request)
+
+
+@router.post(
+    "/series/{series_id}/cancel",
+    summary="Cancel a recurring series",
+    description="Cancels every trip in the series that hasn't started. Riders are notified "
+    "and holds released, as for a single cancellation. Returns the trips cancelled.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Only the series' driver can cancel it", "not_trip_driver"),
+        404: _problem("No series with this ID", "series_not_found"),
+    },
+)
+async def cancel_series(
+    series_id: UUID, user: AuthenticatedUser, service: CancelSeriesService
+) -> list[Trip]:
+    cancelled = await service.execute(series_id=series_id, driver_id=user.id)
+    return [_to_response(trip) for trip in cancelled]
+
+
 def _place(location: Location) -> Place:
     return Place(label=location.label, lat=location.lat, lng=location.lng)
+
+
+def _seat_request_response(request: SeatRequestEntity) -> SeatRequest:
+    return SeatRequest(
+        id=request.id,
+        trip_id=request.trip_id,
+        rider_id=request.rider_id,
+        status=RequestStatus(request.status.value),
+        pickup=RequestPickup(
+            label=request.pickup.label,
+            lat=request.pickup.lat,
+            lng=request.pickup.lng,
+            walk_seconds=request.walk_seconds,
+        ),
+        cost=Cost(
+            amount_cents=request.cost.amount_cents,
+            explanation=request.cost.explanation,
+        ),
+        auto_accepted=request.auto_accepted,
+        created_at=request.created_at,
+        decided_at=request.decided_at,
+    )
+
+
+def _driver_request_response(item: DriverRequest) -> DriverRequestView:
+    request = item.request
+    return DriverRequestView(
+        id=request.id,
+        status=RequestStatus(request.status.value),
+        rider=RiderSummary(
+            id=item.rider.id,
+            first_name=item.rider.first_name,
+            rating=item.rider.rating,
+            rating_count=item.rider.rating_count,
+            no_show_count=item.rider.no_show_count,
+        ),
+        pickup=DriverPickup(
+            label=request.pickup.label, lat=request.pickup.lat, lng=request.pickup.lng
+        ),
+        pickup_order=item.pickup_order,
+        detour_seconds=request.detour_seconds,
+        cost=Cost(amount_cents=request.cost.amount_cents, explanation=request.cost.explanation),
+        auto_accepted=request.auto_accepted,
+        created_at=request.created_at,
+        decided_at=request.decided_at,
+    )
 
 
 def _for_rider(trip: TripEntity) -> Trip:
@@ -182,6 +494,7 @@ def _for_rider(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
@@ -199,22 +512,170 @@ def _to_response(trip: TripEntity) -> Trip:
         seats_total=trip.seats_total,
         seats_available=trip.seats_available,
         status=trip.status,
+        series_id=trip.series_id,
     )
 
 
 @router.get(
     "/{trip_id}",
     summary="Trip detail",
-    description="One trip. The driver's own end of the trip is returned only to its driver. "
-    "The pickup point and cost for a specific rider are added in Sprint 2.",
+    description="One trip, with up to 3 pickup points for the rider at `lat`/`lng` (each "
+    "with its walking time and price) and the caller's own request on it, if any. The "
+    "driver's own end of the trip is returned only to its driver. Send `lat` and `lng` "
+    "together or not at all; they're used to find pickup points and never stored. "
+    "`exclude` leaves out pickup points the rider rejected (#136), so the next best come "
+    "back instead; it's ignored without `lat` and `lng`.",
     responses={
         **UNAUTHORIZED,
-        **INVALID,
-        404: _problem("No trip with this ID", "trip_not_found"),
+        422: _problem("Invalid input, including only one of `lat` and `lng`", "invalid_input"),
+        **TRIP_NOT_FOUND,
+        503: _problem("Pickup points can't be worked out right now", "routing_unavailable"),
     },
 )
 async def get_trip(
     trip_id: UUID,
     user: AuthenticatedUser,
-) -> Trip:
-    _not_implemented()
+    service: TripDetailService,
+    lat: Annotated[float | None, Query(ge=-90, le=90, description="Rider's latitude.")] = None,
+    lng: Annotated[float | None, Query(ge=-180, le=180, description="Rider's longitude.")] = None,
+    exclude: Annotated[
+        list[PickupPointId] | None,
+        Query(
+            max_length=MAX_EXCLUDED_PICKUPS,
+            description="IDs of pickup points the rider rejected, repeated: "
+            "`?exclude=s42&exclude=s45`. At most 20.",
+        ),
+    ] = None,
+) -> TripDetail:
+    if (lat is None) != (lng is None):
+        missing = "lng" if lng is None else "lat"
+        raise InvalidInputError(
+            "Send lat and lng together.",
+            errors=[InvalidField(field=missing, message="Send lat and lng together")],
+        )
+    detail = await service.execute(
+        trip_id=trip_id,
+        viewer_id=user.id,
+        rider=Point(lat=lat, lng=lng) if lat is not None and lng is not None else None,
+        exclude=exclude or [],
+    )
+
+    return TripDetail(
+        # The driver sees their own end; everyone else, only the campus end.
+        trip=_to_response(detail.trip) if detail.viewer_is_driver else _for_rider(detail.trip),
+        # Only the driver and accepted riders get it (#361); null for everyone else.
+        vehicle=TripVehicle(
+            make=detail.vehicle.make,
+            model=detail.vehicle.model,
+            colour=detail.vehicle.colour,
+            plate=detail.vehicle.plate,
+        )
+        if detail.vehicle
+        else None,
+        pickups=[
+            PickupOption(
+                id=priced.offer.id,
+                label=priced.offer.pickup.label,
+                lat=priced.offer.pickup.lat,
+                lng=priced.offer.pickup.lng,
+                walk_seconds=priced.offer.walk_seconds,
+                cost=Cost(
+                    amount_cents=priced.cost.amount_cents, explanation=priced.cost.explanation
+                )
+                if priced.cost
+                else None,
+            )
+            for priced in detail.pickups
+        ],
+        my_request=_seat_request_response(detail.my_request) if detail.my_request else None,
+    )
+
+
+@router.post(
+    "/{trip_id}/cancel",
+    summary="Cancel a trip",
+    description="The driver cancels a trip that hasn't started. It disappears from search "
+    "but stays in My trips as cancelled; riders are notified and holds released. "
+    "Cancelling less than an hour before departure is recorded as a late cancellation.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Only the trip's driver can cancel it", "not_trip_driver"),
+        **TRIP_NOT_FOUND,
+        409: _problem(
+            "The trip has already started, finished or been cancelled", "trip_not_cancellable"
+        ),
+    },
+)
+async def cancel_trip(trip_id: UUID, user: AuthenticatedUser, service: CancelTripService) -> Trip:
+    trip = await service.execute(trip_id=trip_id, driver_id=user.id)
+    return _to_response(trip)
+
+
+@router.post(
+    "/{trip_id}/requests",
+    status_code=201,
+    summary="Request a seat",
+    description="The rider asks for a seat, picked up at one of the trip detail's pickup "
+    "points. The price is saved with the request and is what gets charged. The request is "
+    "`pending` until the driver decides, or `accepted` straight away if it meets the "
+    "driver's auto-accept rules. The rider needs a saved card first. Send the same "
+    "`exclude` the trip detail was loaded with, so a point offered after the rider rejected "
+    "others is still accepted.",
+    responses={
+        **UNAUTHORIZED,
+        403: _problem("You can't request a seat on your own trip", "own_trip"),
+        **TRIP_NOT_FOUND,
+        409: _problem(
+            "Already on this trip, another request overlaps in time, no seats left, the trip "
+            "isn't open for requests, or no saved card",
+            "already_requested / overlapping_request / trip_full / trip_not_open / card_required",
+        ),
+        422: _problem(
+            "Invalid input, or the pickup point isn't available from where you are",
+            "invalid_input / pickup_not_available",
+        ),
+        503: _problem(
+            "The pickup or detour can't be worked out right now, or the price or saved card "
+            "can't be checked",
+            "routing_unavailable / payments_unavailable",
+        ),
+    },
+)
+async def request_seat(
+    trip_id: UUID,
+    body: SeatRequestBody,
+    user: AuthenticatedUser,
+    service: RequestSeatService,
+) -> SeatRequest:
+    request = await service.execute(
+        RequestSeatCommand(
+            trip_id=trip_id,
+            rider_id=user.id,
+            rider=Point(lat=body.lat, lng=body.lng),
+            pickup_id=body.pickup_id,
+            now=datetime.now(UTC),
+            exclude=tuple(body.exclude),
+        )
+    )
+    return _seat_request_response(request)
+
+
+@router.get(
+    "/{trip_id}/requests",
+    summary="Requests on my trip",
+    description="For the trip's driver: pending requests first, then accepted ones, each "
+    "with the rider's rating and no-shows, their pickup point and the detour it adds.",
+    responses={
+        **UNAUTHORIZED,
+        **INVALID,
+        403: _problem("Only the trip's driver can see its requests", "not_trip_driver"),
+        **TRIP_NOT_FOUND,
+        503: _problem("The riders' details can't be loaded right now", "accounts_unavailable"),
+    },
+)
+async def trip_requests(
+    trip_id: UUID, user: AuthenticatedUser, service: TripRequestsService
+) -> list[DriverRequestView]:
+    items = await service.execute(ListTripRequestsCommand(trip_id=trip_id, user_id=user.id))
+    return [_driver_request_response(item) for item in items]

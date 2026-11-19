@@ -27,10 +27,15 @@ An Architecture Decision Record (ADR) is a short document that records one signi
 | [0013](0013-testing.md) | Testing, contract, and code-quality tools | Accepted (backend tools superseded by 0017) |
 | [0014](0014-security-and-load-testing.md) | CodeQL, Trivy, Dependabot, and JMeter | Accepted |
 | [0015](0015-driver-approval.md) | Minimal admin page for driver approval | Accepted |
-| [0016](0016-google-cloud-hosting-and-deploy-from-main.md) | Google Cloud VM, live site deployed from main | Accepted |
+| [0016](0016-google-cloud-hosting-and-deploy-from-main.md) | Google Cloud VM, live site deployed from main | Accepted (release images amended by 0026) |
 | [0017](0017-python-fastapi-backend.md) | Python 3.13 + FastAPI for all backend services | Accepted (realtime amended by 0018, logging by 0019) |
 | [0018](0018-live-tracking-as-stretch-goal.md) | Live tracking as a stretch goal; polling instead of WebSockets | Accepted |
 | [0019](0019-standard-library-logging.md) | Python's standard logging instead of structlog | Accepted |
 | [0020](0020-password-hashing.md) | Argon2id (`argon2-cffi`) for password hashing | Accepted |
 | [0021](0021-verification-email-requested-event.md) | A separate `VerificationEmailRequested` event for resends | Accepted |
 | [0022](0022-login-sessions.md) | Login sessions: 15-minute access token in memory, rotating HttpOnly refresh cookie with reuse detection | Proposed |
+| [0023](0023-approved-drivers-read-model.md) | Trips keeps its own list of approved drivers, updated from Accounts' events | Proposed |
+| [0024](0024-seat-counting.md) | Seats are taken with one guarded database update | Proposed |
+| [0025](0025-payment-holds.md) | Holds are placed on a saved card by a background worker, from Trips' events | Proposed |
+| [0026](0026-releases-reuse-develop-images.md) | Releases deploy the images already built and tested on develop | Proposed |
+| [0027](0027-geocoding.md) | Typed addresses are looked up with OpenStreetMap's Nominatim, through Routing | Proposed |

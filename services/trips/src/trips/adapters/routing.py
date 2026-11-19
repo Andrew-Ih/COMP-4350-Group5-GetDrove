@@ -9,12 +9,13 @@ from pydantic import BaseModel, Field, ValidationError
 
 from trips.application.ports import RouteEstimate
 from trips.domain.errors import RoutingInvalidLocationError, RoutingUnavailableError
-from trips.domain.values import Location, Point, TripMatch
+from trips.domain.values import Direction, Location, PickupOffer, Point, TripMatch
 
 # Routing accepts at most this many candidate trips per match request (its contract).
 MAX_MATCH_TRIPS = 500
 
 MATCHING_UNAVAILABLE = "Matching is unavailable right now. Please try again."
+PICKUPS_UNAVAILABLE = "Pickup points can't be worked out right now. Please try again."
 
 
 class _Pickup(BaseModel):
@@ -35,12 +36,36 @@ class _MatchResponse(BaseModel):
     matches: list[_Match]
 
 
+class _PickupPoint(BaseModel):
+    id: str = Field(strict=True, min_length=1, max_length=64)
+    label: str = Field(strict=True)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    walk_seconds: int = Field(alias="walkSeconds", strict=True, ge=0)
+    # Routing's name; it's the rest of the route from the point, whatever the direction.
+    meters_to_trip_end: int = Field(alias="riderDistanceMeters", strict=True, ge=0)
+
+
+class _PickupPointsResponse(BaseModel):
+    pickups: list[_PickupPoint]
+
+
 class _RouteResponse(BaseModel):
     trip_id: str = Field(alias="tripId", strict=True)
     # PostgreSQL stores these metrics as signed INTEGERs. Reject coercion (including
     # booleans and fractional numbers) and values that cannot be persisted.
     distance_meters: int = Field(alias="distanceMeters", strict=True, ge=0, le=2**31 - 1)
     duration_seconds: int = Field(alias="durationSeconds", strict=True, ge=0, le=2**31 - 1)
+
+
+def _problem_code(response: httpx.Response) -> str | None:
+    """The ``code`` of a Problem Details answer, or None if it isn't one."""
+    try:
+        body = response.json()
+    except ValueError:
+        return None
+    code = body.get("code") if isinstance(body, dict) else None
+    return code if isinstance(code, str) else None
 
 
 class HTTPRoutingService:
@@ -52,6 +77,8 @@ class HTTPRoutingService:
         trip_id: UUID,
         origin: Location,
         destination: Location,
+        driver_id: UUID,
+        direction: Direction,
     ) -> RouteEstimate:
         payload = {
             "tripId": str(trip_id),
@@ -63,6 +90,9 @@ class HTTPRoutingService:
                 "lat": destination.lat,
                 "lng": destination.lng,
             },
+            # So Routing shows the whole route only to the driver (#135).
+            "driverId": str(driver_id),
+            "direction": direction.value,
         }
 
         try:
@@ -120,4 +150,40 @@ class HTTPRoutingService:
                 meters_to_trip_end=match.meters_to_trip_end,
             )
             for match in data.matches
+        ]
+
+    async def pickup_points(
+        self, trip_id: UUID, rider: Point, limit: int, exclude: Sequence[str]
+    ) -> list[PickupOffer]:
+        payload = {
+            "tripId": str(trip_id),
+            "rider": {"lat": rider.lat, "lng": rider.lng},
+            "limit": limit,
+            "exclude": list(exclude),
+        }
+        try:
+            response = await self.client.post("/internal/pickup-points", json=payload)
+            if response.status_code == 404 and _problem_code(response) == "route_not_found":
+                # The trip has no stored route (e.g. posted before Routing could compute
+                # one): no pickup points, rather than an error for the whole trip detail.
+                # Any other 404 (a wrong path, Routing mid-redeploy) is an error, so riders
+                # never silently see a trip without pickup points.
+                return []
+            response.raise_for_status()
+            data = _PickupPointsResponse.model_validate_json(response.content)
+        except (httpx.HTTPError, ValidationError) as exc:
+            raise RoutingUnavailableError(PICKUPS_UNAVAILABLE) from exc
+
+        # Routing may only answer with what it was asked for.
+        if len(data.pickups) > limit or any(p.id in exclude for p in data.pickups):
+            raise RoutingUnavailableError(PICKUPS_UNAVAILABLE)
+
+        return [
+            PickupOffer(
+                id=point.id,
+                pickup=Location(point.label, point.lat, point.lng),
+                walk_seconds=point.walk_seconds,
+                meters_to_trip_end=point.meters_to_trip_end,
+            )
+            for point in data.pickups
         ]

@@ -1,0 +1,40 @@
+{
+  "description": "The driver declined a request, pending or already accepted (#138).\n\nConsumers: Payments (releases the hold if there was one, #72), Notifications.",
+  "properties": {
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "riderId": {
+      "format": "uuid",
+      "title": "Riderid",
+      "type": "string"
+    },
+    "driverId": {
+      "format": "uuid",
+      "title": "Driverid",
+      "type": "string"
+    },
+    "wasAccepted": {
+      "description": "True if the rider had a seat (and maybe a hold).",
+      "title": "Wasaccepted",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "requestId",
+    "tripId",
+    "riderId",
+    "driverId",
+    "wasAccepted"
+  ],
+  "title": "RequestDeclined",
+  "type": "object",
+  "x-event-version": 1
+}

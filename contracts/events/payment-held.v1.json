@@ -1,0 +1,40 @@
+{
+  "description": "The rider's share is held on their card, ready to be charged after the trip (#70).\nNo consumers yet.",
+  "properties": {
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "riderId": {
+      "format": "uuid",
+      "title": "Riderid",
+      "type": "string"
+    },
+    "amountCents": {
+      "minimum": 0,
+      "title": "Amountcents",
+      "type": "integer"
+    },
+    "currency": {
+      "const": "CAD",
+      "default": "CAD",
+      "title": "Currency",
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestId",
+    "tripId",
+    "riderId",
+    "amountCents"
+  ],
+  "title": "PaymentHeld",
+  "type": "object",
+  "x-event-version": 1
+}

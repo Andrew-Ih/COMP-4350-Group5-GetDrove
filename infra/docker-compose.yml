@@ -71,6 +71,12 @@ services:
       timeout: 3s
       retries: 20
 
+  stripe-mock:
+    image: stripe/stripe-mock:v0.197.0
+    profiles: [payments-test]
+    ports:
+      - "127.0.0.1:12111:12111"
+
   mailpit:
     # Catches every email the app sends; nothing reaches a real inbox.
     image: axllent/mailpit:v1.27
@@ -137,6 +143,10 @@ services:
     environment:
       ACCOUNTS_DATABASE_URL: postgresql+asyncpg://accounts:${ACCOUNTS_DB_PASSWORD:-accounts}@postgres:5432/getdrove
       ACCOUNTS_REDIS_URL: redis://redis:6379/0
+      ACCOUNTS_DOCUMENTS_DIR: /data/driver-documents
+    # Driver documents (#9, ADR 0011): only Accounts mounts this volume.
+    volumes:
+      - driver-documents:/data/driver-documents
     labels:
       - traefik.enable=true
       - traefik.http.routers.accounts.rule=PathPrefix(`/api/accounts`) && !PathPrefix(`/api/accounts/internal`)
@@ -199,6 +209,9 @@ services:
     environment:
       PAYMENTS_DATABASE_URL: postgresql+asyncpg://payments:${PAYMENTS_DB_PASSWORD:-payments}@postgres:5432/getdrove
       PAYMENTS_REDIS_URL: redis://redis:6379/0
+      PAYMENTS_HOLD_PROCESSING_ENABLED: ${PAYMENTS_HOLD_PROCESSING_ENABLED:-false}
+      PAYMENTS_STRIPE_SECRET_KEY: ${PAYMENTS_STRIPE_SECRET_KEY:-}
+      PAYMENTS_STRIPE_API_BASE: ${PAYMENTS_STRIPE_API_BASE:-https://api.stripe.com}
       AUTH_JWKS_URL: http://accounts:8000/.well-known/jwks.json
     labels:
       - traefik.enable=true
@@ -218,6 +231,8 @@ services:
     environment:
       NOTIFICATIONS_DATABASE_URL: postgresql+asyncpg://notifications:${NOTIFICATIONS_DB_PASSWORD:-notifications}@postgres:5432/getdrove
       NOTIFICATIONS_REDIS_URL: redis://redis:6379/0
+      # Names and emails for notification emails (#146); /internal isn't public.
+      NOTIFICATIONS_ACCOUNTS_URL: http://accounts:8000
       NOTIFICATIONS_SMTP_HOST: mailpit
       NOTIFICATIONS_SMTP_PORT: "1025"
       # Links in emails open the web app through the gateway.
@@ -240,6 +255,9 @@ services:
   web:
     build:
       context: ../web
+      args:
+        # Stripe's publishable test key (pk_test_...) for the card form, from .env. Optional.
+        NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
@@ -256,4 +274,5 @@ services:
 
 volumes:
   postgres-data:
+  driver-documents:
   redis-data:

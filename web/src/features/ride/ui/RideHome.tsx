@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
+import { AddressSearch } from "@/features/places";
 import { cn } from "@/shared/lib/cn";
 import { CAMPUS, type LngLat, type MapMarker, MapView, WINNIPEG_VIEW } from "@/shared/map";
 import { AppHeader, Button, MapLayout, PrivacyNote, Spinner } from "@/shared/ui";
@@ -38,7 +39,8 @@ function greeting(now: Date = new Date()): string {
 }
 
 /**
- * The rider home (#98): choose an area on the map, a direction and a time, then search.
+ * The rider home (#98): choose an area on the map (or by typing an address, #257), a
+ * direction and a time, then search.
  * Collects exactly what GET /api/trips/search needs: lat, lng, direction and time.
  * `initial` is a previous search (from the results page's "Change search"), to start from.
  */
@@ -173,7 +175,9 @@ export function RideHome({ initial }: { initial?: SearchQuery } = {}) {
               {direction === "to_campus" ? campusRow : yourAreaRow}
             </div>
 
-            <fieldset className="mt-4 rounded-lg bg-surface-muted px-5 py-3">
+            <AddressSearch className="mt-3" onPick={(picked) => choose(picked, true)} />
+
+            <fieldset className="mt-1 rounded-lg bg-surface-muted px-5 py-3">
               <legend className="sr-only">When</legend>
               <div className="flex items-center gap-4">
                 <Clock aria-hidden="true" className="size-5 shrink-0" />

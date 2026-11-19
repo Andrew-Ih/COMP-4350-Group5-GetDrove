@@ -44,3 +44,31 @@ class VerificationEmailRequested(EventPayload):
         description="Goes into the verification link. Valid for 24 hours; a later resend "
         "replaces it."
     )
+
+
+class DriverApproved(EventPayload):
+    """An admin approved a driver (#127). They can post trips straight away, without
+    logging in again.
+
+    Published on the ``events.accounts`` stream. Consumers: Trips (its list of approved
+    drivers, #11), Notifications (tells the driver).
+    """
+
+    event_type: ClassVar[str] = "DriverApproved"
+    event_version: ClassVar[int] = 1
+
+    user_id: UUID
+
+
+class DriverRejected(EventPayload):
+    """An admin rejected a driver's documents (#127). They can upload new ones.
+
+    Published on the ``events.accounts`` stream. Consumers: Trips (removes them from its
+    list of approved drivers), Notifications (tells the driver why).
+    """
+
+    event_type: ClassVar[str] = "DriverRejected"
+    event_version: ClassVar[int] = 1
+
+    user_id: UUID
+    reason: str = Field(description="Shown to the driver, so they know what to fix.")

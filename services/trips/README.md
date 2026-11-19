@@ -47,11 +47,51 @@ import-linter enforces that inner layers never import outer ones, and that `doma
 
 ## API
 
-_To be filled in as endpoints are added: link to the OpenAPI spec in `contracts/openapi/trips.yaml`._
+See the [Trips OpenAPI contract](../../contracts/openapi/trips.json).
 
 ## Events
 
-`TripPosted` is recorded transactionally and relayed to `events.trips`; see below.
+`TripPosted`, `TripCancelled`, and `DriverLateCancellation` are recorded transactionally
+and relayed to `events.trips`.
+
+## Cancelling a trip (#132)
+
+`POST /{trip_id}/cancel` (gateway path `POST /api/trips/{trip_id}/cancel`) requires
+authentication. Only the trip's driver can cancel it. The trip must be scheduled and its
+departure must be in the future. The endpoint returns the updated trip with status
+`cancelled`. It returns `403 not_trip_driver` for another user, `404 trip_not_found`
+for an unknown trip, and `409 trip_not_cancellable` when the trip can no longer be cancelled.
+
+Cancelled trips disappear from search and remain visible in the driver's upcoming My trips
+until departure. The cancellation closes pending and accepted seat requests and clears
+their pickup order. The trip, requests, and outbox records commit together.
+
+- [`TripCancelled` v1](../../contracts/events/trip-cancelled.v1.json) carries the trip,
+  driver, departure time, series ID if applicable, and affected rider IDs. Payments can
+  release holds, Notifications can tell riders, and Routing can remove the route.
+- [`DriverLateCancellation` v1](../../contracts/events/driver-late-cancellation.v1.json)
+  also records the cancellation time when the driver cancels less than one hour before
+  departure.
+
+Trips also consumes Accounts' events from `events.accounts` (consumer group `trips`), so
+it needs Redis to run:
+
+| Event | What Trips does |
+|---|---|
+| `DriverApproved` | Adds the driver to `approved_drivers`, so they can post trips (#11, [ADR 0023](../../docs/architecture/adr/0023-approved-drivers-read-model.md)) |
+| `DriverRejected` | Removes them from it |
+
+Each event is handled once (`processed_events`); one that keeps failing is parked in
+`failed_events` after 5 tries ([libs/events](../../libs/events/README.md)).
+
+## Who can post (#11)
+
+Only approved drivers: `POST /api/trips` answers `403 driver_not_approved` for anyone not
+in `approved_drivers`. Approval is decided in Accounts (an admin approves the driver's
+documents) and reaches Trips through the `DriverApproved` event, usually within a second.
+Locally, to let a test account post, approve it through Accounts: upload documents and a
+vehicle on the driver page, then approve it as an admin (`make_admin`, see the Accounts
+README).
 
 ## Posting one-off trips (#94)
 
@@ -115,3 +155,17 @@ Trips adapter maps the failure to the existing 503 response and nothing is saved
 Each result is the trip as a rider sees it: the driver's own end (`origin` going to campus, `destination` leaving it) is null, so their home area is never shown. If Routing can't answer, the search fails with 503 `routing_unavailable`; an empty list is a normal result. The rider's location is only passed to Routing, never stored.
 
 Settings: `TRIPS_PAYMENTS_URL` (default `http://localhost:8004`; Docker Compose sets `http://payments:8000`).
+
+`TRIPS_ACCOUNTS_URL` (default `http://localhost:8001`; Docker Compose sets `http://accounts:8000`) is the Accounts service, used for the riders' names, ratings and no-shows on the driver's request list (#139).
+
+## Trip detail (#30)
+
+`GET /{tripId}?lat=&lng=&exclude=` (gateway: `GET /api/trips/{tripId}`) requires authentication and returns one trip, whatever its status:
+
+- **`trip`:** the driver's own end (`origin` going to campus, `destination` leaving it) is `null` for everyone but the trip's driver, as in search.
+- **`pickups`:** with the rider's `lat` and `lng`, up to 3 pickup points from Routing (`POST /internal/pickup-points`, #29), best first, each with its walking time and the rider's `cost`. Priced like search (`ride_meters`: from the pickup to campus going to campus, from campus to the drop-off leaving it), so the first point and its cost match what search showed for the same trip and spot. `exclude` (the IDs of points the rider rejected, #136) is passed on to Routing, which then offers the next best.
+  - Empty without `lat`/`lng`, for the trip's own driver (they can't ride it), for a trip that isn't scheduled any more, and for a trip with no stored route (Routing's 404).
+  - If Payments can't price a point, it's still shown, with `cost: null`.
+- **`vehicle`** and **`myRequest`** are `null` for now: they come with seat requests (#34) and the driver's vehicle from Accounts.
+
+404 `trip_not_found` for an unknown trip, 422 if only one of `lat` and `lng` is sent, 503 `routing_unavailable` if Routing can't work out the pickup points. The rider's location is only passed to Routing, never stored.

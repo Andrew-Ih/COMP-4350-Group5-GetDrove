@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { ApiError, toProblem, unwrap } from "./problem";
+import { ApiError, NETWORK_ERROR, toProblem, unwrap } from "./problem";
 
 const conflict = {
   type: "about:blank",
@@ -43,5 +43,18 @@ describe("unwrap", () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).code).toBe("email_taken");
     expect((error as ApiError).status).toBe(409);
+  });
+
+  it("throws an ApiError when the request never reaches the server", async () => {
+    const error = await unwrap(Promise.reject(new TypeError("Failed to fetch"))).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).code).toBe(NETWORK_ERROR);
+    expect((error as ApiError).status).toBe(0);
+    expect((error as ApiError).problem.detail).toBe("Check your connection and try again.");
+  });
+
+  it("passes on anything that isn't a failed request, like a cancelled query", async () => {
+    const aborted = new DOMException("The operation was aborted.", "AbortError");
+    await expect(unwrap(Promise.reject(aborted))).rejects.toBe(aborted);
   });
 });

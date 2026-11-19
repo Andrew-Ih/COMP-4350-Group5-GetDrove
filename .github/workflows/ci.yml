@@ -1,23 +1,25 @@
-# Continuous integration (issue #106).
-# Runs the backend and frontend checks on pull requests into develop or main, and on every
-# push to develop.
+# Continuous integration (issues #106 and #266).
+# Runs the backend and frontend checks on pull requests into develop, main, or a user story's
+# feature branch (feature/*, where its task branches are merged; see docs/process/git-workflow.md).
+# After a merge into develop, the Delivery workflow (delivery.yml, #176) runs these same checks
+# on develop before it publishes images, so they aren't repeated here.
 # The same checks run locally with: bash scripts/check.sh
 name: CI
 
 on:
   pull_request:
-    branches: [develop, main]
-  push:
-    branches: [develop]
+    branches: [develop, main, "feature/**"]
+  workflow_call: # used by delivery.yml
   workflow_dispatch: # lets us run it by hand from the Actions tab
 
 # Read-only access is all CI needs.
 permissions:
   contents: read
 
-# A new push to the same branch cancels the run that's still going.
+# A new push to a pull request cancels its run that's still going. Runs for develop (from
+# delivery.yml) each get their own group, so one merge's checks never cancel another's.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -51,6 +53,11 @@ jobs:
 
       - name: mypy (strict)
         run: uv run mypy
+
+      - name: Contracts match the code
+        # Exports every service's OpenAPI spec and every event's JSON Schema and compares them
+        # with contracts/ (#178). Fails if an endpoint or event changed without regenerating.
+        run: uv run python scripts/export_openapi.py --check
 
       - name: Architecture rules (import-linter)
         run: |
@@ -147,3 +154,12 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+      - name: Smoke tests load (e2e/)
+        # The browser smoke tests only run against the live site after a deploy (#177), so
+        # check here that they still load, and test their helpers, without a browser or a site.
+        working-directory: e2e
+        run: |
+          npm ci
+          npm run list
+          npm test

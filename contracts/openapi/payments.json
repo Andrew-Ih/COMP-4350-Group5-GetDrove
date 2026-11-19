@@ -82,10 +82,222 @@
           }
         }
       }
+    },
+    "/internal/customers/{user_id}/card": {
+      "get": {
+        "tags": [
+          "internal"
+        ],
+        "summary": "Does this rider have a card?",
+        "description": "For Trips: a rider needs a saved card before requesting a seat.",
+        "operationId": "card_status_internal_customers__user_id__card_get",
+        "parameters": [
+          {
+            "name": "user_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "User Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CardStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/internal/customers/{user_id}/card",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "fieldName",
+                      "message": "Field required"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/setup-intent": {
+      "post": {
+        "tags": [
+          "cards"
+        ],
+        "summary": "Start adding a card",
+        "description": "Creates a Stripe SetupIntent for the logged-in rider (and their Stripe customer, the first time). The frontend passes `clientSecret` to Stripe Elements.",
+        "operationId": "create_setup_intent_setup_intent_post",
+        "responses": {
+          "201": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupIntent"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/setup-intent",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stripe can't be reached right now (code `payments_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Stripe can't be reached right now",
+                  "instance": "/setup-intent",
+                  "code": "payments_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/methods": {
+      "get": {
+        "tags": [
+          "cards"
+        ],
+        "summary": "My saved cards",
+        "description": "Brand, last 4 digits and expiry only. An empty list means no card yet. Read from Stripe, not a copy in our database, so a card is listed as soon as `stripe.confirmCardSetup` succeeds: the frontend refetches this right after it and shows a saving state until it returns.",
+        "operationId": "payment_methods_methods_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PaymentMethod"
+                  },
+                  "type": "array",
+                  "title": "Response Payment Methods Methods Get"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/methods",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Stripe can't be reached right now (code `payments_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "Stripe can't be reached right now",
+                  "instance": "/methods",
+                  "code": "payments_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
     "schemas": {
+      "CardStatus": {
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Userid"
+          },
+          "hasCard": {
+            "type": "boolean",
+            "title": "Hascard"
+          }
+        },
+        "type": "object",
+        "required": [
+          "userId",
+          "hasCard"
+        ],
+        "title": "CardStatus"
+      },
       "HealthOut": {
         "properties": {
           "status": {
@@ -122,6 +334,66 @@
           "message"
         ],
         "title": "InvalidFieldOut"
+      },
+      "PaymentMethod": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "Stripe's payment method ID.",
+            "examples": [
+              "pm_1Nx…"
+            ]
+          },
+          "brand": {
+            "type": "string",
+            "title": "Brand",
+            "examples": [
+              "visa"
+            ]
+          },
+          "last4": {
+            "type": "string",
+            "maxLength": 4,
+            "minLength": 4,
+            "title": "Last4",
+            "examples": [
+              "4242"
+            ]
+          },
+          "expMonth": {
+            "type": "integer",
+            "maximum": 12.0,
+            "minimum": 1.0,
+            "title": "Expmonth",
+            "examples": [
+              12
+            ]
+          },
+          "expYear": {
+            "type": "integer",
+            "title": "Expyear",
+            "examples": [
+              2030
+            ]
+          },
+          "isDefault": {
+            "type": "boolean",
+            "title": "Isdefault",
+            "description": "The card holds are placed on: the most recently added one. Removing cards and choosing the default aren't part of Sprint 2."
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "brand",
+          "last4",
+          "expMonth",
+          "expYear",
+          "isDefault"
+        ],
+        "title": "PaymentMethod",
+        "description": "A saved card. Only what's needed to recognise it."
       },
       "Problem": {
         "properties": {
@@ -239,6 +511,30 @@
           "distanceMeters"
         ],
         "title": "QuoteRequest"
+      },
+      "SetupIntent": {
+        "properties": {
+          "clientSecret": {
+            "type": "string",
+            "title": "Clientsecret",
+            "description": "Pass to Stripe Elements (`stripe.confirmCardSetup`). Card details go straight to Stripe and never reach our servers.",
+            "examples": [
+              "seti_1Nx…_secret_…"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "clientSecret"
+        ],
+        "title": "SetupIntent"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Access token from POST /api/accounts/auth/login (`Authorization: Bearer <token>`).",
+        "scheme": "bearer"
       }
     }
   },

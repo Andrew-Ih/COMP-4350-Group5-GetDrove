@@ -6,12 +6,14 @@ To run it locally, see the service README.
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from accounts.adapters.api import auth_router, health
+from accounts.adapters.api import auth_router, drivers_router, health
+from accounts.adapters.document_storage import FileDocumentStorage
 from accounts.adapters.persistence.tables import outbox
 from accounts.adapters.security.signing_key import load_signing_key
 from accounts.infrastructure.settings import get_settings
@@ -53,6 +55,7 @@ def create_app() -> FastAPI:
     install(app, service="accounts")
     app.state.engine = engine
     app.state.sessions = sessions
+    app.state.documents = FileDocumentStorage(Path(settings.documents_dir))
 
     # Accounts signs tokens and checks its own tokens with the same key (no JWKS fetch).
     signing_key = load_signing_key(settings.jwt_private_key, environment=settings.environment)
@@ -63,6 +66,10 @@ def create_app() -> FastAPI:
     app.include_router(auth_router.auth_router)
     app.include_router(auth_router.users_router)
     app.include_router(auth_router.keys_router)
+    app.include_router(drivers_router.driver_router)
+    app.include_router(drivers_router.admin_router)
+    app.include_router(drivers_router.profiles_router)
+    app.include_router(drivers_router.internal_router)
     return app
 
 

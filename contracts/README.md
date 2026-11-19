@@ -20,6 +20,23 @@ You can also browse each service's contract in Swagger UI: `http://localhost/api
 4. Open a PR. **The consumers of the contract approve it** before anyone builds against it (for example, the frontend approves public endpoints; Trips approves Routing's internal endpoints).
 5. Changing a contract later works the same way: change the code, regenerate, and get the consumers' approval. Never rename or remove a field or error `code` without telling the team.
 
+## Keeping contracts and code in sync
+
+The files in `contracts/` are generated from the code, and CI checks they still match (#178):
+
+| Check | What it compares | Fix when it fails |
+|---|---|---|
+| Backend checks: **Contracts match the code** | Each service's OpenAPI spec (from FastAPI) and each event's JSON Schema (from `libs/events`) with `contracts/openapi/` and `contracts/events/`. A file whose endpoint or event was removed also fails it. | `uv run python scripts/export_openapi.py`, then commit the changed files |
+| Frontend checks: **API types match the contracts** | `web/src/shared/api/generated/` with `contracts/openapi/` | `cd web && npm run api:generate`, then commit |
+
+So when you change an API or an event:
+
+1. Change the code (schemas, routes, `responses={...}`, or the event in `libs/events`).
+2. Regenerate: `uv run python scripts/export_openapi.py`, then `cd web && npm run api:generate`.
+3. Commit the code and the regenerated files together. The contract diff is what reviewers check, and the consumers approve it as above.
+
+Both checks also run locally with `bash scripts/check.sh`.
+
 ## Conventions (all services)
 
 | Topic | Rule |
@@ -49,3 +66,31 @@ You can also browse each service's contract in Swagger UI: `http://localhost/api
 | `VerificationEmailRequested` event (`libs/events/src/events/catalog/`) | Accounts | Notifications | Written |
 | Compute route, find matches, route geometry | Routing | Trips, frontend (geometry) | Written |
 | Price quote (internal) | Payments | Trips | Written |
+
+## Sprint 2 contracts (#262)
+
+Endpoints return 501 until the task in brackets implements them.
+
+| Contract | Service | Consumers | Status |
+|---|---|---|---|
+| Recurring trips (#17), cancel a trip or series (#132, #18), trip detail with pickup points, price, and the vehicle and plate for accepted riders (#140), seat requests: request, accept, decline, cancel, one request, the driver's list (#137–#139), rider's trips `GET /requests/mine` (#130), past trips `?when=past`, auto-accept rules (#42) | Trips | Frontend | Written |
+| Driver status, documents and vehicle (#9, #10, #125), admin approval, which needs a saved vehicle (#127), public profile (#143) | Accounts | Frontend | Written |
+| Internal user lookups: `/internal/users` (names, ratings, drivers' vehicles; no email) and `/internal/contacts` (email) (#143, #146) | Accounts | Trips, Notifications | Written |
+| Pickup points (#29, #30), detours (#36, #38), `driverId` and `direction` on `/internal/routes` (#135) | Routing | Trips | Written |
+| Leaving out rejected pickup points: `exclude` on `POST /internal/pickup-points` and `GET /api/trips/{tripId}` (#292, for #29 and #136) | Routing, Trips | Trips, frontend | Written |
+| Finding a place by its address: `POST /api/routing/places` (#257, ADR 0027) | Routing | Frontend | Written |
+| Leaving out rejected pickup points when requesting a seat: `exclude` on `POST /api/trips/{tripId}/requests` (#299, for #136 and #137) | Trips | Frontend | Written |
+| Payments down when requesting a seat: 503 `payments_unavailable` on `POST /api/trips/{tripId}/requests` (#301, for #137) | Trips | Frontend | Written |
+| Accounts down on the driver's request list: 503 `accounts_unavailable` on `GET /api/trips/{tripId}/requests` (#309, for #139) | Trips | Frontend | Written |
+| A series' first departure must be on one of its weekdays: `POST /api/trips/series` (#315, for #16 and #17) | Trips | Frontend | Written |
+| Card setup and saved cards (#151), internal "has a card" check | Payments | Frontend, Trips | Written |
+| Notifications list, mark read, mark all read (#145) | Notifications | Frontend | Written |
+| `SeatRequested`, `RequestAccepted`, `RequestDeclined`, `RequestCancelled`, `TripCancelled`, `DriverLateCancellation` | Trips | Payments, Notifications, Routing, Accounts | Written |
+| `DriverApproved`, `DriverRejected` | Accounts | Trips, Notifications | Written |
+| `PaymentHeld`, `PaymentFailed`, `PaymentReleased` | Payments | Trips, Notifications | Written |
+| Which way an accepted trip goes: optional `direction` on `RequestAccepted`, so `pickupLabel` can be told apart as the pickup (to campus) or the drop-off (from campus) (#352, for #146 and #149) | Trips | Notifications | Written |
+
+Changes to Sprint 1 contracts: `Trip` gains `seriesId`; `GET /api/trips/{tripId}` returns a
+`TripDetail` instead of a `Trip`; `GET /api/trips/mine` only takes `role=driver` (a rider's
+trips are `GET /api/trips/requests/mine`) and gains `when`; `POST /api/trips` can return
+`403 driver_not_approved`; route geometry hides the driver's end from everyone but the driver.

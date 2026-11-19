@@ -1,0 +1,34 @@
+{
+  "description": "A trip was cancelled less than one hour before departure (#132). Published alongside\n``TripCancelled``. Consumers: Accounts (the driver's reliability record, Sprint 3, #134).",
+  "properties": {
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "driverId": {
+      "format": "uuid",
+      "title": "Driverid",
+      "type": "string"
+    },
+    "departureAt": {
+      "format": "date-time",
+      "title": "Departureat",
+      "type": "string"
+    },
+    "cancelledAt": {
+      "format": "date-time",
+      "title": "Cancelledat",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tripId",
+    "driverId",
+    "departureAt",
+    "cancelledAt"
+  ],
+  "title": "DriverLateCancellation",
+  "type": "object",
+  "x-event-version": 1
+}

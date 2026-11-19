@@ -1,0 +1,39 @@
+{
+  "description": "The hold couldn't be placed (#153).\n\nConsumers: Trips (marks the request ``payment_failed`` and frees the seat), Notifications\n(tells the rider what to do).",
+  "properties": {
+    "requestId": {
+      "format": "uuid",
+      "title": "Requestid",
+      "type": "string"
+    },
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "riderId": {
+      "format": "uuid",
+      "title": "Riderid",
+      "type": "string"
+    },
+    "reason": {
+      "enum": [
+        "card_declined",
+        "authentication_required",
+        "no_card",
+        "other"
+      ],
+      "title": "Reason",
+      "type": "string"
+    }
+  },
+  "required": [
+    "requestId",
+    "tripId",
+    "riderId",
+    "reason"
+  ],
+  "title": "PaymentFailed",
+  "type": "object",
+  "x-event-version": 1
+}

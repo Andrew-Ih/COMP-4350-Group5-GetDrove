@@ -25,6 +25,225 @@
           }
         }
       }
+    },
+    "/": {
+      "get": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "My notifications",
+        "description": "The logged-in user's latest notifications, newest first, and how many are unread.",
+        "operationId": "list_notifications__get",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "How many to return.",
+              "default": 30,
+              "title": "Limit"
+            },
+            "description": "How many to return."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NotificationList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "limit",
+                      "message": "Input should be less than or equal to 100"
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/read-all": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark all as read",
+        "operationId": "mark_all_read_read_all_post",
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/read-all",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
+    },
+    "/{notification_id}/read": {
+      "post": {
+        "tags": [
+          "notifications"
+        ],
+        "summary": "Mark one as read",
+        "operationId": "mark_read__notification_id__read_post",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "notification_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Notification Id"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/{notification_id}/read",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/{notification_id}/read",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "limit",
+                      "message": "Input should be less than or equal to 100"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No notification with this ID for you (code `notification_not_found`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Not Found",
+                  "status": 404,
+                  "detail": "No notification with this ID for you",
+                  "instance": "/{notification_id}/read",
+                  "code": "notification_not_found",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -47,6 +266,223 @@
           "service"
         ],
         "title": "HealthOut"
+      },
+      "InvalidFieldOut": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "examples": [
+              "limit"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "examples": [
+              "Input should be less than or equal to 100"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "field",
+          "message"
+        ],
+        "title": "InvalidFieldOut"
+      },
+      "Notification": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Id"
+          },
+          "type": {
+            "$ref": "#/components/schemas/NotificationType"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "examples": [
+              "Request accepted"
+            ]
+          },
+          "body": {
+            "type": "string",
+            "title": "Body",
+            "examples": [
+              "Maya accepted your request for Monday at 7:45 AM."
+            ]
+          },
+          "tripId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tripid",
+            "description": "The trip it's about, to link to it."
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid",
+            "description": "The seat request it's about, if any."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Createdat"
+          },
+          "readAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Readat"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "type",
+          "title",
+          "body",
+          "tripId",
+          "requestId",
+          "createdAt",
+          "readAt"
+        ],
+        "title": "Notification"
+      },
+      "NotificationList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Notification"
+            },
+            "type": "array",
+            "title": "Items",
+            "description": "Newest first."
+          },
+          "unreadCount": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Unreadcount",
+            "description": "All unread notifications, not just these."
+          }
+        },
+        "type": "object",
+        "required": [
+          "items",
+          "unreadCount"
+        ],
+        "title": "NotificationList"
+      },
+      "NotificationType": {
+        "type": "string",
+        "enum": [
+          "seat_requested",
+          "request_accepted",
+          "request_declined",
+          "request_cancelled",
+          "trip_cancelled",
+          "driver_approved",
+          "driver_rejected",
+          "payment_failed",
+          "trip_reminder"
+        ],
+        "title": "NotificationType"
+      },
+      "Problem": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "default": "about:blank"
+          },
+          "title": {
+            "type": "string",
+            "title": "Title"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "instance": {
+            "type": "string",
+            "title": "Instance"
+          },
+          "code": {
+            "type": "string",
+            "title": "Code",
+            "description": "Stable error name for the frontend to check."
+          },
+          "requestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Requestid"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/InvalidFieldOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors",
+            "description": "Only on 422: the fields that were invalid."
+          }
+        },
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code"
+        ],
+        "title": "Problem",
+        "description": "Every error response (RFC 9457 Problem Details, `application/problem+json`)."
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "type": "http",
+        "description": "Access token from POST /api/accounts/auth/login (`Authorization: Bearer <token>`).",
+        "scheme": "bearer"
       }
     }
   },

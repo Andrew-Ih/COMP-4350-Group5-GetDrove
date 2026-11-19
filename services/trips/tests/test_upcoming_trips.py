@@ -11,7 +11,8 @@ from trips.domain.values import Direction, Location
 
 
 @pytest.mark.asyncio
-async def test_execute_passes_driver_id_and_current_time_to_repository() -> None:
+@pytest.mark.parametrize("past", [False, True])
+async def test_execute_passes_driver_id_and_current_time_to_repository(past: bool) -> None:
     driver_id = uuid4()
     now = datetime(2026, 10, 19, 12, 0, tzinfo=UTC)
 
@@ -34,7 +35,8 @@ async def test_execute_passes_driver_id_and_current_time_to_repository() -> None
             self.received_driver_id: UUID | None = None
             self.received_now: datetime | None = None
 
-        async def get_upcoming_by_driver(self, *, driver_id: UUID, now: datetime) -> list[Trip]:
+        async def list_by_driver(self, *, driver_id: UUID, now: datetime, past: bool) -> list[Trip]:
+            self.received_past = past
             self.received_driver_id = driver_id
             self.received_now = now
             return [trip]
@@ -42,8 +44,9 @@ async def test_execute_passes_driver_id_and_current_time_to_repository() -> None
     repository = FakeRepository()
     service = ListUpcomingTrips(repository, clock=lambda: now)
 
-    result = await service.execute(driver_id=driver_id)
+    result = await service.execute(driver_id=driver_id, past=past)
 
     assert result == [trip]
     assert repository.received_driver_id == driver_id
     assert repository.received_now == now
+    assert repository.received_past is past

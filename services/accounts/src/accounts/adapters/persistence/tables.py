@@ -6,9 +6,12 @@ Alembic autogenerates migrations from ``metadata``.
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     DateTime,
     ForeignKey,
+    Index,
+    Integer,
     MetaData,
     String,
     Table,
@@ -104,6 +107,68 @@ refresh_tokens = Table(
         nullable=True,
     ),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+# One row per student who has applied to drive, or saved a vehicle (#8). No row means
+# status "none". The documents themselves are in DocumentStorage (#9, ADR 0011); only
+# their keys are here.
+driver_profiles = Table(
+    "driver_profiles",
+    metadata,
+    Column("user_id", Uuid, ForeignKey(users.c.id, ondelete="CASCADE"), primary_key=True),
+    Column("status", String(10), nullable=False),
+    Column("licence_key", String(200), nullable=True),
+    Column("insurance_key", String(200), nullable=True),
+    Column("vehicle_make", String(30), nullable=True),
+    Column("vehicle_model", String(30), nullable=True),
+    Column("vehicle_colour", String(30), nullable=True),
+    Column("vehicle_plate", String(8), nullable=True),
+    Column("submitted_at", DateTime(timezone=True), nullable=True),
+    Column("reviewed_at", DateTime(timezone=True), nullable=True),
+    # The admin who decided. Kept if that admin's account is deleted, as null.
+    Column(
+        "reviewed_by",
+        Uuid,
+        ForeignKey(users.c.id, ondelete="SET NULL", name="fk_driver_profiles_reviewed_by_users"),
+        nullable=True,
+    ),
+    Column("rejection_reason", String(500), nullable=True),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    CheckConstraint("status IN ('none', 'pending', 'approved', 'rejected')", name="status"),
+    # The admin page lists applications by status, oldest first (#127).
+    Index("ix_driver_profiles_status_submitted_at", "status", "submitted_at"),
+)
+
+# Ratings, completed trips and no-shows (#143). No row means all zeros, so existing users
+# need no backfill. Ratings and no-shows are recorded from Sprint 3.
+reputation = Table(
+    "reputation",
+    metadata,
+    Column("user_id", Uuid, ForeignKey(users.c.id, ondelete="CASCADE"), primary_key=True),
+    # Sum and count rather than an average, so adding a rating is exact.
+    Column("rating_sum", Integer, nullable=False, server_default="0"),
+    Column("rating_count", Integer, nullable=False, server_default="0"),
+    Column("trip_count", Integer, nullable=False, server_default="0"),
+    Column("no_show_count", Integer, nullable=False, server_default="0"),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
+    CheckConstraint(
+        "rating_count >= 0 AND trip_count >= 0 AND no_show_count >= 0", name="not_negative"
+    ),
+    # Every rating is 1 to 5, so the average always is too.
+    CheckConstraint("rating_sum BETWEEN rating_count AND 5 * rating_count", name="ratings_1_to_5"),
 )
 
 # Events waiting to be sent to Redis (libs/events). Saved in the same transaction as

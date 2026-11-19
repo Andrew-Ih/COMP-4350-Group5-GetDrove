@@ -1,0 +1,52 @@
+{
+  "description": "The driver cancelled a trip before it started (#132, #18).\n\nConsumers: Payments (releases every hold on the trip, #72), Notifications (tells the\nriders and cancels their reminders), Routing (forgets the route).",
+  "properties": {
+    "tripId": {
+      "format": "uuid",
+      "title": "Tripid",
+      "type": "string"
+    },
+    "driverId": {
+      "format": "uuid",
+      "title": "Driverid",
+      "type": "string"
+    },
+    "seriesId": {
+      "anyOf": [
+        {
+          "format": "uuid",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Set when the trip is part of a recurring series.",
+      "title": "Seriesid"
+    },
+    "departureAt": {
+      "format": "date-time",
+      "title": "Departureat",
+      "type": "string"
+    },
+    "riderIds": {
+      "description": "Riders who had a pending or accepted request on the trip.",
+      "items": {
+        "format": "uuid",
+        "type": "string"
+      },
+      "title": "Riderids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "tripId",
+    "driverId",
+    "seriesId",
+    "departureAt",
+    "riderIds"
+  ],
+  "title": "TripCancelled",
+  "type": "object",
+  "x-event-version": 1
+}
