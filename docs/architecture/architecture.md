@@ -206,7 +206,9 @@ sequenceDiagram
 
 - **The card can't be held** (declined, or it needs 3-D Secure the rider isn't there for): Payments publishes `PaymentFailed`. Trips marks the request `payment_failed` and gives the seat back, and Notifications tells the rider and cancels their reminder.
 - **Two drivers' clicks, or auto-accept and the driver, race for the last seat:** exactly one wins; the other gets `409 seat_taken` ([ADR 0024](adr/0024-seat-counting.md)).
-- **Payments, Routing or Accounts is down while requesting:** the request is refused with `503` and nothing is saved. **Notifications or Payments is down after accepting:** the events wait in Redis and are handled when it's back; the acceptance itself has already succeeded.
+- **Payments or Routing is down while requesting:** the card check, the pickup, the detour and the price are all needed, so the request is refused with `503` and nothing is saved.
+- **Accounts is down while requesting:** Accounts is only asked for the rider's rating, and only when the driver's auto-accept rules have a minimum rating. If it can't answer, the rating counts as unknown: the request is saved as pending for the driver to decide, instead of being auto-accepted or refused.
+- **Notifications or Payments is down after accepting:** the events wait in Redis and are handled when it's back; the acceptance itself has already succeeded.
 - **The rider or driver cancels, or the driver declines after accepting:** `RequestCancelled`, `RequestDeclined` or `TripCancelled` makes the hold worker cancel the PaymentIntent, and Notifications tells the other person.
 - **Auto-accept is on:** Trips accepts the request in the same transaction it's created in, publishes `RequestAccepted` instead of `SeatRequested`, and the driver is told "accepted automatically".
 
