@@ -469,6 +469,106 @@
           }
         }
       }
+    },
+    "/places": {
+      "post": {
+        "tags": [
+          "places"
+        ],
+        "summary": "Find a place by its address",
+        "description": "For choosing your area by typing instead of tapping the map (#257): the rider home and Post a trip. Looks the address up with OpenStreetMap's geocoder (Nominatim, ADR 0027), only inside the area GetDrove covers, and returns up to 5 matches, best first. An empty list means nothing there matched. A POST, so what was typed is never in a URL; Routing doesn't store or log it. Searches are spaced at least 1 second apart for everyone together (Nominatim's usage policy), and repeated ones are answered from a short in-memory cache.",
+        "operationId": "find_places_places_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlaceSearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceSearchResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid input; `errors` lists the fields (code `invalid_input`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unprocessable Content",
+                  "status": 422,
+                  "detail": "Invalid input",
+                  "instance": "/places",
+                  "code": "invalid_input",
+                  "requestId": "b1e2c3d4e5f6",
+                  "errors": [
+                    {
+                      "field": "fieldName",
+                      "message": "Field required"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid access token (code `unauthorized`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Unauthorized",
+                  "status": 401,
+                  "detail": "Missing or invalid access token",
+                  "instance": "/places",
+                  "code": "unauthorized",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The address lookup is unavailable, too slow or too busy; tap the map instead (code `geocoding_unavailable`)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                },
+                "example": {
+                  "type": "about:blank",
+                  "title": "Service Unavailable",
+                  "status": 503,
+                  "detail": "The address lookup is unavailable, too slow or too busy; tap the map instead",
+                  "instance": "/places",
+                  "code": "geocoding_unavailable",
+                  "requestId": "b1e2c3d4e5f6"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -818,6 +918,76 @@
           "pickups"
         ],
         "title": "PickupPointsResponse"
+      },
+      "Place": {
+        "properties": {
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "A short name for the match, for the user to choose from: the street address or the place's name, then its neighbourhood.",
+            "examples": [
+              "750 Osborne St, Fort Rouge"
+            ]
+          },
+          "lat": {
+            "type": "number",
+            "title": "Lat",
+            "examples": [
+              49.8664
+            ]
+          },
+          "lng": {
+            "type": "number",
+            "title": "Lng",
+            "examples": [
+              -97.1386
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "label",
+          "lat",
+          "lng"
+        ],
+        "title": "Place"
+      },
+      "PlaceSearchRequest": {
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Query",
+            "description": "An address or place name as the user typed it, for example `750 Osborne St` or `Polo Park`. Used for this answer only: never stored or logged.",
+            "examples": [
+              "750 Osborne St"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "query"
+        ],
+        "title": "PlaceSearchRequest"
+      },
+      "PlaceSearchResponse": {
+        "properties": {
+          "places": {
+            "items": {
+              "$ref": "#/components/schemas/Place"
+            },
+            "type": "array",
+            "maxItems": 5,
+            "title": "Places",
+            "description": "Up to 5 matches inside the area GetDrove covers (the Winnipeg map), best first. Empty when nothing there matches: the user is told and can tap the map instead."
+          }
+        },
+        "type": "object",
+        "required": [
+          "places"
+        ],
+        "title": "PlaceSearchResponse"
       },
       "Point": {
         "properties": {

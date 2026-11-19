@@ -112,6 +112,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(routing_router.internal_router)
     app.include_router(routing_router.public_router)
+    app.include_router(routing_router.places_router)
     return app
 
 
