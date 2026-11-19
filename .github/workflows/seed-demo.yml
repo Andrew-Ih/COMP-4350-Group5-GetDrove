@@ -1,14 +1,22 @@
-# Seeds the live site with the demo accounts and trips in infra/seed/demo.json (#111).
+# Seeds the live site with the demo people, trips and seat requests in
+# infra/seed/demo.json (#111, #180).
 #
 # Run it from the Actions tab ("Run workflow" on main) after a release is deployed. Steps:
-#   1. accounts — creates the demo riders and drivers, already verified, inside the live
-#                 Accounts container (no sign-up emails, so no bounces from fake addresses)
-#   2. trips    — logs in as each demo driver and posts their commutes for the next two
-#                 weeks through the live API, so Routing works out the real routes
-# Both skip what's already there, so running it again is safe: run it before a demo and
+#   1. accounts — creates the demo riders, drivers and admin account, already verified,
+#                 inside the live Accounts container (no sign-up emails, so no bounces from
+#                 fake addresses), and puts the drivers through approval with their cars
+#                 and placeholder documents. The demo admin does NOT get the admin role
+#                 here (SEED_DEMO_ADMIN stays unset): an admin can open every applicant's
+#                 documents, and the demo password is shared. Use make_admin on a team
+#                 member's own account instead.
+#   2. trips    — through the live API: saves Stripe's test card for the riders that get
+#                 one, posts the drivers' commutes for the next two weeks (and one
+#                 recurring series), and makes the seat requests, accepting some
+# Each skips what's already there, so running it again is safe: run it before a demo and
 # it fills the next two weeks back up without posting any trip twice.
-# Needs the DEMO_ACCOUNT_PASSWORD secret (10+ characters) in the production environment.
-# See infra/seed/README.md.
+# Needs the DEMO_ACCOUNT_PASSWORD secret (10+ characters) in the production environment,
+# and the STRIPE_PUBLISHABLE_KEY variable (pk_test_..., the one the web image is built
+# with) for the cards and requests. See infra/seed/README.md.
 name: Seed demo data
 
 on:
@@ -79,9 +87,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
 
-      - name: Post the demo drivers' trips
+      - name: Add the cards, trips and seat requests
         # Only needs httpx, and tzdata for Winnipeg time (2026.5 is IANA 2026e, which keeps
-        # Manitoba on UTC-5), not the whole workspace.
+        # Manitoba on UTC-5), not the whole workspace. The publishable key is public (it's
+        # in the web app) and can only confirm a card setup it was given the secret for.
+        env:
+          STRIPE_PUBLISHABLE_KEY: ${{ vars.STRIPE_PUBLISHABLE_KEY }}
         run: |
           uv run --no-project --python 3.13 --with httpx --with "tzdata>=2026.5" \
             python infra/seed/seed_trips.py --site "$SITE_URL"
