@@ -264,7 +264,7 @@ jobs:
     name: Smoke test
     needs: deploy
     if: always() && (needs.deploy.result == 'success' || inputs.test_alert)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04 # Playwright 1.55 can't install Chromium on 26.04 (ubuntu-latest since Nov 2026)
     timeout-minutes: 10
     # For the demo accounts' password (DEMO_ACCOUNT_PASSWORD), the same one the seed uses.
     environment:

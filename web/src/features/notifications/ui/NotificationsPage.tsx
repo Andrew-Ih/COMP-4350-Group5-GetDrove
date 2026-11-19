@@ -23,7 +23,7 @@ export function NotificationsPage() {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <main className="mx-auto max-w-2xl px-5 py-8 md:py-12">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-3xl md:text-4xl">Notifications</h1>

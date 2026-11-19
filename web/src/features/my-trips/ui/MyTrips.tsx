@@ -43,7 +43,7 @@ export function MyTrips({ initialRole = "rider" }: { initialRole?: Role }) {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <main className="mx-auto max-w-2xl px-5 py-8 md:py-12">
         <h1 className="text-3xl md:text-4xl">My trips</h1>
 

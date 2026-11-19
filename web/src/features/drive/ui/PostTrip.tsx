@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import { useCurrentUser } from "@/features/auth";
 import { DRIVER_HREF } from "@/features/driver";
+import { AddressSearch } from "@/features/places";
 import {
   AREA_RADIUS_METERS,
   type Direction,
@@ -237,7 +238,7 @@ export function PostTrip() {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <MapLayout
         map={map}
         panel={
@@ -274,7 +275,10 @@ export function PostTrip() {
                 onLocate={position.request}
               />
 
-              <fieldset className="mt-4 grid grid-cols-2 gap-3">
+              {/* Only the neighbourhood is saved with the trip (placeLabel), never the address. */}
+              <AddressSearch className="mt-3" onPick={(picked) => choose(picked, true)} />
+
+              <fieldset className="mt-1 grid grid-cols-2 gap-3">
                 <legend className="sr-only">When you leave</legend>
                 <label className="flex items-center gap-3 rounded-lg bg-surface-muted px-4 py-3">
                   <CalendarDays aria-hidden="true" className="size-5 shrink-0" />

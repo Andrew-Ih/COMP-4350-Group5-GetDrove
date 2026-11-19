@@ -1,4 +1,4 @@
-"""Request and response models for the Routing API (contracts: #108, #262)."""
+"""Request and response models for the Routing API (contracts: #108, #262, #257)."""
 
 from typing import Annotated, Literal
 from uuid import UUID
@@ -177,6 +177,42 @@ class RouteFeature(BaseModel):
     type: Literal["Feature"] = "Feature"
     geometry: LineString
     properties: RouteProperties
+
+
+# ---------------------------------------------------------------- places (#257)
+
+# What someone types to find their area: long enough to mean something, short enough that it
+# can't be anything but an address or a place name.
+PlaceQuery = Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=200)]
+MAX_PLACES = 5
+
+
+class PlaceSearchRequest(ApiModel):
+    query: PlaceQuery = Field(
+        description="An address or place name as the user typed it, for example `750 Osborne "
+        "St` or `Polo Park`. Used for this answer only: not written to disk or logs; repeated "
+        "searches are cached in memory for up to an hour.",
+        examples=["750 Osborne St"],
+    )
+
+
+class Place(ApiModel):
+    label: str = Field(
+        description="A short name for the match, for the user to choose from: the street "
+        "address or the place's name, then its neighbourhood.",
+        examples=["750 Osborne St, Fort Rouge"],
+    )
+    lat: float = Field(examples=[49.8664])
+    lng: float = Field(examples=[-97.1386])
+
+
+class PlaceSearchResponse(ApiModel):
+    places: list[Place] = Field(
+        max_length=MAX_PLACES,
+        description="Up to 5 matches inside the area GetDrove covers (the Winnipeg map), best "
+        "first. Empty when nothing there matches: the user is told and can tap the map "
+        "instead.",
+    )
 
 
 # ---------------------------------------------------------------- errors (documentation)
