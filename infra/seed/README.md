@@ -25,7 +25,7 @@ committed. Emails are `getdrove.demo.<first name>@myumanitoba.ca`, for example
 | ------------- | ----------------------- | --------- | --------------------------------------------- |
 | Priya Sharma  | Pembina Hwy, Fort Rouge | test Visa | an **accepted** seat on Maya's next trip to campus |
 | Noah Bergen   | Pembina Hwy & Grant Ave | test Visa | a **pending** request on the same trip, for Maya to accept or decline |
-| Emma Tran     | St. Vital Centre        | test Visa | an **accepted** seat on Tomas's next trip to campus |
+| Emma Tran     | St. Vital               | test Visa | an **accepted** seat on Tomas's next trip to campus |
 | Owen Campbell | Garden City             | none      | a rider far from every route, who's asked to add a card |
 
 | Admin       | For showing                                        |
