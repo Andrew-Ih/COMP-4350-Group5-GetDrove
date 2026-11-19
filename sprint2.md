@@ -125,9 +125,15 @@ All the demo people, their commutes and cars are in [infra/seed/README.md](infra
 
 ## Cross-team testing
 
-<!-- TODO(#183): fill in once the review and the feedback are done -->
+<!-- TODO(#183): fill in the feedback we received once it arrives -->
 
-**Our review of another team:** <!-- link and two lines on what we found -->
+**Our review of another team:** we black-box tested **BisonRides** on their live site (https://bisonrides.vercel.app, desktop Chrome, Nov 18) and filed three issues on their repo, each with steps to reproduce, expected and actual behaviour, and a suggestion:
+
+| Issue | Type · severity | What we found |
+|---|---|---|
+| [#96 Unknown or mistyped URLs show a blank white page](https://github.com/BisonRIdes/Comp4350Project/issues/96) | Bug · Low | Any address that isn't a real page (e.g. `/abc`, `/forgot-password`) shows a blank page with no way back; we suggested a branded 404 page with a link home. |
+| [#97 No way to reset a forgotten password](https://github.com/BisonRIdes/Comp4350Project/issues/97) | Missing feature · Medium | There's no "Forgot password?" link, so a student who forgets their password is locked out; we suggested reusing their verification-email flow for a time-limited reset link. |
+| [#98 Some rides on Find Ride show no price](https://github.com/BisonRIdes/Comp4350Project/issues/98) | Bug · Medium | Some rides show a price and others none, so riders can't tell whether a ride is free or the price is missing; we suggested always showing a price, or a clear "Free" / "Price not set" label. |
 
 **Feedback we received** is filed as issues labelled [`feedback`](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues?q=label%3Afeedback), each classified **Accepted**, **Deferred** or **Rejected** with a reason. Two of them:
 
