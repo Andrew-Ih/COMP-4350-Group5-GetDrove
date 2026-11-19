@@ -38,3 +38,4 @@ An Architecture Decision Record (ADR) is a short document that records one signi
 | [0024](0024-seat-counting.md) | Seats are taken with one guarded database update | Proposed |
 | [0025](0025-payment-holds.md) | Holds are placed on a saved card by a background worker, from Trips' events | Proposed |
 | [0026](0026-releases-reuse-develop-images.md) | Releases deploy the images already built and tested on develop | Proposed |
+| [0027](0027-geocoding.md) | Typed addresses are looked up with OpenStreetMap's Nominatim, through Routing | Proposed |

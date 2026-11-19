@@ -1,8 +1,10 @@
-"""Routing API (contracts: Sprint 1 #108, Sprint 2 #262).
+"""Routing API (contracts: Sprint 1 #108, Sprint 2 #262, #257).
 
 - Internal endpoints (/internal/...) are called by Trips inside Docker, e.g.
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
+- Finding a place by its address is public (/api/routing/places), for the rider home and
+  Post a trip (#257). It returns 501 until implemented.
 
 Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches),
 #123 (the geometry endpoint), #29 (POST /internal/pickup-points) and #135 (the geometry hides
@@ -33,6 +35,8 @@ from routing.adapters.api.schemas import (
     PickupPoint,
     PickupPointsRequest,
     PickupPointsResponse,
+    PlaceSearchRequest,
+    PlaceSearchResponse,
     Problem,
     RouteFeature,
     RouteProperties,
@@ -43,6 +47,7 @@ from routing.domain.values import Direction, LatLng
 
 internal_router = APIRouter(prefix="/internal", tags=["internal"])
 public_router = APIRouter(tags=["routes"])
+places_router = APIRouter(tags=["places"])
 
 Responses = dict[int | str, dict[str, Any]]
 
@@ -201,3 +206,26 @@ async def route_geometry(
             duration_seconds=route.duration_seconds,
         ),
     )
+
+
+@places_router.post(
+    "/places",
+    summary="Find a place by its address",
+    description="For choosing your area by typing instead of tapping the map (#257): the "
+    "rider home and Post a trip. Looks the address up with OpenStreetMap's geocoder "
+    "(Nominatim, ADR 0027), only inside the area GetDrove covers, and returns up to 5 "
+    "matches, best first. An empty list means nothing there matched. A POST, so what was "
+    "typed is never in a URL; Routing doesn't write it to disk or logs. Searches are spaced "
+    "at least 1 second apart for everyone together (Nominatim's usage policy), and repeated "
+    "ones are answered from an in-memory cache for up to an hour.",
+    responses={
+        **INVALID,
+        401: _problem("Missing or invalid access token", "unauthorized"),
+        503: _problem(
+            "The address lookup is unavailable, too slow or too busy; tap the map instead",
+            "geocoding_unavailable",
+        ),
+    },
+)
+async def find_places(body: PlaceSearchRequest, user: AuthenticatedUser) -> PlaceSearchResponse:
+    _not_implemented()
