@@ -164,7 +164,7 @@ Each of us answered one of the four prompts from the Sprint 2 instructions.
 | Andrew | | |
 | Chimdi |Prompt #4  | I think the most important technical risk going into the final iteration is whether our services work together reliably through the complete booking flow. Our unit and integration tests cover individual components well, but our browser smoke test only checks login and trip search. Problems involving seat requests, driver acceptance, payment holds, or notifications could still appear when those features run together. Adding a Playwright test for that complete flow would give me more confidence before the final release. |
 | Daniel | | |
-| Fola | | |
+| Farouk | Prompt #3| One of the biggest challenges with our current CI/CD process is managing dependencies between pull requests, especially when multiple features are being developed simultaneously. Some pull requests depend on changes from other branches, which can delay reviews and merging even when their individual checks pass. This creates additional work because branches need to be rebased and tests rerun whenever dependent code changes. I think we could improve this by keeping pull requests smaller, reducing unnecessary branch dependencies, and coordinating merge order more effectively.|
 | Kelvin | | |
 | Rayan | | |
 
