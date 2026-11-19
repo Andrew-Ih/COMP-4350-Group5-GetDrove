@@ -118,6 +118,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/places": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Find a place by its address
+         * @description For choosing your area by typing instead of tapping the map (#257): the rider home and Post a trip. Looks the address up with OpenStreetMap's geocoder (Nominatim, ADR 0027), only inside the area GetDrove covers, and returns up to 5 matches, best first. An empty list means nothing there matched. A POST, so what was typed is never in a URL; Routing doesn't write it to disk or logs. Searches are spaced at least 1 second apart for everyone together (Nominatim's usage policy), and repeated ones are answered from an in-memory cache for up to an hour.
+         */
+        post: operations["find_places_places_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -301,6 +321,42 @@ export interface components {
              * @description Best (shortest walk) first. Never on an excluded road and never near either end of the route. Empty if the route doesn't pass within walking distance.
              */
             pickups: components["schemas"]["PickupPoint"][];
+        };
+        /** Place */
+        Place: {
+            /**
+             * Label
+             * @description A short name for the match, for the user to choose from: the street address or the place's name, then its neighbourhood.
+             * @example 750 Osborne St, Fort Rouge
+             */
+            label: string;
+            /**
+             * Lat
+             * @example 49.8664
+             */
+            lat: number;
+            /**
+             * Lng
+             * @example -97.1386
+             */
+            lng: number;
+        };
+        /** PlaceSearchRequest */
+        PlaceSearchRequest: {
+            /**
+             * Query
+             * @description An address or place name as the user typed it, for example `750 Osborne St` or `Polo Park`. Used for this answer only: not written to disk or logs; repeated searches are cached in memory for up to an hour.
+             * @example 750 Osborne St
+             */
+            query: string;
+        };
+        /** PlaceSearchResponse */
+        PlaceSearchResponse: {
+            /**
+             * Places
+             * @description Up to 5 matches inside the area GetDrove covers (the Winnipeg map), best first. Empty when nothing there matches: the user is told and can tap the map instead.
+             */
+            places: components["schemas"]["Place"][];
         };
         /** Point */
         Point: {
@@ -837,6 +893,96 @@ export interface operations {
                      *           "message": "Field required"
                      *         }
                      *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    find_places_places_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceSearchResponse"];
+                };
+            };
+            /** @description Missing or invalid access token (code `unauthorized`) */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unauthorized",
+                     *       "status": 401,
+                     *       "detail": "Missing or invalid access token",
+                     *       "instance": "/places",
+                     *       "code": "unauthorized",
+                     *       "requestId": "b1e2c3d4e5f6"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description Invalid input; `errors` lists the fields (code `invalid_input`) */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Unprocessable Content",
+                     *       "status": 422,
+                     *       "detail": "Invalid input",
+                     *       "instance": "/places",
+                     *       "code": "invalid_input",
+                     *       "requestId": "b1e2c3d4e5f6",
+                     *       "errors": [
+                     *         {
+                     *           "field": "fieldName",
+                     *           "message": "Field required"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The address lookup is unavailable, too slow or too busy; tap the map instead (code `geocoding_unavailable`) */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "type": "about:blank",
+                     *       "title": "Service Unavailable",
+                     *       "status": 503,
+                     *       "detail": "The address lookup is unavailable, too slow or too busy; tap the map instead",
+                     *       "instance": "/places",
+                     *       "code": "geocoding_unavailable",
+                     *       "requestId": "b1e2c3d4e5f6"
                      *     }
                      */
                     "application/json": components["schemas"]["Problem"];

@@ -32,3 +32,16 @@ class RoutingEngineUnavailableError(DomainError):
 
     def __init__(self) -> None:
         super().__init__("The routing engine is unavailable or too slow. Please try again.")
+
+
+class GeocodingUnavailableError(DomainError):
+    """The address lookup (ADR 0027) is down, too slow, or too busy right now (#257)."""
+
+    status = 503
+    code = "geocoding_unavailable"
+    title = "Address lookup unavailable"
+
+    def __init__(self) -> None:
+        super().__init__(
+            "We can't look up addresses right now. Try again, or tap the map to choose your area."
+        )

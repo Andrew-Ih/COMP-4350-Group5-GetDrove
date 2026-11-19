@@ -125,6 +125,29 @@ describe("PostTrip", () => {
     expect(screen.getByRole("link", { name: "See requests" })).toHaveAttribute("href", "/drive/trips/trip-1");
   });
 
+  it("can start from a typed address, saving only its neighbourhood (#257)", async () => {
+    const departureAt = toSearchTime(tomorrow, "07:45")!;
+    const fetchSpy = mockFetch(
+      { status: 200, body: maya },
+      { status: 200, body: { places: [{ label: "750 Osborne Street, Fort Rouge", lat: 49.8664, lng: -97.1386 }] } },
+      NO_TRIPS,
+      { status: 201, body: postedTrip("to_campus", departureAt, 3) },
+      { status: 200, body: route },
+    );
+    renderWithProviders(<PostTrip />);
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Address or place" }), "750 Osborne St{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "750 Osborne Street, Fort Rouge" }));
+    expect(screen.getByText("Fort Rouge area")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Post trip" }));
+
+    expect(await screen.findByText("Trip posted")).toBeInTheDocument();
+    const posted = fetchSpy.mock.calls
+      .map(([input]) => input as Request)
+      .find((r) => r.method === "POST" && new URL(r.url).pathname.endsWith("/trips/"));
+    expect((await posted!.clone().json()).place).toEqual({ label: "Fort Rouge area", lat: 49.8664, lng: -97.1386 });
+  });
+
   it("posts a trip from campus with the seats chosen", async () => {
     const departureAt = toSearchTime(tomorrow, "16:45")!;
     const fetchSpy = mockFetch(
