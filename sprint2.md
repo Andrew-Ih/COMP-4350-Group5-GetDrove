@@ -154,8 +154,6 @@ Our Sprint 2 retro: **[docs/retros/sprint2.md](docs/retros/sprint2.md)**. Our Sp
 
 Each of us answered one of the four prompts from the Sprint 2 instructions.
 
-<!-- TODO(#185): each person fills in their own row; prompts from the Sprint 2 instructions -->
-
 | Who | Prompt | Reflection |
 |---|---|---|
 | Andrew | Prompt #1 | The change I'm happiest with is how we release. In Sprint 1, `main` rebuilt every image when we deployed, so what went live wasn't exactly what we'd tested. Now `develop` builds and publishes the images once, and a release to `main` reuses those same images, deploys them, runs a browser smoke test against the live site, and posts to our Discord if anything fails ([ADR 0026](docs/architecture/adr/0026-releases-reuse-develop-images.md)). Releasing 0.2.x proved why: when GitHub's runners moved to Ubuntu 26.04 and the map download site refused GitHub, the deploy failed loudly, the live site stayed up, and we fixed it the same night. |
