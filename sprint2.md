@@ -162,7 +162,7 @@ Each of us answered one of the four prompts from the Sprint 2 instructions.
 | Who | Prompt | Reflection |
 |---|---|---|
 | Andrew | | |
-| Chimdi | | |
+| Chimdi |Prompt #4  | I think the most important technical risk going into the final iteration is whether our services work together reliably through the complete booking flow. Our unit and integration tests cover individual components well, but our browser smoke test only checks login and trip search. Problems involving seat requests, driver acceptance, payment holds, or notifications could still appear when those features run together. Adding a Playwright test for that complete flow would give me more confidence before the final release. |
 | Daniel | | |
 | Fola | | |
 | Kelvin | | |
