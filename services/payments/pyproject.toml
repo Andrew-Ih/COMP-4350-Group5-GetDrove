@@ -15,7 +15,7 @@ dependencies = [
     "common-security",
     "events",
     "redis>=6.0",
-    "stripe[async]>=14,<15",
+    "stripe[async]>=14,<18",
 ]
 
 [build-system]
