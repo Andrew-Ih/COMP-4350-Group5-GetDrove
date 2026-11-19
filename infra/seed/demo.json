@@ -72,7 +72,7 @@
       "email": "getdrove.demo.emma@myumanitoba.ca",
       "firstName": "Emma",
       "lastName": "Tran",
-      "home": { "label": "St. Vital Centre", "lat": 49.829, "lng": -97.102 },
+      "home": { "label": "St. Vital", "lat": 49.8395, "lng": -97.1065 },
       "card": true
     },
     {
