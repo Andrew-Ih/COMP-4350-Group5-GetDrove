@@ -190,7 +190,8 @@ MAX_PLACES = 5
 class PlaceSearchRequest(ApiModel):
     query: PlaceQuery = Field(
         description="An address or place name as the user typed it, for example `750 Osborne "
-        "St` or `Polo Park`. Used for this answer only: never stored or logged.",
+        "St` or `Polo Park`. Used for this answer only: not written to disk or logs; repeated "
+        "searches are cached in memory for up to an hour.",
         examples=["750 Osborne St"],
     )
 

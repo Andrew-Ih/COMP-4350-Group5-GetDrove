@@ -129,7 +129,7 @@ export interface paths {
         put?: never;
         /**
          * Find a place by its address
-         * @description For choosing your area by typing instead of tapping the map (#257): the rider home and Post a trip. Looks the address up with OpenStreetMap's geocoder (Nominatim, ADR 0027), only inside the area GetDrove covers, and returns up to 5 matches, best first. An empty list means nothing there matched. A POST, so what was typed is never in a URL; Routing doesn't store or log it. Searches are spaced at least 1 second apart for everyone together (Nominatim's usage policy), and repeated ones are answered from a short in-memory cache.
+         * @description For choosing your area by typing instead of tapping the map (#257): the rider home and Post a trip. Looks the address up with OpenStreetMap's geocoder (Nominatim, ADR 0027), only inside the area GetDrove covers, and returns up to 5 matches, best first. An empty list means nothing there matched. A POST, so what was typed is never in a URL; Routing doesn't write it to disk or logs. Searches are spaced at least 1 second apart for everyone together (Nominatim's usage policy), and repeated ones are answered from an in-memory cache for up to an hour.
          */
         post: operations["find_places_places_post"];
         delete?: never;
@@ -345,7 +345,7 @@ export interface components {
         PlaceSearchRequest: {
             /**
              * Query
-             * @description An address or place name as the user typed it, for example `750 Osborne St` or `Polo Park`. Used for this answer only: never stored or logged.
+             * @description An address or place name as the user typed it, for example `750 Osborne St` or `Polo Park`. Used for this answer only: not written to disk or logs; repeated searches are cached in memory for up to an hour.
              * @example 750 Osborne St
              */
             query: string;

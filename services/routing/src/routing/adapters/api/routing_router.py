@@ -215,9 +215,9 @@ async def route_geometry(
     "rider home and Post a trip. Looks the address up with OpenStreetMap's geocoder "
     "(Nominatim, ADR 0027), only inside the area GetDrove covers, and returns up to 5 "
     "matches, best first. An empty list means nothing there matched. A POST, so what was "
-    "typed is never in a URL; Routing doesn't store or log it. Searches are spaced at least "
-    "1 second apart for everyone together (Nominatim's usage policy), and repeated ones are "
-    "answered from a short in-memory cache.",
+    "typed is never in a URL; Routing doesn't write it to disk or logs. Searches are spaced "
+    "at least 1 second apart for everyone together (Nominatim's usage policy), and repeated "
+    "ones are answered from an in-memory cache for up to an hour.",
     responses={
         **INVALID,
         401: _problem("Missing or invalid access token", "unauthorized"),

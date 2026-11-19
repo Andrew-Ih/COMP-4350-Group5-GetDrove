@@ -25,9 +25,9 @@ Turning text into a point needs a geocoder; our map tiles (OpenFreeMap) and OSRM
 
 **Routing looks typed addresses up with the public Nominatim server**, through a new public endpoint, `POST /api/routing/places` (contract in `contracts/openapi/routing.json`):
 
-- The browser sends `{ "query": "750 Osborne St" }` to Routing, never to Nominatim directly. It's a **POST**, so the address is never in one of our URLs or logs. Routing doesn't store or log it.
-- Routing asks Nominatim with our User-Agent, **bounded to the OSRM map's area** (`viewbox` with `bounded=1`), in Canada, at most 5 results. It drops anything outside the area and returns `{ label, lat, lng }` for each match. An empty list means nothing matched.
-- **At most 1 request a second** to Nominatim for the whole service, as the policy says. A request that would wait too long gets `503 geocoding_unavailable`, and the user can still tap the map.
+- The browser sends `{ "query": "750 Osborne St" }` to Routing, never to Nominatim directly. It's a **POST**, so the address is never in one of our URLs or logs. Routing doesn't write it to disk or logs; the only copy it keeps is the in-memory cache below.
+- Routing asks Nominatim from our server, so Nominatim sees our server's address, never the rider's or driver's. It sends our User-Agent, **bounded to the OSRM map's area** (`viewbox` with `bounded=1`), in Canada, at most 5 results. It drops anything outside the area and returns `{ label, lat, lng }` for each match. An empty list means nothing matched.
+- **At most 1 request a second** to Nominatim for the whole service, as the policy says. The limit is kept in the process's memory, so it holds because Routing runs as one process (one container, one Uvicorn worker); running more would need a shared limit, for example in Redis. A request that would wait too long gets `503 geocoding_unavailable`, and the user can still tap the map.
 - **A small in-memory cache** answers repeated searches without asking Nominatim again, as the policy asks. It lives only in the service's memory, is never written anywhere, and entries expire after an hour.
 - The map already credits OpenStreetMap, which covers attribution.
 - Picking a match works exactly like tapping the map: the rider's search still sends only the point, and a driver's trip still saves the neighbourhood label.
@@ -39,7 +39,7 @@ Behind a port (`PlaceFinder`), so switching to Geoapify or a self-hosted geocode
 **Positive**
 
 - Free, with no key to manage and nothing new to host.
-- Typed addresses go only to the OpenStreetMap Foundation, under its privacy policy, and are never stored by us.
+- Typed addresses go only to the OpenStreetMap Foundation, under its privacy policy, from our server's address rather than the user's. We never write them to disk or logs; they're only held in memory, for up to an hour, to answer repeated searches.
 - Same data as the map and the routes, so a place you can find is a place we can route to.
 
 **Negative / trade-offs**

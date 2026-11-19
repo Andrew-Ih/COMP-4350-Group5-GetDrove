@@ -60,3 +60,12 @@ async def test_a_short_query_is_422(client: AsyncClient, auth: TestAuth) -> None
 
     assert response.status_code == 422
     assert response.json()["code"] == "invalid_input"
+
+
+async def test_it_is_not_implemented_yet(client: AsyncClient, auth: TestAuth) -> None:
+    """#442 implements it and replaces this with the real answers (test_places_api.py)."""
+    response = await client.post(
+        "/places", json={"query": "750 Osborne St"}, headers=auth.headers()
+    )
+
+    assert response.status_code == 501
