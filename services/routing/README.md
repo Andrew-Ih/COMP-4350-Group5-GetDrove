@@ -130,6 +130,26 @@ It fails fast, because Trips calls it while the rider waits. The call to OSRM wa
 
 It needs a logged-in user (401 otherwise), returns 404 `route_not_found` for a trip with no route, and 422 for an ID that isn't a UUID.
 
+### Finding a place by its address (#257, ADR 0027)
+
+`POST /places` (gateway: `POST /api/routing/places`) with `{ "query": "750 Osborne St" }` lets riders and drivers choose their area by typing instead of tapping the map. It returns up to 5 `{ label, lat, lng }` matches inside the map's area (the OSRM `BBOX`), best first, or an empty list.
+
+It asks OpenStreetMap's public geocoder, [Nominatim](https://nominatim.org/release-docs/latest/api/Search/), keeping to its [usage policy](https://operations.osmfoundation.org/policies/nominatim/) (`adapters/nominatim.py`):
+
+- **Bounded to Winnipeg:** `viewbox` with `bounded=1`, Canada only, and the use case drops anything outside the map anyway.
+- **At most 1 request a second** for the whole service (`ROUTING_GEOCODER_MIN_INTERVAL_SECONDS`). A search that would wait longer than `ROUTING_GEOCODER_MAX_WAIT_SECONDS` (3) is answered 503 instead.
+- **Cached:** the same search again (spaces and case ignored) is answered from memory for an hour, up to 500 searches (`ROUTING_PLACES_CACHE_TTL_SECONDS`, `ROUTING_PLACES_CACHE_MAX_ENTRIES`). Failures aren't cached.
+- **Identified:** every request sends `ROUTING_GEOCODER_USER_AGENT`.
+- **Private:** a POST, so the address is never in one of our URLs, and nothing logs it. The cache lives only in the process's memory.
+
+Locally it calls the real Nominatim too (`ROUTING_GEOCODER_URL`), so it needs internet access; the tests use fakes.
+
+| Status | Code | When |
+|---|---|---|
+| 401 | `unauthorized` | No valid access token |
+| 422 | `invalid_input` | `query` shorter than 3 or longer than 200 characters (after trimming) |
+| 503 | `geocoding_unavailable` | Nominatim is down, errors, is too slow (`ROUTING_GEOCODER_TIMEOUT_SECONDS`, 3), answers something unexpected, or too many searches are waiting |
+
 ## Events
 
 _Published and consumed events, linking to `contracts/events/`._
