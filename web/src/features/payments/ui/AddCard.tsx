@@ -45,7 +45,7 @@ export function AddCard({ next }: { next: string | undefined }) {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <main className="mx-auto max-w-xl px-5 py-8 md:py-12">
         <h1 className="text-3xl md:text-4xl">Payment card</h1>
         <p className="mt-2 text-ink-soft">
