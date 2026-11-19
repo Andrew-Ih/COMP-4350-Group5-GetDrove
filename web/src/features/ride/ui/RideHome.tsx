@@ -131,7 +131,7 @@ export function RideHome({ initial }: { initial?: SearchQuery } = {}) {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <MapLayout
         map={
           <MapView

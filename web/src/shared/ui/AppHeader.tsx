@@ -1,7 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { Bell, Car, CreditCard, LogOut, Menu, X, Zap } from "lucide-react";
+import { Bell, Car, CreditCard, LogOut, Menu, ShieldCheck, X, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useContext, useEffect, useRef, useState } from "react";
@@ -21,10 +21,11 @@ const NAV = [
 
 /**
  * Top bar on every signed-in screen. Desktop: logo, Ride / Drive / My trips, bell, and the
- * avatar, which opens a menu with Payment card, Driver status, Auto-accept and Log out.
+ * avatar, which opens a menu with Payment card, Driver status, Auto-accept and Log out
+ * (and Driver applications for admins).
  * Mobile: logo, avatar and a menu button that opens the same links and Log out.
  */
-export function AppHeader({ userName }: { userName: string }) {
+export function AppHeader({ userName, isAdmin = false }: { userName: string; isAdmin?: boolean }) {
   const pathname = usePathname();
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -136,6 +137,16 @@ export function AppHeader({ userName }: { userName: string }) {
                 >
                   <Zap aria-hidden="true" className="size-4" /> Auto-accept
                 </Link>
+                {isAdmin && (
+                  <Link
+                    href="/admin/drivers"
+                    role="menuitem"
+                    onClick={() => setAccountOpen(false)}
+                    className="flex w-full items-center gap-2 px-4 py-2.5 font-semibold hover:bg-surface-muted"
+                  >
+                    <ShieldCheck aria-hidden="true" className="size-4" /> Driver applications
+                  </Link>
+                )}
                 <button
                   type="button"
                   role="menuitem"
@@ -208,6 +219,15 @@ export function AppHeader({ userName }: { userName: string }) {
           >
             Auto-accept
           </Link>
+          {isAdmin && (
+            <Link
+              href="/admin/drivers"
+              onClick={() => setMenuOpen(false)}
+              className="block border-b border-line py-4 text-lg font-semibold text-muted"
+            >
+              Driver applications
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => void handleLogOut()}

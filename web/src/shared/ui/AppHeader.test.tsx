@@ -57,6 +57,28 @@ describe("AppHeader", () => {
     expect(screen.getByRole("menuitem", { name: "Auto-accept" })).toHaveAttribute("href", "/account/auto-accept");
   });
 
+  it("links admins to the driver applications", async () => {
+    renderWithProviders(<AppHeader userName="Priya" isAdmin />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+    expect(screen.getByRole("menuitem", { name: "Driver applications" })).toHaveAttribute("href", "/admin/drivers");
+
+    // Opening the mobile menu closes the account menu, so only the mobile link is left.
+    await userEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    expect(screen.getByRole("link", { name: "Driver applications" })).toHaveAttribute("href", "/admin/drivers");
+  });
+
+  it("doesn't show the driver applications to other students", async () => {
+    renderWithProviders(<AppHeader userName="Priya" />);
+
+    await userEvent.click(screen.getByRole("button", { name: "Account" }));
+    expect(screen.getByRole("menuitem", { name: "Payment card" })).toBeInTheDocument();
+    expect(screen.queryByRole("menuitem", { name: "Driver applications" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Open menu" }));
+    expect(screen.queryByRole("link", { name: "Driver applications" })).not.toBeInTheDocument();
+  });
+
   it("shows the app's notification bell when it's given one", () => {
     renderWithProviders(
       <HeaderBellContext.Provider value={<button type="button">the real bell</button>}>

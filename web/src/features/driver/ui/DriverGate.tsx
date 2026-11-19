@@ -23,7 +23,7 @@ export function DriverGate({ children }: { children: ReactNode }) {
     const { title, text } = statusMessage(profile.data);
     return (
       <>
-        <AppHeader userName={me.data?.firstName ?? ""} />
+        <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
         <main className="min-h-[calc(100dvh-4rem)] bg-canvas px-4 py-12 md:min-h-[calc(100dvh-4.5rem)]">
           <Card className="mx-auto max-w-md bg-surface p-8">
             <h1 className="text-3xl">Get approved to drive</h1>
@@ -46,7 +46,7 @@ export function DriverGate({ children }: { children: ReactNode }) {
   if (profile.status === "pending") {
     return (
       <>
-        <AppHeader userName={me.data?.firstName ?? ""} />
+        <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
         <p role="status" className="mt-16 flex items-center justify-center gap-3 font-semibold text-ink-soft">
           <Spinner className="size-5" /> Loading…
         </p>

@@ -50,7 +50,7 @@ export function AdminDrivers() {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <main className="mx-auto max-w-3xl px-5 py-8 md:py-12">
         <h1 className="text-3xl md:text-4xl">Driver applications</h1>
 
