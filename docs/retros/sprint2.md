@@ -2,11 +2,7 @@
 
 > Back to [Sprint 2](../../sprint2.md) · Previous: [Sprint 1 retro](sprint1.md)
 
-**Reviewed by:** <!-- who was there -->, <!-- date -->
-
-<!-- TODO(#185): fill in at the retro meeting. The "Facts to discuss" lists are prepared from GitHub
-so the meeting can start from data; the conclusions are the team's. Delete this comment and every
-"Facts to discuss" list once the sections are written. -->
+**Reviewed by:** Andrew, Chimdi, Daniel, Farouk, Kelvin, Rayan, November 19, 2026
 
 ## Did we do what we said in Sprint 1?
 
@@ -14,10 +10,10 @@ The Sprint 1 retro ended with four changes. For each: did it happen, and did it 
 
 | Change we agreed | What happened | Keep? |
 |---|---|---|
-| 1. Every task gets a "done when" before it's assigned | | |
-| 2. Acceptance-criteria tests go in the same PR as the feature | | |
-| 3. Check the PR base and title, and run `scripts/check.sh`, before opening a PR | | |
-| 4. Try each new screen as a first-time user on the live site | | |
+| 1. Every task gets a "done when" before it's assigned | Mostly. Stories had acceptance criteria and most tasks had a "done when", but some tasks created mid-sprint had no label, milestone or parent until we cleaned up the board at the end. | Yes |
+| 2. Acceptance-criteria tests go in the same PR as the feature | Mostly. Feature pull requests came with their tests, but the overselling test ([#50](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/50)) came as its own task after the fix ([#47](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/47)). | Yes |
+| 3. Check the PR base and title, and run `scripts/check.sh`, before opening a PR | Yes, and it showed: 5 of the last 150 CI runs failed, all fixed before merging. One sync pull request still used the wrong head branch. | Yes |
+| 4. Try each new screen as a first-time user on the live site | Late. We did it after the first release, and it found real gaps (no admin link [#466](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/466), no way to remove a card [#464](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/464), a demo rider who couldn't be seated). Doing it before releasing would have caught them sooner. | Yes, on every release (Sprint 3 change 2) |
 
 ## What we're proud of
 
@@ -36,13 +32,9 @@ The Sprint 1 retro ended with four changes. For each: did it happen, and did it 
 
 ## How testing fit into our workflow
 
-<!-- Compare with Sprint 1: did acceptance-criteria tests come with the feature this time? -->
+Better than Sprint 1: most acceptance-criteria tests came in the same pull request as the feature, CI ran all 1,838 backend and 482 frontend tests on every pull request, and a flaky frontend test was fixed rather than retried ([#399](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/399)). Coverage went up on the frontend (79% → 86.5%) and held on the backend (98% → 97%, on 2.6 times the code).
 
-**Facts to discuss:**
-
-- The overselling test (#50) was written as its own task after the guarded update (#47), not first, as the implementation plan intended.
-- One flaky frontend test was fixed rather than retried (#399).
-- Coverage went up on the frontend (79% → 86.5%) and held on the backend (98% → 97%, on 2.6 times the code), but the browser, Stripe and startup-wiring gaps remain ([#435](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/435), [#436](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/436), [#437](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/437)).
+What's missing is testing across the whole system: the browser smoke test only logs in and searches, so the main flow (request → accept → hold → notification) is only checked by hand, and the Stripe hold paths and startup wiring are weakly tested ([#435](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/435), [#436](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/436), [#437](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/437)). The overselling test also came after the fix instead of first. Sprint 3 change 3 adds an end-to-end test of the booking flow.
 
 ## Cross-team testing
 

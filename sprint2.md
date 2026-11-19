@@ -46,7 +46,7 @@ Behind the stories, Sprint 2 also built: the events that tie the services togeth
 - **What runs:** the whole suite, every time: **1,838 backend tests** (unit, contract and integration tests against real PostgreSQL + PostGIS, Redis, Mailpit and stripe-mock), **482 frontend tests**, plus lint, strict types, architecture rules and the contract checks. After every deploy, a **Playwright** test logs in to the live site as a demo rider and searches.
 - **How we chose it:** no subset and no path filters. The suite is fast enough, and our breaks cross services: a sync of `develop` into a feature branch failed because another team member's change broke two of that branch's tests ([run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44203058951)), which a suite picked by changed files wouldn't have run.
 - **When:** on every pull request (CI), again on every merge into `develop` (Delivery), and against the live site after every deploy.
-- **How long:** **2.5 minutes** for a pull request (median of 132 runs; backend tests 2 min 11 s, frontend tests 45 s, in parallel), **3.7 minutes** for Delivery.
+- **How long:** **2.5 minutes** for a pull request (median of 132 runs; backend tests 2 min 11 s, frontend tests 45 s, in parallel), **3.7 minutes** for Delivery, about **7 minutes** for a deploy with its smoke test.
 - **On failure:** both jobs are required checks, so a red run can't be merged; the author fixes it. A failed deploy or smoke test posts to Discord and can be rolled back in a minute. Flaky tests are fixed, not rerun.
 - **A regression test for a past risk:** [`test_seat_oversell.py`](services/trips/tests/concurrency/test_seat_oversell.py) (#50) fires 20 accepts at once for one seat on real PostgreSQL, three times per run, and checks exactly one wins.
 
@@ -137,17 +137,15 @@ All the demo people, their commutes and cars are in [infra/seed/README.md](infra
 
 ## API and architecture
 
-- **[API documentation](docs/api/README.md):** every service's Swagger UI and contract, every endpoint (and which need a login), and the events. The contracts in [`contracts/openapi/`](contracts/openapi/) and [`contracts/events/`](contracts/events/) are generated from the code, and CI fails if they or the frontend's types fall out of date. Sprint 2 added the request, decision, auto-accept, series, cancellation, driver, admin, profile, notification and card endpoints, and 11 events.
+- **[API documentation](docs/api/README.md):** every service's Swagger UI and contract, every endpoint (and which need a login), and the events. The contracts in [`contracts/openapi/`](contracts/openapi/) and [`contracts/events/`](contracts/events/) are generated from the code, and CI fails if they or the frontend's types fall out of date. Sprint 2 added the request, decision, auto-accept, series, cancellation, driver, admin, profile, notification, card and address-search endpoints, and 12 events.
 - **[Architecture](docs/architecture/architecture.md)**, updated for Sprint 2: the component diagram (gateway, services, PostgreSQL, Redis Streams, OSRM, Stripe, Brevo, the VM) coloured by what's built, every call and event between services, the Sprint 2 status, the **request → accept → hold → notify** sequence as built, and the CI/CD pipeline. Editable version: [`getdrove-architecture.drawio`](docs/architecture/getdrove-architecture.drawio).
 - **New decisions:** [0023](docs/architecture/adr/0023-approved-drivers-read-model.md) (Trips' copy of approved drivers), [0024](docs/architecture/adr/0024-seat-counting.md) (seats taken with one guarded update), [0025](docs/architecture/adr/0025-payment-holds.md) (holds by a worker on a saved card), [0026](docs/architecture/adr/0026-releases-reuse-develop-images.md) (releases reuse `develop`'s images).
 
 ## Reflection and risk
 
-Our Sprint 2 retro: **[docs/retros/sprint2.md](docs/retros/sprint2.md)**. <!-- TODO(#185): two or three lines from the retro -->
+Our Sprint 2 retro: **[docs/retros/sprint2.md](docs/retros/sprint2.md)**. Our Sprint 1 changes mostly held, but we tested the live site as newcomers only after the release. What slowed us most was long-lived story branches and releasing only at the end, so for Sprint 3 we're moving to short-lived task branches from `develop`, releasing as soon as each story is done, and adding an end-to-end test of the booking flow.
 
 ### Work we're proud of
-
-<!-- TODO(#185): the team picks one or two; candidates below, with why -->
 
 - **No overselling, proven under load ([#46](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/46), [#425](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/pull/425)).** Taking a seat is one guarded database update, and a concurrency test fires 20 accepts at once at real PostgreSQL on every pull request, including auto-accept racing the driver.
 - **Holds that survive anything ([ADR 0025](docs/architecture/adr/0025-payment-holds.md)).** Accepting never waits for Stripe; the hold worker places the hold from the event with an idempotency key, so a crash or a repeated event never holds twice, and a card that fails frees the seat.
@@ -176,7 +174,7 @@ Each of us answered one of the four prompts from the Sprint 2 instructions.
 | **Real Stripe behaviour** | CI only fakes Stripe; holds expire after 7 days and 3-D Secure cards behave differently. | Weekly sandbox tests and the untested hold paths ([#436](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/436)). |
 | **Load and security hardening in a short final sprint** | JMeter load testing (#191) and making CodeQL required (#188) are course requirements, and Routing is our slowest service. | Feature freeze at the end of week 8; load test Routing's search and detours first. |
 | **The free hosting ends** | The Google Cloud trial credit runs out in early January 2027, and the site is on a free DuckDNS name. | Enough for the term; the VM is shut down after the final demo. |
-| **Feature branches drifting from `develop`** | Long-lived story branches needed repeated syncs this sprint, and some broke tests that passed on their own. | Smaller stories, and syncing `develop` into a feature branch at least every two days. |
+| **Feature branches drifting from `develop`** | Long-lived story branches needed repeated syncs this sprint, and some broke tests that passed on their own. | A simpler branching strategy for Sprint 3: short-lived task branches straight from `develop`, no feature branch per story ([retro](docs/retros/sprint2.md#what-well-change-for-sprint-3)). |
 
 ## Known issues
 

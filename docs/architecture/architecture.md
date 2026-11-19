@@ -43,6 +43,7 @@ flowchart TB
         stripe["Stripe (test mode)"]
         brevo["Brevo (email)"]
         tiles["OpenFreeMap (map tiles)"]
+        nominatim["Nominatim (address search)"]
     end
 
     web -->|"HTTPS /api/*"| traefik
@@ -56,6 +57,7 @@ flowchart TB
     trips -->|quotes · has a card?| payments
     notify -->|email addresses| accounts
     routing --> osrm
+    routing -->|place search| nominatim
     accounts --> docs
 
     accounts <-->|events| redis
@@ -78,7 +80,7 @@ flowchart TB
     classDef built fill:#e6f4ea,stroke:#2e8b57,stroke-width:2px,color:#1a1a1a
     classDef partial fill:#fff4e0,stroke:#d9822b,stroke-width:2px,color:#1a1a1a
     classDef later fill:#f5f5f5,stroke:#9e9e9e,stroke-dasharray:4 3,color:#444
-    class web,traefik,next,routing,accountsDb,tripsDb,routingDb,payDb,notifyDb,redis,osrm,docs,brevo,tiles,stripe built
+    class web,traefik,next,routing,accountsDb,tripsDb,routingDb,payDb,notifyDb,redis,osrm,docs,brevo,tiles,stripe,nominatim built
     class accounts,trips,payments,notify partial
 ```
 
@@ -90,12 +92,13 @@ flowchart TB
 | **Traefik** | The only public entry point. HTTPS via Let's Encrypt for https://getdrove.duckdns.org; routes `/api/<service>/*` to services and everything else to the Next.js server. No business or auth logic, and no access log (request URLs hold riders' locations). |
 | **Accounts** | Signup restricted to `@myumanitoba.ca`, email verification, login, JWT issuing (RS256) and the JWKS endpoint, driver documents (stored on a Docker volume) and vehicle, admin approval, public profiles and reputation. Later: writing ratings, blocks, reports, the late-cancellation record. |
 | **Trips** | One-off and recurring trips, seat requests, eligibility rules (including a saved card), manual and automatic acceptance, seat counting that can't oversell, cancellations, a copy of who's an approved driver. Later: trip execution (start, pickup, no-show, complete), share links. |
-| **Routing** | Computes and stores driving routes (PostGIS), finds trips that pass within walking distance of a rider, suggests pickup points, calculates detours and the pickup order, and returns rider-safe route geometry (driver's start hidden). Caches detour plans in Redis and forgets a trip's plans when its riders change. Uses OSRM. |
+| **Routing** | Computes and stores driving routes (PostGIS), finds trips that pass within walking distance of a rider, suggests pickup points, calculates detours and the pickup order, looks up typed addresses through Nominatim (one request a second, cached; [ADR 0027](adr/0027-geocoding.md)), and returns rider-safe route geometry (driver's start hidden). Caches detour plans in Redis and forgets a trip's plans when its riders change. Uses OSRM. |
 | **Payments** | Distance-based price quotes, saved cards (Stripe customers and SetupIntents), holds on the rider's card after acceptance (placed and released by a background **hold worker**), releasing holds on cancellation. Later: capture after the trip, no-show charges, earnings ledger. Uses Stripe in test mode. |
 | **Notifications** | The in-app bell and an email for each request and trip update, the verification email, and ride reminders 30 minutes before departure (a background **reminder scheduler**). The browser polls the bell. Later: trip group chat. Uses Brevo for email in production and Mailpit locally. |
 | **PostgreSQL + PostGIS** | One instance; each service has its own schema and database user, so services can't read each other's data. |
 | **Redis** | Event streams between services and Routing's detour plan cache. Runs with AOF persistence. |
 | **OSRM** | Self-hosted routing engine with car and foot profiles, built from a Winnipeg map extract ([infra/osrm](../../infra/osrm/README.md)). |
+| **Nominatim** | OpenStreetMap's public address search, used when a student types an address. Called only by Routing, at most once a second, with our contact in the User-Agent, as its usage policy asks. |
 
 ## Communication boundaries
 
