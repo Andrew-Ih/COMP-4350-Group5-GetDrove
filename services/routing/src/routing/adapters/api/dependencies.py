@@ -11,6 +11,7 @@ from routing.adapters.osrm import OSRMRoutingEngine, OSRMWalkingEngine
 from routing.adapters.persistence.repository import SQLAlchemyRouteRepository
 from routing.application.compute_route import ComputeRoute
 from routing.application.detour import Detour, DetourCost
+from routing.application.find_places import FindPlaces
 from routing.application.get_route import GetRoute
 from routing.application.match_rider import MatchRider
 from routing.application.ports import DetourPlanCache
@@ -201,3 +202,10 @@ def get_detour(request: Request) -> DetourQuery:
 
 
 DetourService = Annotated[DetourQuery, Depends(get_detour)]
+
+
+def get_find_places(request: Request) -> FindPlaces:
+    return FindPlaces(request.app.state.place_finder)
+
+
+FindPlacesService = Annotated[FindPlaces, Depends(get_find_places)]

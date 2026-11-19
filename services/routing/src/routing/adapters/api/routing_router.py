@@ -4,7 +4,7 @@
   http://routing:8000/internal/routes. The gateway never exposes them.
 - The geometry endpoint is public (/api/routing/trips/{tripId}/geometry), for the map.
 - Finding a place by its address is public (/api/routing/places), for the rider home and
-  Post a trip (#257). It returns 501 until implemented.
+  Post a trip (#257).
 
 Implemented by issues #24 (POST /internal/routes), #25 and #26 (POST /internal/matches),
 #123 (the geometry endpoint), #29 (POST /internal/pickup-points) and #135 (the geometry hides
@@ -20,6 +20,7 @@ from common_security.dependencies import AuthenticatedUser
 from routing.adapters.api.dependencies import (
     ComputeRouteService,
     DetourService,
+    FindPlacesService,
     GetRouteService,
     MatchRiderService,
     SuggestPickupsService,
@@ -35,6 +36,7 @@ from routing.adapters.api.schemas import (
     PickupPoint,
     PickupPointsRequest,
     PickupPointsResponse,
+    Place,
     PlaceSearchRequest,
     PlaceSearchResponse,
     Problem,
@@ -227,5 +229,13 @@ async def route_geometry(
         ),
     },
 )
-async def find_places(body: PlaceSearchRequest, user: AuthenticatedUser) -> PlaceSearchResponse:
-    _not_implemented()
+async def find_places(
+    body: PlaceSearchRequest, user: AuthenticatedUser, service: FindPlacesService
+) -> PlaceSearchResponse:
+    places = await service.execute(body.query)
+
+    return PlaceSearchResponse(
+        places=[
+            Place(label=place.label, lat=place.point.lat, lng=place.point.lng) for place in places
+        ]
+    )

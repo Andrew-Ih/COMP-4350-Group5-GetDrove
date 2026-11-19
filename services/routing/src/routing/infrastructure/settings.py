@@ -30,6 +30,20 @@ class Settings(BaseSettings):
     # The cache must never eat the 1 s detour budget: a slow Redis counts as a miss. Redis
     # answers in about a millisecond, so this plus detour_timeout_seconds stays under 1 s.
     plan_cache_timeout_seconds: float = 0.1
+    # Typed addresses (#257, ADR 0027): OpenStreetMap's Nominatim. Its usage policy asks for a
+    # User-Agent that says who we are, and at most 1 request a second from all of us together.
+    geocoder_url: str = "https://nominatim.openstreetmap.org"
+    geocoder_user_agent: str = (
+        "GetDrove/0.2 (University of Manitoba COMP 4350 student project; "
+        "https://getdrove.duckdns.org)"
+    )
+    geocoder_timeout_seconds: float = 3.0
+    geocoder_min_interval_seconds: float = 1.0
+    # Beyond this wait for a turn, answer 503 and let the user tap the map instead.
+    geocoder_max_wait_seconds: float = 3.0
+    # Repeated searches are answered from memory (never written anywhere), as the policy asks.
+    places_cache_ttl_seconds: int = 3600
+    places_cache_max_entries: int = 500
 
 
 def get_settings() -> Settings:

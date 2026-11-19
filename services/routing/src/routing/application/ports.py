@@ -6,6 +6,7 @@ from typing import Protocol
 from uuid import UUID
 
 from routing.domain.entities import Route
+from routing.domain.places import Area, Place
 from routing.domain.values import Corridor, CorridorHit, LatLng, RouteSample, Walk
 
 
@@ -92,4 +93,13 @@ class RouteRepository(Protocol):
     async def route_ends(self, trip_id: UUID) -> tuple[LatLng, LatLng] | None:
         """The first and last points of the trip's route, or None if it has none. Cheaper
         than ``get``: the rest of the path isn't read."""
+        ...
+
+
+class PlaceFinder(Protocol):
+    """Looks up what someone typed (#257, ADR 0027)."""
+
+    async def find(self, query: str, area: Area, limit: int) -> list[Place]:
+        """Best matches inside ``area`` first, at most ``limit``; an empty list when nothing
+        matches. Raise GeocodingUnavailableError if the lookup is down, slow or busy."""
         ...
