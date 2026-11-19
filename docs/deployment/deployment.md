@@ -1,10 +1,22 @@
 # Deployment
 
-> Back to [README](../../README.md). Related: [Server setup](server-setup.md) · [Local Docker setup](docker-setup.md) · [Git workflow](../process/git-workflow.md#deployment-and-branches) · Decision: [ADR 0016](../architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md)
+> Back to [README](../../README.md). Related: [Server setup](server-setup.md) · [Local Docker setup](docker-setup.md) · [Git workflow](../process/git-workflow.md#deployment-and-branches) · Decision: [ADR 0016](../architecture/adr/0016-google-cloud-hosting-and-deploy-from-main.md), [ADR 0026](../architecture/adr/0026-releases-reuse-develop-images.md)
 
 How the live site is deployed, which secrets it uses, how to tell whether a deploy worked, and how to roll back. The server itself is described in [Server setup](server-setup.md).
 
 **Live site:** https://getdrove.duckdns.org (HTTPS with a Let's Encrypt certificate; the domain and certificate are described in [Server setup](server-setup.md#9-domain-and-https))
+
+## The workflows at a glance
+
+| Workflow | Runs on | What it does | Changes the live site? | Secrets it uses |
+|---|---|---|---|---|
+| [CI](../../.github/workflows/ci.yml) | Every pull request into `develop`, `main` or `feature/*` | Every check and test; both jobs are required to merge ([regression testing](../testing/regression.md)) | No | None |
+| [Delivery](../../.github/workflows/delivery.yml) | Every merge into `develop` | CI again, then builds and publishes the eight images ([below](#continuous-delivery-on-develop)) | No | `GITHUB_TOKEN` only |
+| [Deploy](../../.github/workflows/deploy.yml) | Every merge into `main` (a release or hotfix), or by hand | Reuses or builds the images, deploys them, smoke test, Discord alert (section 1) | **Yes** | The server, database, Stripe, JWT, email and Discord secrets (section 3) |
+| [Seed demo data](../../.github/workflows/seed-demo.yml) | By hand, from `main` | Creates the demo accounts and their trips on the live site ([infra/seed](../../infra/seed/README.md)) | Adds demo data | `DEPLOY_*`, `DEMO_ACCOUNT_PASSWORD` |
+| [CodeQL](../../.github/workflows/codeql.yml) | Pull requests into `develop` and `main`, and every Monday | Security analysis of the Python and TypeScript code | No | None |
+
+Each one's result is a green or red run in the Actions tab and a check on the commit. Only Deploy alerts on Discord, since only it can break the live site.
 
 ## 1. How a deploy happens
 
@@ -34,6 +46,8 @@ release/x.y.z ──PR──▶ main ──▶ Deploy workflow (.github/workflow
 Database migrations run automatically: each service container applies its migrations when it starts.
 
 ### Saved-card payment holds (#428)
+
+How holds work is in [ADR 0025](../architecture/adr/0025-payment-holds.md). What matters for deploying them:
 
 Production Compose enables `PAYMENTS_HOLD_PROCESSING_ENABLED=true` and sets
 `PAYMENTS_REDIS_URL=redis://redis:6379/0`. The normal lookup uses the `payments.customers`
