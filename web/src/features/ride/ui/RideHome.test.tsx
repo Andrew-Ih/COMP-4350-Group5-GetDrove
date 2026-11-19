@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LngLat } from "@/shared/map";
-import { mockFetch, renderWithProviders } from "@/shared/testing/render";
+import { mockApi, mockFetch, renderWithProviders } from "@/shared/testing/render";
 
 import { defaultWhen, fromQueryString, toSearchTime } from "../model/search";
 import { RideHome } from "./RideHome";
@@ -61,6 +61,25 @@ describe("RideHome", () => {
     expect(await screen.findByText(/, Maya$/)).toBeInTheDocument();
     expect(screen.getByText("Tap the map or use your location")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Find rides/ })).toBeDisabled();
+  });
+
+  it("can choose the area by typing an address instead (#257)", async () => {
+    vi.restoreAllMocks();
+    mockApi({
+      "/accounts/me": { status: 200, body: maya },
+      "/routing/places": { status: 200, body: { places: [{ label: "750 Osborne Street, Fort Rouge", lat: 49.8664, lng: -97.1386 }] } },
+    });
+    renderWithProviders(<RideHome />);
+
+    await userEvent.type(screen.getByRole("searchbox", { name: "Address or place" }), "750 Osborne St{Enter}");
+    await userEvent.click(await screen.findByRole("button", { name: "750 Osborne Street, Fort Rouge" }));
+
+    // Named by its neighbourhood, like a tap: the address itself isn't shown or kept.
+    expect(screen.getByText("Fort Rouge")).toBeInTheDocument();
+    expect(screen.queryByText(/750 Osborne/)).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /Find rides/ }));
+    const search = fromQueryString(new URLSearchParams((push.mock.calls[0]?.[0] as string).split("?")[1]));
+    expect(search).toMatchObject({ lat: 49.8664, lng: -97.1386 });
   });
 
   it("names the tapped area and searches with what the contract needs", async () => {
