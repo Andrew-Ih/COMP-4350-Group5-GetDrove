@@ -2,7 +2,7 @@
 
 > Back to [README](README.md) · Previous: [Sprint 1](sprint1.md) · Milestone: [Sprint 2](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/milestone/2) · Board: [GetDrove project](https://github.com/users/Andrew-Ih/projects/3)
 
-**Live site:** https://getdrove.duckdns.org · **Release:** `v0.2.0`, tag `sprint-2` <!-- TODO(#187): confirm once released -->
+**Live site:** https://getdrove.duckdns.org · **Release:** `v0.2.3`, tag `sprint-2`
 
 | | |
 |---|---|
@@ -33,6 +33,7 @@ Sprint 1 let a student find a ride. Sprint 2 lets them **get one**: **a rider as
 | [#129 See my upcoming trips](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/129) | My trips: upcoming and past rides and drives in one list, with each request's status |
 | [#144 Get notified about my requests and trips](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/144) | A bell and an email for every request, decision, cancellation, approval and payment problem |
 | [#150 Add a payment card](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/150) | Save a card once (Stripe Elements; card details never reach our servers), needed before asking for a seat |
+| [#257 Type an address to choose your area](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/257) | Type an address or place for pickup, drop-off or a trip's start, press Search and pick a match, instead of only tapping the map ([ADR 0027](docs/architecture/adr/0027-geocoding.md)) |
 | [#67 Charge only after the trip happens](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/67) (part) | The rider's share is **held** on their card when they're accepted and **released** if the ride is declined or cancelled. Charging after the trip needs the trip to be completed, which is Sprint 3. |
 | [#20 Cancel a posted trip](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/issues/20) (part) | Cancel a trip that hasn't started; riders are told and their holds released. Recording late cancellations on the driver's record is Sprint 3 (#134). |
 
@@ -99,27 +100,26 @@ Backend paths are under `services/<service>/tests/`, frontend under `web/src/`.
 
 **Success and failure:** each run is green or red in the Actions tab and on the commit; a failed deploy or smoke test is also posted to our Discord. Rollback: run Deploy with an earlier release's commit SHA ([deployment.md § Rolling back](docs/deployment/deployment.md#5-rolling-back)).
 
-**Evidence:** a [CI run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44353361571) · a [Delivery run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44354061351) · the v0.2.0 Deploy run: <!-- TODO(#187): link the release's Deploy run -->
+**Evidence:** a [CI run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44353361571) · a [Delivery run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44354061351) · a [Deploy run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44468394807) (v0.2.2: images reused from `develop`, deployed, smoke test passed) · a [failed Deploy run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44460186633) (v0.2.0: the smoke test couldn't start, and the alert reached our Discord)
 
 ## Live deployment
 
 **Live site:** **https://getdrove.duckdns.org** (Google Cloud VM, Docker Compose, HTTPS through Traefik and Let's Encrypt; real emails through Brevo).
 
-<!-- TODO(#187): these states need #433 merged and "Seed demo data" run after the release -->
 **Test accounts.** Every demo account uses the password **`GetDroveDemo2026`**. They're already verified and hold made-up data. Demo emails aren't actually sent; their notifications are in the bell.
 
 | Role | Email | What to try |
 |---|---|---|
 | Rider | `getdrove.demo.priya@myumanitoba.ca` | Has a card and an **accepted** seat on Maya's next trip to campus: see it in My trips, the bell, and the trip detail with the driver's car |
 | Rider | `getdrove.demo.noah@myumanitoba.ca` | Has a card and a **pending** request on the same trip: cancel it, or log in as Maya to accept it |
-| Rider | `getdrove.demo.owen@myumanitoba.ca` | **No card:** asking for a seat sends him to add one. Use the test card below. |
+| Rider | `getdrove.demo.owen@myumanitoba.ca` | **No card:** asking for a seat tells him to add one first, with a link to the card page. Use the test card below. |
 | Driver | `getdrove.demo.maya@myumanitoba.ca` | Open her next trip to campus: Priya accepted, Noah waiting, with the minutes each adds. Accept Noah, turn on auto-accept, or cancel the trip. |
 | Driver | `getdrove.demo.aisha@myumanitoba.ca` | Her Tue/Thu trips to campus are a **recurring series**: cancel one day or the rest |
 | Driver | `getdrove.demo.sam@myumanitoba.ca` | **Pending approval:** sees that he can't post yet |
 
-All the demo people, their commutes and cars are in [infra/seed/README.md](infra/seed/README.md). You can also sign up with any `@myumanitoba.ca` address. The admin review page needs an admin account; ask us and we'll show it in the demo.
+All the demo people, their commutes and cars are in [infra/seed/README.md](infra/seed/README.md). You can also sign up with any `@myumanitoba.ca` address. The admin review page (**Driver applications** in the account menu) needs an admin account; ask us and we'll give yours the role, or we'll show it in the demo.
 
-**Stripe test card:** **`4242 4242 4242 4242`**, any future expiry date, any CVC, any postal code. Stripe is in test mode: holds appear in our Stripe test dashboard and no real money moves. `4000 0000 0000 0002` is declined, to see the failure message.
+**Stripe test card:** **`4242 4242 4242 4242`**, any future expiry date, any CVC, any 5-digit ZIP (it's a US test card; Stripe's Canadian test card `4000 0012 4000 0000` takes a Canadian postal code). Stripe is in test mode: holds appear in our Stripe test dashboard and no real money moves. `4000 0000 0000 0002` is declined, to see the failure message.
 
 **Documentation:** [Local setup](docs/deployment/local-setup.md) · [Local Docker setup](docs/deployment/docker-setup.md) · [Deployment](docs/deployment/deployment.md) · [Server setup](docs/deployment/server-setup.md) · [Demo data](infra/seed/README.md)
 
@@ -161,7 +161,7 @@ Each of us answered one of the four prompts from the Sprint 2 instructions.
 
 | Who | Prompt | Reflection |
 |---|---|---|
-| Andrew | | |
+| Andrew | Prompt #1 | The change I'm happiest with is how we release. In Sprint 1, `main` rebuilt every image when we deployed, so what went live wasn't exactly what we'd tested. Now `develop` builds and publishes the images once, and a release to `main` reuses those same images, deploys them, runs a browser smoke test against the live site, and posts to our Discord if anything fails ([ADR 0026](docs/architecture/adr/0026-releases-reuse-develop-images.md)). Releasing 0.2.x proved why: when GitHub's runners moved to Ubuntu 26.04 and the map download site refused GitHub, the deploy failed loudly, the live site stayed up, and we fixed it the same night. |
 | Chimdi |Prompt #4  | I think the most important technical risk going into the final iteration is whether our services work together reliably through the complete booking flow. Our unit and integration tests cover individual components well, but our browser smoke test only checks login and trip search. Problems involving seat requests, driver acceptance, payment holds, or notifications could still appear when those features run together. Adding a Playwright test for that complete flow would give me more confidence before the final release. |
 | Daniel | | |
 | Farouk | Prompt #3| One of the biggest challenges with our current CI/CD process is managing dependencies between pull requests, especially when multiple features are being developed simultaneously. Some pull requests depend on changes from other branches, which can delay reviews and merging even when their individual checks pass. This creates additional work because branches need to be rebased and tests rerun whenever dependent code changes. I think we could improve this by keeping pull requests smaller, reducing unnecessary branch dependencies, and coordinating merge order more effectively.|
@@ -185,11 +185,12 @@ Each of us answered one of the four prompts from the Sprint 2 instructions.
 
 - **#67 Charge only after the trip happens:** holds and releases work; capturing after the trip (#71) and charging no-shows (#155) need trip completion (#156), Sprint 3.
 - **#20 Cancel a posted trip:** recording late cancellations on the driver's record is Sprint 3 (#134). The `DriverLateCancellation` event is already published.
-- **#257 Type an address to choose your area:** not finished in Sprint 2 and carried to Sprint 3. <!-- TODO(#185): confirm with its assignee and move the milestone --> Choosing your area is still by tapping the map or sharing your location.
 
 **Deferred or not built yet:** trip execution (start, picked up, no-show, complete), capture and earnings, writing ratings, blocks and reports, trip chat, share links, versioned images on DockerHub (#189).
 
 **Limitations:**
+
+- **A card can be replaced but not removed.** Adding a new card makes it the one used; the old one stays saved in Stripe. Removing a card is Sprint 3.
 
 - **A rider is told they're in before their card is held.** If the hold then fails, they lose the seat and are told why. Requiring a saved card before requesting makes this rare ([ADR 0025](docs/architecture/adr/0025-payment-holds.md)).
 - **Past rides show their last request status** ("Confirmed") rather than "Completed", because nothing completes a trip yet (#156).
