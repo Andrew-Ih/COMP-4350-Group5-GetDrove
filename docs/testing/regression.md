@@ -94,7 +94,7 @@ From GitHub Actions at the end of Sprint 2:
 | Backend job | about 3 minutes, of which the tests take **2 min 11 s** (1,838 tests, including starting the containers) |
 | Frontend job | about 2 to 2.5 minutes, of which the tests take **45 s** (482 tests); installing dependencies takes about a minute |
 | Delivery on `develop` (checks, then building and publishing the images) | **3.7 minutes** median over all 33 runs (2.8 to 6.1) |
-| Deploy, including the smoke test | about 4 to 5 minutes. Measured on the Sprint 1 releases, before the smoke test was added; the v0.2.0 release (#187) will be the first deploy with it. |
+| Deploy, including the smoke test | about **7 minutes** for v0.2.2 ([run](https://github.com/Andrew-Ih/COMP-4350-Group5-GetDrove/actions/runs/44468394807)): 23 s to find `develop`'s images, 1 min 20 s to deploy, and 5 min for the smoke test, most of it installing the browser |
 
 The longest single step is building the web image (about 3 minutes in Delivery). It runs
 after the tests, so it doesn't slow down finding a failure.

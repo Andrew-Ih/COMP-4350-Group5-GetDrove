@@ -166,7 +166,7 @@ cd web && npm install && cd ..       # if package-lock.json changed
 docker compose up --build -d         # rebuilds only what changed
 ```
 
-Then branch off `develop` for your task ([Git workflow](../process/git-workflow.md#feature-work-day-to-day)).
+Then branch off `develop` for your task ([Git workflow](../process/git-workflow.md#working-on-a-task-day-to-day)).
 
 ## 8. Common problems
 
