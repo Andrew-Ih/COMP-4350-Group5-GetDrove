@@ -26,7 +26,7 @@ export function ComingSoon({
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <main className="min-h-[calc(100dvh-4rem)] bg-canvas px-4 py-12 md:min-h-[calc(100dvh-4.5rem)]">
         <Card className="mx-auto max-w-md bg-surface p-8 text-center">
           <div aria-hidden="true" className="mx-auto flex size-14 items-center justify-center rounded-full bg-surface-muted">

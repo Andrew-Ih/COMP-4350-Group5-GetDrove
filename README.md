@@ -6,7 +6,7 @@
 
 GetDrove is a carpooling platform for University of Manitoba students commuting to the Fort Garry campus. Drivers post their commute, the system works out their real driving route and shows the trip to students along it, and drivers see how many extra minutes each rider would add before accepting. Riders get a confirmed seat, a private pickup point, a pickup time and ETA, and a fair share of the cost based on how far they rode. Every user is a verified UofM student.
 
-> **Sprint 0:** see [sprint0.md](sprint0.md) for this milestone's planning and setup work.
+> **Sprint 2:** see [sprint2.md](sprint2.md) for this milestone. Live site: https://getdrove.duckdns.org
 
 ## Core features
 
@@ -79,6 +79,7 @@ Everyone is a developer; these roles are additional responsibilities. See the [w
 
 - [Sprint 0: Planning and setup](sprint0.md)
 - [Sprint 1: The first working slice](sprint1.md)
+- [Sprint 2: The core loop](sprint2.md)
 
 ## Getting started
 

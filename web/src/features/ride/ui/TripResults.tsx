@@ -95,7 +95,7 @@ export function TripResults({ query }: { query: SearchQuery | undefined }) {
 
   return (
     <>
-      <AppHeader userName={me.data?.firstName ?? ""} />
+      <AppHeader userName={me.data?.firstName ?? ""} isAdmin={me.data?.roles.includes("admin") ?? false} />
       <MapLayout
         map={<MapView routes={mapRoutes} markers={markers} area={area} fitTo={fitTo} />}
         panel={
