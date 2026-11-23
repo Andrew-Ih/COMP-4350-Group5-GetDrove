@@ -76,12 +76,12 @@ jobs:
       reused: ${{ steps.reuse.outputs.reused }}
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2 # this commit and its parents
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -145,7 +145,7 @@ jobs:
       url: ${{ env.SITE_URL }}
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up SSH
         env:
@@ -272,7 +272,7 @@ jobs:
       url: ${{ env.SITE_URL }}
     steps:
       - name: Check out the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Home page and every service's /health answer over HTTPS
         env:
@@ -303,7 +303,7 @@ jobs:
           exit $failed
 
       - name: Install Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version-file: web/.nvmrc
           cache: npm
@@ -330,7 +330,7 @@ jobs:
 
       - name: Keep the screenshot and trace of a failed browser test
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-test-report
           path: |
